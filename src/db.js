@@ -341,3 +341,16 @@ export function updateChatCompaction(db, chatId, lastResponseId) {
     updated_at: nowIso(),
   });
 }
+
+export function resetChatState(db, chatId) {
+  db.prepare(
+    `
+    INSERT INTO chat_state (chat_id, last_response_id, turn_count, updated_at)
+    VALUES (@chat_id, NULL, 0, @updated_at)
+    ON CONFLICT(chat_id) DO UPDATE SET
+      last_response_id = NULL,
+      turn_count = 0,
+      updated_at = excluded.updated_at
+  `
+  ).run({ chat_id: chatId, updated_at: nowIso() });
+}

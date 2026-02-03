@@ -7,6 +7,7 @@ import {
   getChatState,
   getDb,
   listAssignments,
+  resetChatState,
   scheduleReminder,
   updateAssignmentStatus,
   updateChatCompaction,
@@ -186,6 +187,11 @@ async function maybeCompact(client, config, chatId, chatState, responseId) {
   return responseId;
 }
 
+function isInvalidPreviousResponse(err) {
+  const message = String(err?.message || err || "").toLowerCase();
+  return message.includes("previous_response_id") || message.includes("response_id") || message.includes("not found");
+}
+
 export async function runAgentMessage({ chatId, text }) {
   const config = getConfig();
   validateOpenAIConfig();
@@ -196,16 +202,34 @@ export async function runAgentMessage({ chatId, text }) {
   const chatState = getChatState(db, chatId);
   const client = new OpenAI({ apiKey: config.openai.apiKey });
 
-  const response = await client.responses.create({
-    model: config.openai.model,
-    reasoning: { effort: config.openai.reasoningEffort },
-    max_output_tokens: config.openai.maxOutputTokens,
-    instructions: buildSystemPrompt(),
-    input: text,
-    tools: toolDefinitions(),
-    tool_choice: "auto",
-    previous_response_id: chatState.lastResponseId || undefined,
-  });
+  let response;
+  try {
+    response = await client.responses.create({
+      model: config.openai.model,
+      reasoning: { effort: config.openai.reasoningEffort },
+      max_output_tokens: config.openai.maxOutputTokens,
+      instructions: buildSystemPrompt(),
+      input: text,
+      tools: toolDefinitions(),
+      tool_choice: "auto",
+      previous_response_id: chatState.lastResponseId || undefined,
+    });
+  } catch (err) {
+    if (chatState.lastResponseId && isInvalidPreviousResponse(err)) {
+      resetChatState(db, chatId);
+      response = await client.responses.create({
+        model: config.openai.model,
+        reasoning: { effort: config.openai.reasoningEffort },
+        max_output_tokens: config.openai.maxOutputTokens,
+        instructions: buildSystemPrompt(),
+        input: text,
+        tools: toolDefinitions(),
+        tool_choice: "auto",
+      });
+    } else {
+      throw err;
+    }
+  }
 
   let currentResponse = response;
   while (true) {

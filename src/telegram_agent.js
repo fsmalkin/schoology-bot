@@ -10,7 +10,10 @@ validateOpenAIConfig();
 
 const allowedChats = new Set((config.telegram.chatIds || []).map((id) => String(id)));
 const bot = new TelegramBot(config.telegram.botToken, { polling: true });
-const logPath = process.env.AGENT_LOG_PATH || "";
+const logPath =
+  process.env.AGENT_LOG_PATH && process.env.AGENT_LOG_PATH.trim().length > 0
+    ? process.env.AGENT_LOG_PATH.trim()
+    : path.join(config.paths.dataDir, "agent.log");
 
 function appendLog(line) {
   const entry = `[${new Date().toISOString()}] ${line}`;
@@ -56,6 +59,6 @@ bot.on("message", async (msg) => {
   } catch (err) {
     console.error("Agent error:", err?.message || err);
     await bot.sendMessage(chatId, "Sorry, I hit an error while processing that.");
-    appendLog(`Error replying to ${chatId}: ${err?.message || err}`);
+    appendLog(`Error replying to ${chatId}: ${err?.stack || err?.message || err}`);
   }
 });
