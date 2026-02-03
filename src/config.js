@@ -47,6 +47,7 @@ const config = {
     timezone: env("TIMEZONE", "America/New_York"),
     scrapeCron: env("SCRAPE_CRON", "0 6 * * *"),
     sendCron: env("SEND_CRON", "0 7 * * *"),
+    reminderCron: env("REMINDER_CRON", "*/1 * * * *"),
   },
   email: {
     from: env("EMAIL_FROM"),

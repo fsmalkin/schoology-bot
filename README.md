@@ -1,4 +1,4 @@
-# Schoology Bot
+﻿# Schoology Bot
 
 A friendly, local-first Schoology assistant that logs in, finds missing assignments, sends a daily summary, and lets you chat with an agent to update statuses, add notes, and schedule reminders.
 
@@ -73,8 +73,8 @@ Optional:
 Note: If you use a group chat, Telegram bot privacy must be disabled (BotFather -> /setprivacy) or you must mention the bot for it to receive messages.
 
 Tips:
-- Say “file a bug” to log an error.
-- Say “log a feature request” to capture improvements or ideas.
+- Say "file a bug" to log an error.
+- Say "log a feature request" to capture improvements or ideas.
 
 ## Manual Statuses (Explicit Set)
 These are the default manual status codes the agent understands:
@@ -118,3 +118,4 @@ For email delivery, set `DELIVERY_CHANNEL="email"` and the SMTP values.
 
 ## Roadmap
 See `docs/ROADMAP.md`.
+

@@ -25,7 +25,7 @@ function addLine(lines, line, limit) {
   return true;
 }
 
-export function buildSmsText(summary, state, timeZone) {
+export function buildSmsText(summary, state, timeZone, tasksForDay = []) {
   const lines = [];
   const today = formatDateYmd(new Date(), timeZone);
 
@@ -36,16 +36,17 @@ export function buildSmsText(summary, state, timeZone) {
 
   if (summary.currentMissing.length === 0) {
     lines.push("No missing assignments.");
-    return lines.join("\n");
   }
 
   const limit = 1400;
   let remaining = 0;
 
-  addLine(lines, `Missing assignments (${summary.currentMissing.length}):`, limit);
-  for (const item of summary.currentMissing) {
-    if (!addLine(lines, lineForAssignment(item), limit)) {
-      remaining += 1;
+  if (summary.currentMissing.length > 0) {
+    addLine(lines, `Missing assignments (${summary.currentMissing.length}):`, limit);
+    for (const item of summary.currentMissing) {
+      if (!addLine(lines, lineForAssignment(item), limit)) {
+        remaining += 1;
+      }
     }
   }
 
@@ -53,12 +54,23 @@ export function buildSmsText(summary, state, timeZone) {
     addLine(lines, `... and ${remaining} more`, limit);
   }
 
+  if (tasksForDay.length > 0) {
+    addLine(lines, "", limit);
+    addLine(lines, `Tasks for today (${tasksForDay.length}):`, limit);
+    for (const task of tasksForDay) {
+      const timeLabel = task.remindAt ? formatDateTime(new Date(task.remindAt), timeZone) : "No time";
+      const status = task.status || "pending";
+      const line = `- ${task.title} | ${timeLabel} | ${status}`;
+      if (!addLine(lines, line, limit)) break;
+    }
+  }
+
   return lines.join("\n");
 }
 
-export async function sendSummarySms(config, summary, state) {
+export async function sendSummarySms(config, summary, state, tasksForDay = []) {
   const client = twilio(config.twilio.accountSid, config.twilio.authToken);
-  const text = buildSmsText(summary, state, config.schedule.timezone);
+  const text = buildSmsText(summary, state, config.schedule.timezone, tasksForDay);
 
   const basePayload = {
     body: text,

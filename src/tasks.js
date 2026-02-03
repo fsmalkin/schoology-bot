@@ -8,11 +8,12 @@ import {
 } from "./config.js";
 import { scrapeMissingAssignments } from "./schoology.js";
 import { buildSummary, loadState, saveState, updateStateWithScrape } from "./storage.js";
-import { nowIso } from "./time.js";
-import { getDb, syncAssignmentsFromState } from "./db.js";
+import { formatDateYmd, formatDateTime, nowIso } from "./time.js";
+import { createTask, deleteTask, getDb, listDueTasks, listTasks, markTaskReminderSent, syncAssignmentsFromState, updateTask, updateTaskStatus } from "./db.js";
 import { sendSummaryEmail } from "./email.js";
 import { sendSummarySms } from "./sms.js";
 import { sendSummaryTelegram, sendTelegramMessage } from "./telegram.js";
+import { renderTelegramHtml } from "./telegram_format.js";
 
 function isLoginFailure(error) {
   const message = String(error?.message || error || "").toLowerCase();
@@ -80,13 +81,19 @@ export async function runSend() {
   }
 
   const summary = buildSummary(state, state.lastSummarySentAt);
+  const db = getDb(config);
+  const today = formatDateYmd(new Date(), config.schedule.timezone);
+  const tasksForToday = listTasks(db, { status: "all" }).filter((task) => {
+    if (!task.remindAt) return false;
+    return formatDateYmd(new Date(task.remindAt), config.schedule.timezone) === today;
+  });
   for (const channel of channels) {
     if (channel === "twilio") {
-      await sendSummarySms(config, summary, state);
+      await sendSummarySms(config, summary, state, tasksForToday);
     } else if (channel === "telegram") {
-      await sendSummaryTelegram(config, summary, state);
+      await sendSummaryTelegram(config, summary, state, tasksForToday);
     } else if (channel === "email") {
-      await sendSummaryEmail(config, summary, state);
+      await sendSummaryEmail(config, summary, state, tasksForToday);
     }
   }
 
@@ -101,3 +108,40 @@ export async function runOnce() {
   await runScrape();
   await runSend();
 }
+
+function addDays(date, days) {
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+export async function runReminders() {
+  const config = getConfig();
+  if (!config.telegram.botToken || !config.telegram.chatIds || config.telegram.chatIds.length === 0) return;
+
+  const db = getDb(config);
+  const now = nowIso();
+  const due = listDueTasks(db, now);
+  if (due.length === 0) return;
+
+  for (const task of due) {
+    const remindAt = task.remindAt ? new Date(task.remindAt) : new Date();
+    const prettyTime = formatDateTime(remindAt, config.schedule.timezone);
+    const message = task.message ? `\n${task.message}` : "";
+    const text = `Reminder: ${task.title} (scheduled ${prettyTime}).${message}`;
+    const html = renderTelegramHtml(text);
+    try {
+      await sendTelegramMessage(config, html);
+      const next = addDays(remindAt, 1).toISOString();
+      markTaskReminderSent(db, { id: task.id, sentAt: now, nextRemindAt: next });
+    } catch (err) {
+      console.error("Failed to send reminder:", err?.message || err);
+    }
+  }
+}
+
+export const taskApi = {
+  createTask,
+  listTasks,
+  updateTaskStatus,
+  updateTask,
+  deleteTask,
+};

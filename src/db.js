@@ -51,6 +51,19 @@ function initDb(db) {
       FOREIGN KEY (assignment_key) REFERENCES assignments(key)
     );
 
+    CREATE TABLE IF NOT EXISTS tasks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      message TEXT,
+      remind_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      completed_at TEXT,
+      last_sent_at TEXT,
+      rolled_over_at TEXT,
+      roll_count INTEGER NOT NULL DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS chat_state (
       chat_id TEXT PRIMARY KEY,
       last_response_id TEXT,
@@ -64,6 +77,8 @@ function initDb(db) {
     CREATE INDEX IF NOT EXISTS idx_assignments_missing ON assignments(is_missing);
     CREATE INDEX IF NOT EXISTS idx_notes_assignment ON assignment_notes(assignment_key);
     CREATE INDEX IF NOT EXISTS idx_reminders_pending ON reminders(sent_at, remind_at);
+    CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+    CREATE INDEX IF NOT EXISTS idx_tasks_remind_at ON tasks(remind_at);
   `);
 }
 
@@ -389,6 +404,206 @@ export function scheduleReminder(db, { key, title, course, remindAt, message }) 
     .get(targetKey);
 
   return { ok: true, key: targetKey, reminderId: result.lastInsertRowid, assignment };
+}
+
+export function createTask(db, { title, remindAt, message }) {
+  const taskTitle = String(title || "").trim();
+  if (!taskTitle) {
+    return { ok: false, error: "Task title is required." };
+  }
+  const remindTime = String(remindAt || "").trim();
+  if (!remindTime) {
+    return { ok: false, error: "Reminder time is required." };
+  }
+
+  const result = db
+    .prepare(
+      `
+      INSERT INTO tasks (title, message, remind_at, status, created_at)
+      VALUES (@title, @message, @remind_at, 'pending', @created_at)
+    `
+    )
+    .run({
+      title: taskTitle,
+      message: message ? String(message) : null,
+      remind_at: remindTime,
+      created_at: nowIso(),
+    });
+
+  return { ok: true, id: result.lastInsertRowid, title: taskTitle, remindAt: remindTime };
+}
+
+export function listTasks(db, options = {}) {
+  const status = (options.status || "pending").toLowerCase();
+  const includeCompleted = status === "all";
+  const start = options.start ? String(options.start) : null;
+  const end = options.end ? String(options.end) : null;
+
+  const filters = [];
+  const params = {};
+  if (!includeCompleted) {
+    filters.push("status = @status");
+    params.status = status === "done" ? "done" : "pending";
+  }
+  if (start) {
+    filters.push("remind_at >= @start");
+    params.start = start;
+  }
+  if (end) {
+    filters.push("remind_at <= @end");
+    params.end = end;
+  }
+
+  const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+  return db
+    .prepare(
+      `
+      SELECT id, title, message, remind_at AS remindAt, status, created_at AS createdAt,
+             completed_at AS completedAt, last_sent_at AS lastSentAt, rolled_over_at AS rolledOverAt,
+             roll_count AS rollCount
+      FROM tasks
+      ${where}
+      ORDER BY remind_at, id
+    `
+    )
+    .all(params);
+}
+
+export function updateTaskStatus(db, { id, status }) {
+  const taskId = Number(id);
+  if (!Number.isFinite(taskId)) {
+    return { ok: false, error: "Task id is required." };
+  }
+  const normalized = String(status || "").toLowerCase();
+  if (!normalized) {
+    return { ok: false, error: "Status is required." };
+  }
+  const finalStatus = normalized === "done" || normalized === "completed" ? "done" : "pending";
+  const completedAt = finalStatus === "done" ? nowIso() : null;
+
+  const result = db
+    .prepare(
+      `
+      UPDATE tasks
+      SET status = @status,
+          completed_at = @completed_at
+      WHERE id = @id
+    `
+    )
+    .run({ status: finalStatus, completed_at: completedAt, id: taskId });
+
+  if (result.changes === 0) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const task = db
+    .prepare("SELECT id, title, remind_at AS remindAt, status FROM tasks WHERE id = ?")
+    .get(taskId);
+
+  return { ok: true, task };
+}
+
+export function updateTask(db, { id, title, remindAt, message }) {
+  const taskId = Number(id);
+  if (!Number.isFinite(taskId)) {
+    return { ok: false, error: "Task id is required." };
+  }
+  const fields = [];
+  const params = { id: taskId };
+  if (title !== undefined) {
+    const taskTitle = String(title || "").trim();
+    if (!taskTitle) return { ok: false, error: "Task title is required." };
+    fields.push("title = @title");
+    params.title = taskTitle;
+  }
+  if (remindAt !== undefined) {
+    const remindTime = String(remindAt || "").trim();
+    if (!remindTime) return { ok: false, error: "Reminder time is required." };
+    fields.push("remind_at = @remind_at");
+    params.remind_at = remindTime;
+  }
+  if (message !== undefined) {
+    fields.push("message = @message");
+    params.message = message ? String(message) : null;
+  }
+
+  if (fields.length === 0) {
+    return { ok: false, error: "No updates provided." };
+  }
+
+  const result = db
+    .prepare(
+      `
+      UPDATE tasks
+      SET ${fields.join(", ")}
+      WHERE id = @id
+    `
+    )
+    .run(params);
+
+  if (result.changes === 0) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  const task = db
+    .prepare("SELECT id, title, remind_at AS remindAt, status, message FROM tasks WHERE id = ?")
+    .get(taskId);
+
+  return { ok: true, task };
+}
+
+export function deleteTask(db, { id }) {
+  const taskId = Number(id);
+  if (!Number.isFinite(taskId)) {
+    return { ok: false, error: "Task id is required." };
+  }
+  const result = db.prepare("DELETE FROM tasks WHERE id = ?").run(taskId);
+  if (result.changes === 0) {
+    return { ok: false, error: "Task not found." };
+  }
+  return { ok: true, id: taskId };
+}
+
+export function listDueTasks(db, nowIsoValue) {
+  return db
+    .prepare(
+      `
+      SELECT id, title, message, remind_at AS remindAt, status, last_sent_at AS lastSentAt
+      FROM tasks
+      WHERE status = 'pending'
+        AND remind_at <= @now
+        AND (last_sent_at IS NULL OR last_sent_at < remind_at)
+      ORDER BY remind_at, id
+    `
+    )
+    .all({ now: nowIsoValue });
+}
+
+export function markTaskReminderSent(db, { id, sentAt, nextRemindAt }) {
+  const taskId = Number(id);
+  if (!Number.isFinite(taskId)) return { ok: false, error: "Task id is required." };
+  const update = db
+    .prepare(
+      `
+      UPDATE tasks
+      SET last_sent_at = @sent_at,
+          remind_at = @remind_at,
+          rolled_over_at = @rolled_over_at,
+          roll_count = roll_count + 1
+      WHERE id = @id
+    `
+    )
+    .run({
+      sent_at: sentAt,
+      remind_at: nextRemindAt,
+      rolled_over_at: sentAt,
+      id: taskId,
+    });
+
+  if (update.changes === 0) {
+    return { ok: false, error: "Task not found." };
+  }
+  return { ok: true, id: taskId };
 }
 
 export function getChatState(db, chatId) {

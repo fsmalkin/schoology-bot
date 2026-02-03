@@ -3,6 +3,7 @@ import path from "path";
 import TelegramBot from "node-telegram-bot-api";
 import { getConfig, validateOpenAIConfig, validateTelegramConfig } from "./config.js";
 import { runAgentMessage } from "./agent.js";
+import { renderTelegramHtml } from "./telegram_format.js";
 
 const config = getConfig();
 validateTelegramConfig();
@@ -32,6 +33,40 @@ function appendLog(line) {
 
 appendLog("Telegram agent started.");
 
+const MAX_BACKOFF_MS = 60000;
+let restartAttempts = 0;
+let restartTimer = null;
+
+function formatError(err) {
+  if (!err) return "Unknown error";
+  return err.response?.body || err.message || String(err);
+}
+
+function schedulePollingRestart(err) {
+  if (restartTimer) return;
+  const delay = Math.min(1000 * Math.pow(2, restartAttempts), MAX_BACKOFF_MS);
+  restartAttempts += 1;
+  appendLog(`Polling error: ${formatError(err)}. Restarting in ${Math.round(delay / 1000)}s.`);
+
+  restartTimer = setTimeout(async () => {
+    restartTimer = null;
+    try {
+      appendLog("Restarting Telegram polling...");
+      await bot.stopPolling();
+      await bot.startPolling();
+      restartAttempts = 0;
+      appendLog("Telegram polling restarted.");
+    } catch (restartErr) {
+      appendLog(`Polling restart failed: ${formatError(restartErr)}`);
+      schedulePollingRestart(restartErr);
+    }
+  }, delay);
+}
+
+bot.on("polling_error", (err) => {
+  schedulePollingRestart(err);
+});
+
 bot.on("message", async (msg) => {
   if (!msg || !msg.chat) return;
   if (msg.from?.is_bot) return;
@@ -52,8 +87,10 @@ bot.on("message", async (msg) => {
     }
     const reply = await runAgentMessage({ chatId, text });
     if (!reply) return;
-    await bot.sendMessage(chatId, reply, {
+    const formatted = renderTelegramHtml(reply);
+    await bot.sendMessage(chatId, formatted, {
       disable_web_page_preview: true,
+      parse_mode: "HTML",
     });
     appendLog(`Replied to ${chatId} (${reply.length} chars).`);
   } catch (err) {

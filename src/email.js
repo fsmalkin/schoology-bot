@@ -24,7 +24,7 @@ function section(title, items) {
   return [title, ...items.map(lineForAssignment), ""];
 }
 
-export function buildEmailText(summary, state, timeZone) {
+export function buildEmailText(summary, state, timeZone, tasksForDay = []) {
   const lines = [];
   const today = formatDateYmd(new Date(), timeZone);
 
@@ -36,15 +36,24 @@ export function buildEmailText(summary, state, timeZone) {
 
   if (summary.currentMissing.length === 0) {
     lines.push("No missing assignments found.");
-    return lines.join("\n");
+  } else {
+    lines.push(...section(`Missing assignments (${summary.currentMissing.length}):`, summary.currentMissing));
   }
 
-  lines.push(...section(`Missing assignments (${summary.currentMissing.length}):`, summary.currentMissing));
+  if (tasksForDay.length > 0) {
+    lines.push(`Tasks for today (${tasksForDay.length}):`);
+    for (const task of tasksForDay) {
+      const timeLabel = task.remindAt ? formatDateTime(new Date(task.remindAt), timeZone) : "No time";
+      const status = task.status || "pending";
+      lines.push(`- ${task.title} | ${timeLabel} | ${status}`);
+    }
+    lines.push("");
+  }
 
   return lines.join("\n").trim();
 }
 
-export async function sendSummaryEmail(config, summary, state) {
+export async function sendSummaryEmail(config, summary, state, tasksForDay = []) {
   const transporter = nodemailer.createTransport({
     host: config.email.host,
     port: config.email.port,
@@ -57,7 +66,7 @@ export async function sendSummaryEmail(config, summary, state) {
 
   const subjectDate = formatDateYmd(new Date(), config.schedule.timezone);
   const subject = `Schoology Missing Assignments - ${subjectDate}`;
-  const text = buildEmailText(summary, state, config.schedule.timezone);
+  const text = buildEmailText(summary, state, config.schedule.timezone, tasksForDay);
 
   await transporter.sendMail({
     from: config.email.from,

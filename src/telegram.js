@@ -23,7 +23,7 @@ function addLine(lines, line, limit) {
   return true;
 }
 
-export function buildTelegramText(summary, state, timeZone) {
+export function buildTelegramText(summary, state, timeZone, tasksForDay = []) {
   const lines = [];
   const today = formatDateYmd(new Date(), timeZone);
 
@@ -36,7 +36,9 @@ export function buildTelegramText(summary, state, timeZone) {
 
   if (summary.currentMissing.length === 0) {
     lines.push("No missing assignments.");
-    return lines.join("\n");
+    if (tasksForDay.length === 0) {
+      return lines.join("\n");
+    }
   }
 
   const limit = 3500;
@@ -79,11 +81,25 @@ export function buildTelegramText(summary, state, timeZone) {
     addLine(lines, `... and ${remaining} more`, limit);
   }
 
+  if (tasksForDay.length > 0) {
+    addLine(lines, "", limit);
+    addLine(lines, `<b>Tasks for today (${tasksForDay.length})</b>`, limit);
+    const sorted = [...tasksForDay].sort((a, b) => String(a.remindAt).localeCompare(String(b.remindAt)));
+    let taskIndex = 1;
+    for (const task of sorted) {
+      const timeLabel = task.remindAt ? formatDateTime(new Date(task.remindAt), timeZone) : "No time";
+      const status = task.status || "pending";
+      const line = `${taskIndex}. ${escapeHtml(task.title)} - ${escapeHtml(timeLabel)} - ${escapeHtml(status)}`;
+      if (!addLine(lines, line, limit)) break;
+      taskIndex += 1;
+    }
+  }
+
   return lines.join("\n");
 }
 
-export async function sendSummaryTelegram(config, summary, state) {
-  const text = buildTelegramText(summary, state, config.schedule.timezone);
+export async function sendSummaryTelegram(config, summary, state, tasksForDay = []) {
+  const text = buildTelegramText(summary, state, config.schedule.timezone, tasksForDay);
   return await sendTelegramMessage(config, text);
 }
 

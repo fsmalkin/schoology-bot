@@ -7,6 +7,11 @@ import {
   getChatState,
   getDb,
   listAssignments,
+  listTasks,
+  createTask,
+  updateTaskStatus,
+  updateTask,
+  deleteTask,
   applyNumberedStatuses,
   resetChatState,
   scheduleReminder,
@@ -31,8 +36,10 @@ function buildSystemPrompt() {
     `Manual status codes: ${statusGuideText()}.`,
     "Default reporting buckets: Actionable, Pending, Ignored. Hide Ignored by default unless asked.",
     "When confirming status updates, include a short list of items waiting on teacher/grade (No grade put in yet, Waiting on teacher).",
+    "You can create, list, update, or delete personal tasks with reminders (not tied to Schoology).",
     "If the user suggests improvements or feature ideas, ask if they want you to log a feature request.",
     "Only open bug reports when the user explicitly asks to file a bug or report an error.",
+    "Respond in Telegram-friendly HTML (use <b>, <code>, <pre> tags; avoid Markdown).",
     "Keep responses concise and action-oriented.",
   ].join(" ");
 }
@@ -182,6 +189,78 @@ function toolDefinitions() {
     },
     {
       type: "function",
+      name: "create_task",
+      description: "Create a personal task with a reminder.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "Task title." },
+          remindAt: { type: "string", description: "Reminder time in ISO-8601 format." },
+          message: { type: "string", description: "Optional reminder note." },
+        },
+        required: ["title", "remindAt"],
+      },
+    },
+    {
+      type: "function",
+      name: "list_tasks",
+      description: "List tasks with optional filters.",
+      parameters: {
+        type: "object",
+        properties: {
+          status: {
+            type: "string",
+            enum: ["pending", "done", "all"],
+            description: "Filter by status.",
+          },
+          start: { type: "string", description: "ISO start datetime filter." },
+          end: { type: "string", description: "ISO end datetime filter." },
+        },
+        required: [],
+      },
+    },
+    {
+      type: "function",
+      name: "update_task_status",
+      description: "Mark a task as done or pending.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "integer", description: "Task id." },
+          status: { type: "string", description: "done or pending." },
+        },
+        required: ["id", "status"],
+      },
+    },
+    {
+      type: "function",
+      name: "update_task",
+      description: "Update a task title, reminder time, or note.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "integer", description: "Task id." },
+          title: { type: "string", description: "Task title." },
+          remindAt: { type: "string", description: "Reminder time in ISO-8601 format." },
+          message: { type: "string", description: "Optional reminder note." },
+        },
+        required: ["id"],
+      },
+    },
+    {
+      type: "function",
+      name: "delete_task",
+      description: "Delete a task.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "integer", description: "Task id." },
+        },
+        required: ["id"],
+      },
+    },
+    {
+      type: "function",
       name: "open_bug_report",
       description: "Log a bug locally and optionally open a GitHub issue.",
       parameters: {
@@ -303,6 +382,10 @@ const DIRECT_TOOL_NAMES = new Set([
   "apply_numbered_statuses",
   "add_assignment_note",
   "schedule_reminder",
+  "create_task",
+  "update_task_status",
+  "update_task",
+  "delete_task",
   "open_bug_report",
   "open_feature_request",
 ]);
@@ -311,7 +394,7 @@ function formatAssignmentLabel(assignment) {
   if (!assignment) return "Unknown assignment";
   const course = assignment.course ? `${assignment.course}` : "Unknown course";
   const title = assignment.title ? `${assignment.title}` : "Untitled";
-  return `${course} — ${title}`;
+  return `${course} - ${title}`;
 }
 
 function formatUpdateSummary(results, db) {
@@ -344,6 +427,42 @@ function formatUpdateSummary(results, db) {
       continue;
     }
 
+    if (name === "create_task") {
+      if (output?.ok) {
+        applied.push(`Created task #${output.id}: ${output.title}`);
+      } else if (output?.error) {
+        needs.push(output.error);
+      }
+      continue;
+    }
+
+    if (name === "update_task_status") {
+      if (output?.ok) {
+        applied.push(`Task #${output.task?.id} -> ${output.task?.status}`);
+      } else if (output?.error) {
+        needs.push(output.error);
+      }
+      continue;
+    }
+
+    if (name === "update_task") {
+      if (output?.ok) {
+        applied.push(`Updated task #${output.task?.id}: ${output.task?.title}`);
+      } else if (output?.error) {
+        needs.push(output.error);
+      }
+      continue;
+    }
+
+    if (name === "delete_task") {
+      if (output?.ok) {
+        applied.push(`Deleted task #${output.id}`);
+      } else if (output?.error) {
+        needs.push(output.error);
+      }
+      continue;
+    }
+
     if (name === "add_assignment_note") {
       if (output?.ok) {
         applied.push(`Added note to ${formatAssignmentLabel(output.assignment) || output.key}`);
@@ -355,7 +474,7 @@ function formatUpdateSummary(results, db) {
 
     if (name === "update_assignment_status") {
       if (output?.ok) {
-        applied.push(`${formatAssignmentLabel(output.assignment)} → ${output.status}`);
+        applied.push(`${formatAssignmentLabel(output.assignment)} -> ${output.status}`);
       } else if (output?.matches?.length) {
         needs.push(`Multiple matches for "${args.title || "assignment"}".`);
       } else if (output?.error) {
@@ -369,7 +488,7 @@ function formatUpdateSummary(results, db) {
       for (const entry of resultsList) {
         const res = entry.result;
         if (res?.ok) {
-          applied.push(`${formatAssignmentLabel(res.assignment)} → ${res.status}`);
+          applied.push(`${formatAssignmentLabel(res.assignment)} -> ${res.status}`);
         } else if (res?.matches?.length) {
           needs.push(`Multiple matches for "${entry.input?.title || "assignment"}".`);
         } else if (res?.error) {
@@ -384,7 +503,7 @@ function formatUpdateSummary(results, db) {
       for (const entry of resultsList) {
         const res = entry.result;
         if (res?.ok) {
-          applied.push(`${formatAssignmentLabel(res.assignment || entry.assignment)} → ${res.status}`);
+          applied.push(`${formatAssignmentLabel(res.assignment || entry.assignment)} -> ${res.status}`);
         } else if (res?.error) {
           needs.push(res.error);
         }
@@ -420,7 +539,7 @@ function formatUpdateSummary(results, db) {
       pending.forEach((row, idx) => {
         const status = row.manualStatus || row.status || "Pending";
         const due = row.dueDate ? ` (Due ${row.dueDate})` : "";
-        lines.push(`${idx + 1}. ${row.course} — ${row.title}${due} — ${status}`);
+        lines.push(`${idx + 1}. ${row.course} - ${row.title}${due} - ${status}`);
       });
     }
   }
@@ -443,6 +562,16 @@ async function runTool(db, call) {
       return addAssignmentNote(db, args);
     case "schedule_reminder":
       return scheduleReminder(db, args);
+    case "create_task":
+      return createTask(db, args);
+    case "list_tasks":
+      return { ok: true, tasks: listTasks(db, args) };
+    case "update_task_status":
+      return updateTaskStatus(db, args);
+    case "update_task":
+      return updateTask(db, args);
+    case "delete_task":
+      return deleteTask(db, args);
     case "open_bug_report":
       return await openBugReport(getConfig(), args);
     case "open_feature_request":
@@ -476,7 +605,7 @@ function isInvalidPreviousResponse(err) {
   return message.includes("previous_response_id") || message.includes("response_id") || message.includes("not found");
 }
 
-export async function runAgentMessage({ chatId, text }) {
+export async function runAgentMessage({ chatId, text, clientOverride }) {
   const config = getConfig();
   validateOpenAIConfig();
 
@@ -484,7 +613,7 @@ export async function runAgentMessage({ chatId, text }) {
   ensureDbSeeded(db, config.paths.statePath);
 
   const chatState = getChatState(db, chatId);
-  const client = new OpenAI({ apiKey: config.openai.apiKey });
+  const client = clientOverride || new OpenAI({ apiKey: config.openai.apiKey });
 
   const basePayload = {
     model: config.openai.model,

@@ -9,6 +9,7 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 - Headless browser only.
 - Credentials and config live in `.env`.
 - Scrape runs at 6:00 AM ET, summary sent at 7:00 AM ET.
+- Reminder scheduler runs every minute to deliver task reminders.
 - Daily summary delivery via Telegram.
 - Docker support included for easy server migration.
 - If using Twilio later, use Auth Token for now; plan to switch to API Key for server move.
@@ -17,6 +18,8 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 - Daily summary lists only unresolved items (Missing, Incomplete, Not completed/submitted, Absent).
 - Agent model choice: GPT-5.2 (not mini or pro).
 - Maintain offline unit + E2E tests using fixtures (no live Schoology needed).
+- Daily summary includes tasks scheduled for today.
+- Tasks roll over by 24 hours if not completed.
 
 ## Phase 1
 Scope:
@@ -69,6 +72,7 @@ Scope:
 - Add a chat-driven agent layer that can answer questions about assignments.
 - Let users update assignment statuses and add notes through chat.
 - Schedule reminders for followups on specific assignments.
+- CRUD personal tasks with reminders via chat.
 
 Implementation approach:
 - Use OpenAI Responses API with GPT-5.2 for agent responses and tool calling.
@@ -77,6 +81,7 @@ Implementation approach:
 
 Deliverables:
 - Tool endpoints: list assignments, update status, add note, schedule reminder.
+- Tool endpoints: create/list/update/delete tasks with reminders.
 - Local storage for notes and reminders (SQLite or JSON).
 - Telegram bridge to agent (natural language, not brittle commands).
 - Feature request logging via agent tool.
@@ -85,6 +90,7 @@ Acceptance:
 - "What is missing this week?" returns accurate summary.
 - "Mark Algebra HW 3 as waiting on teacher" updates stored status.
 - "Remind me about Lab Report on Friday at 7pm" schedules a reminder.
+- "Remind me to ask a friend tonight at 9pm" creates a task and sends a reminder.
 
 Risks:
 - Cost and latency for longer conversations.
