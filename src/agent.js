@@ -15,7 +15,8 @@ import {
   updateChatCompaction,
   updateChatState,
 } from "./db.js";
-import { openBugReport } from "./bugs.js";
+import { openBugReport, openFeatureRequest } from "./bugs.js";
+import { statusGuideText } from "./statuses.js";
 
 function buildSystemPrompt() {
   return [
@@ -26,6 +27,8 @@ function buildSystemPrompt() {
     "Do not claim updates unless tool results confirm success.",
     "If the user provides numbered updates, use apply_numbered_statuses.",
     "If the user provides explicit titles and statuses, use bulk_update_assignment_statuses.",
+    `Manual status codes: ${statusGuideText()}.`,
+    "If the user suggests improvements or feature ideas, ask if they want you to log a feature request.",
     "Only open bug reports when the user explicitly asks to file a bug or report an error.",
     "Keep responses concise and action-oriented.",
   ].join(" ");
@@ -180,6 +183,24 @@ function toolDefinitions() {
         required: ["title", "body"],
       },
     },
+    {
+      type: "function",
+      name: "open_feature_request",
+      description: "Log a feature request locally and optionally open a GitHub issue.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "Short request title." },
+          body: { type: "string", description: "Request details and desired outcome." },
+          labels: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional GitHub labels.",
+          },
+        },
+        required: ["title", "body"],
+      },
+    },
   ];
 }
 
@@ -278,6 +299,8 @@ async function runTool(db, call) {
       return scheduleReminder(db, args);
     case "open_bug_report":
       return await openBugReport(getConfig(), args);
+    case "open_feature_request":
+      return await openFeatureRequest(getConfig(), args);
     default:
       return { ok: false, error: `Unknown tool: ${call.name}` };
   }

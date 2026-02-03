@@ -71,6 +71,32 @@ Optional:
 
 Note: If you use a group chat, Telegram bot privacy must be disabled (BotFather -> /setprivacy) or you must mention the bot for it to receive messages.
 
+Tips:
+- Say “file a bug” to log an error.
+- Say “log a feature request” to capture improvements or ideas.
+
+## Manual Statuses (Explicit Set)
+These are the default manual status codes the agent understands:
+- `A` = `Excused (doesn't count)`
+- `B` = `Practice / not for grade`
+- `C` = `No way to fix it`
+- `D` = `No grade put in yet`
+- `E` = `Waiting on teacher`
+
+The agent also accepts custom status text when you specify it explicitly.
+
+## Tests (Offline)
+Run unit and offline E2E tests without hitting Schoology:
+
+```
+npm test
+```
+
+What is covered:
+- Offline grade parsing via HTML fixture.
+- Manual status code mapping.
+- Bulk and numbered status updates.
+
 ## Twilio SMS
 Required `.env` values for SMS:
 - `DELIVERY_CHANNEL="twilio"`

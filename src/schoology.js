@@ -347,7 +347,8 @@ async function extractMissingAssignments(page) {
         const titleLink =
           row.querySelector("a[href*='/assignment']") || row.querySelector("a[href]") || null;
         const title = titleLink ? cleanTrailingLabel(titleLink.textContent) : "";
-        const url = titleLink ? new URL(titleLink.getAttribute("href"), location.origin).toString() : "";
+        const base = location.origin && location.origin !== "null" ? location.origin : "https://bcps.schoology.com";
+        const url = titleLink ? new URL(titleLink.getAttribute("href"), base).toString() : "";
 
         const dueDate = normalize(row.querySelector(".due-date")?.textContent || "").replace(/^Due\s*/i, "");
 
@@ -449,6 +450,17 @@ export async function scrapeMissingAssignments(config) {
   } catch (err) {
     await dumpDebug(page, config);
     throw err;
+  } finally {
+    await browser.close();
+  }
+}
+
+export async function extractMissingAssignmentsFromHtml(html) {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  try {
+    await page.setContent(html, { waitUntil: "domcontentloaded" });
+    return await extractMissingAssignments(page);
   } finally {
     await browser.close();
   }

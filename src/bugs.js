@@ -13,11 +13,12 @@ function sanitizeLabels(labels) {
   return labels.map((label) => String(label || "").trim()).filter((label) => label.length > 0);
 }
 
-export function logBugToFile(config, { title, body, labels }) {
+export function logBugToFile(config, { title, body, labels, kind = "bug" }) {
   const logPath = config?.paths?.bugLogPath || path.join(process.cwd(), "data", "bugs.log");
   ensureDir(path.dirname(logPath));
   const entry = {
     createdAt: nowIso(),
+    kind,
     title: String(title || "").trim(),
     body: String(body || "").trim(),
     labels: sanitizeLabels(labels),
@@ -26,7 +27,7 @@ export function logBugToFile(config, { title, body, labels }) {
   return { ok: true, logPath };
 }
 
-export async function createGithubIssue(config, { title, body, labels }) {
+export async function createGithubIssue(config, { title, body, labels, kind = "bug" }) {
   const repo = config?.github?.repo;
   const token = config?.github?.token;
   if (!repo || !token) {
@@ -38,6 +39,9 @@ export async function createGithubIssue(config, { title, body, labels }) {
     body: String(body || "").trim(),
   };
   const labelList = sanitizeLabels((labels && labels.length ? labels : config.github.labels) || []);
+  if (labelList.length === 0 && kind) {
+    labelList.push(kind);
+  }
   if (labelList.length > 0) {
     payload.labels = labelList;
   }
@@ -63,7 +67,13 @@ export async function createGithubIssue(config, { title, body, labels }) {
 }
 
 export async function openBugReport(config, { title, body, labels }) {
-  const logResult = logBugToFile(config, { title, body, labels });
-  const issueResult = await createGithubIssue(config, { title, body, labels });
+  const logResult = logBugToFile(config, { title, body, labels, kind: "bug" });
+  const issueResult = await createGithubIssue(config, { title, body, labels, kind: "bug" });
+  return { logged: logResult.ok, logPath: logResult.logPath, issue: issueResult };
+}
+
+export async function openFeatureRequest(config, { title, body, labels }) {
+  const logResult = logBugToFile(config, { title, body, labels, kind: "feature" });
+  const issueResult = await createGithubIssue(config, { title, body, labels, kind: "feature" });
   return { logged: logResult.ok, logPath: logResult.logPath, issue: issueResult };
 }

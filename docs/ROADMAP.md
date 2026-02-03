@@ -16,6 +16,7 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 - Add Telegram alert when re-authentication is required.
 - Daily summary lists only unresolved items (Missing, Incomplete, Not completed/submitted, Absent).
 - Agent model choice: GPT-5.2 (not mini or pro).
+- Maintain offline unit + E2E tests using fixtures (no live Schoology needed).
 
 ## Phase 1
 Scope:
@@ -78,6 +79,7 @@ Deliverables:
 - Tool endpoints: list assignments, update status, add note, schedule reminder.
 - Local storage for notes and reminders (SQLite or JSON).
 - Telegram bridge to agent (natural language, not brittle commands).
+- Feature request logging via agent tool.
 
 Acceptance:
 - "What is missing this week?" returns accurate summary.

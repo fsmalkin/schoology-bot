@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
+import { normalizeManualStatus } from "./statuses.js";
 import { nowIso } from "./time.js";
 import { loadState } from "./storage.js";
 
@@ -66,13 +67,18 @@ function initDb(db) {
   `);
 }
 
+export function createDb(dbPath = ":memory:") {
+  const db = new Database(dbPath);
+  db.pragma("journal_mode = WAL");
+  initDb(db);
+  return db;
+}
+
 export function getDb(config) {
   if (dbInstance) return dbInstance;
   const dbPath = config?.paths?.agentDbPath || path.join(process.cwd(), "data", "agent.db");
   ensureDir(path.dirname(dbPath));
-  const db = new Database(dbPath);
-  db.pragma("journal_mode = WAL");
-  initDb(db);
+  const db = createDb(dbPath);
   dbInstance = db;
   return dbInstance;
 }
@@ -224,6 +230,7 @@ export function updateAssignmentStatus(db, { key, title, course, status }) {
     return { ok: false, error: "Assignment key or title is required." };
   }
 
+  const normalizedStatus = normalizeManualStatus(status);
   const updated = db
     .prepare(
       `
@@ -233,13 +240,13 @@ export function updateAssignmentStatus(db, { key, title, course, status }) {
       WHERE key = @key
     `
     )
-    .run({ status, updated_at: nowIso(), key: targetKey });
+    .run({ status: normalizedStatus, updated_at: nowIso(), key: targetKey });
 
   if (updated.changes === 0) {
     return { ok: false, error: "Assignment not found." };
   }
 
-  return { ok: true, key: targetKey, status };
+  return { ok: true, key: targetKey, status: normalizedStatus };
 }
 
 export function updateAssignmentStatuses(db, updates = []) {
