@@ -78,6 +78,9 @@ acquireLock();
 const MAX_BACKOFF_MS = 60000;
 let restartAttempts = 0;
 let restartTimer = null;
+let restartInProgress = false;
+let stabilityTimer = null;
+const STABLE_RESET_MS = 60000;
 
 function formatError(err) {
   if (!err) return "Unknown error";
@@ -86,21 +89,31 @@ function formatError(err) {
 
 function schedulePollingRestart(err) {
   if (restartTimer) return;
-  const delay = Math.min(1000 * Math.pow(2, restartAttempts), MAX_BACKOFF_MS);
+  const message = String(err?.message || err || "");
+  const isDns = message.includes("ENOTFOUND");
+  const baseDelay = isDns ? 5000 : 1000;
+  const delay = Math.min(baseDelay * Math.pow(2, restartAttempts), MAX_BACKOFF_MS);
   restartAttempts += 1;
   appendLog(`Polling error: ${formatError(err)}. Restarting in ${Math.round(delay / 1000)}s.`);
 
   restartTimer = setTimeout(async () => {
     restartTimer = null;
     try {
+      if (restartInProgress) return;
+      restartInProgress = true;
       appendLog("Restarting Telegram polling...");
       await bot.stopPolling();
       await bot.startPolling();
-      restartAttempts = 0;
       appendLog("Telegram polling restarted.");
+      if (stabilityTimer) clearTimeout(stabilityTimer);
+      stabilityTimer = setTimeout(() => {
+        restartAttempts = 0;
+      }, STABLE_RESET_MS);
     } catch (restartErr) {
       appendLog(`Polling restart failed: ${formatError(restartErr)}`);
       schedulePollingRestart(restartErr);
+    } finally {
+      restartInProgress = false;
     }
   }, delay);
 }
