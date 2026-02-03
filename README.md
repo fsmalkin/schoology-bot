@@ -66,6 +66,7 @@ Required `.env` values:
 
 Optional:
 - `AGENT_LOG_PATH="data/agent.log"` to write message logs to a file.
+- `AGENT_DB_PATH="data/agent.db"` to override where agent data is stored.
 - `GITHUB_REPO="yourname/schoology-bot"` and `GITHUB_TOKEN="..."` to allow the agent to open GitHub issues.
 - `GITHUB_LABELS="bug,agent"` to apply default labels when opening issues.
 

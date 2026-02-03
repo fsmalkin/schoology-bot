@@ -83,6 +83,13 @@ export function getDb(config) {
   return dbInstance;
 }
 
+export function closeDb() {
+  if (dbInstance) {
+    dbInstance.close();
+    dbInstance = null;
+  }
+}
+
 export function syncAssignmentsFromState(db, state) {
   if (!state?.assignments) return;
   const upsert = db.prepare(`

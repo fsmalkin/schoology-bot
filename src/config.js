@@ -92,7 +92,7 @@ const config = {
     storagePath: path.join(cwd, "data", "storage.json"),
     debugHtmlPath: path.join(cwd, "data", "debug.html"),
     debugScreenshotPath: path.join(cwd, "data", "debug.png"),
-    agentDbPath: path.join(cwd, "data", "agent.db"),
+    agentDbPath: env("AGENT_DB_PATH", path.join(cwd, "data", "agent.db")),
     bugLogPath: path.join(cwd, "data", "bugs.log"),
   },
 };
