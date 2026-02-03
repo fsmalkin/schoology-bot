@@ -71,3 +71,12 @@ test("applyNumberedStatuses updates by list index", () => {
     { key: "a2", manual_status: "No grade put in yet" },
   ]);
 });
+
+test("listAssignments hides ignored by default", () => {
+  const db = createDb();
+  seedDb(db);
+  updateAssignmentStatus(db, { key: "a1", status: "A" });
+  const list = listAssignments(db, { status: "missing" });
+  assert.equal(list.length, 1);
+  assert.equal(list[0].key, "a2");
+});

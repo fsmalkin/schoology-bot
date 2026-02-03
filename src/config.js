@@ -76,7 +76,7 @@ const config = {
   openai: {
     apiKey: env("OPENAI_API_KEY"),
     model: env("OPENAI_MODEL", "gpt-5.2"),
-    reasoningEffort: env("OPENAI_REASONING_EFFORT", "medium"),
+    reasoningEffort: env("OPENAI_REASONING_EFFORT", "high"),
     maxOutputTokens: numEnv("OPENAI_MAX_OUTPUT_TOKENS", 700),
     compactAfterTurns: numEnv("OPENAI_COMPACT_AFTER_TURNS", 20),
   },

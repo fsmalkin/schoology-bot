@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
-import { normalizeManualStatus } from "./statuses.js";
+import { getManualStatusCategory, normalizeManualStatus, isIgnoredStatus, isPendingStatus } from "./statuses.js";
 import { nowIso } from "./time.js";
 import { loadState } from "./storage.js";
 
@@ -143,6 +143,9 @@ export function listAssignments(db, options = {}) {
   const status = (options.status || "missing").toLowerCase();
   const course = options.course ? String(options.course).toLowerCase() : null;
   const limit = Number.isFinite(options.limit) ? Math.max(1, Math.min(options.limit, 200)) : 50;
+  const includeIgnored = options.includeIgnored === true;
+  const includePending = options.includePending !== false;
+  const bucketed = options.bucketed === true;
 
   const filters = [];
   const params = { limit };
@@ -182,11 +185,39 @@ export function listAssignments(db, options = {}) {
     )
     .all(params);
 
-  return rows.map((row) => ({
+  const mapped = rows.map((row) => {
+    const manualStatus = row.manualStatus || "";
+    const statusCategory = getManualStatusCategory(manualStatus);
+    return {
     ...row,
     isMissing: row.isMissing === 1,
-    effectiveStatus: row.manualStatus || row.status || "",
-  }));
+    effectiveStatus: manualStatus || row.status || "",
+    statusCategory,
+    };
+  });
+
+  const filtered = mapped.filter((row) => {
+    if (!includeIgnored && isIgnoredStatus(row.manualStatus)) return false;
+    if (!includePending && isPendingStatus(row.manualStatus)) return false;
+    return true;
+  });
+
+  if (!bucketed) {
+    return filtered;
+  }
+
+  const buckets = { actionable: [], pending: [], ignored: [] };
+  for (const row of mapped) {
+    if (row.statusCategory === "ignored") {
+      buckets.ignored.push(row);
+    } else if (row.statusCategory === "pending") {
+      buckets.pending.push(row);
+    } else {
+      buckets.actionable.push(row);
+    }
+  }
+
+  return { buckets, total: mapped.length, filteredTotal: filtered.length };
 }
 
 export function findAssignments(db, options = {}) {

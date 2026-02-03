@@ -85,6 +85,8 @@ These are the default manual status codes the agent understands:
 
 The agent also accepts custom status text when you specify it explicitly.
 
+By default, **Ignored** statuses (A/B/C) are hidden from the missing list unless you ask to show them.
+
 ## Tests (Offline)
 Run unit and offline E2E tests without hitting Schoology:
 

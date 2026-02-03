@@ -17,7 +17,7 @@ import {
 } from "./db.js";
 import { openBugReport, openFeatureRequest } from "./bugs.js";
 import { statusGuideText } from "./statuses.js";
-import { sanitizeRepeatedText } from "./text_utils.js";
+import { isRepetitiveOutput, sanitizeRepeatedText } from "./text_utils.js";
 
 function buildSystemPrompt() {
   return [
@@ -29,6 +29,7 @@ function buildSystemPrompt() {
     "If the user provides numbered updates, use apply_numbered_statuses.",
     "If the user provides explicit titles and statuses, use bulk_update_assignment_statuses.",
     `Manual status codes: ${statusGuideText()}.`,
+    "Default reporting buckets: Actionable, Pending, Ignored. Hide Ignored by default unless asked.",
     "If the user suggests improvements or feature ideas, ask if they want you to log a feature request.",
     "Only open bug reports when the user explicitly asks to file a bug or report an error.",
     "Keep responses concise and action-oriented.",
@@ -58,6 +59,18 @@ function toolDefinitions() {
             minimum: 1,
             maximum: 200,
             description: "Max number of assignments to return.",
+          },
+          includeIgnored: {
+            type: "boolean",
+            description: "Include ignored manual statuses (default false).",
+          },
+          includePending: {
+            type: "boolean",
+            description: "Include pending manual statuses (default true).",
+          },
+          bucketed: {
+            type: "boolean",
+            description: "Return assignments grouped into actionable/pending/ignored buckets.",
           },
         },
         required: [],
@@ -504,11 +517,6 @@ export async function runAgentMessage({ chatId, text }) {
     }
 
     const directOnly = toolCalls.every((call) => DIRECT_TOOL_NAMES.has(call.name));
-    if (directOnly) {
-      const summary = formatUpdateSummary(executed);
-      updateChatState(db, chatId, currentResponse.id);
-      return summary || "Done.";
-    }
 
     currentResponse = await createResponseWithRetry(client, {
       model: config.openai.model,
@@ -517,6 +525,16 @@ export async function runAgentMessage({ chatId, text }) {
       input: toolOutputs,
       previous_response_id: currentResponse.id,
     });
+
+    if (directOnly) {
+      const summary = formatUpdateSummary(executed);
+      const candidate = sanitizeRepeatedText(extractText(currentResponse).trim());
+      updateChatState(db, chatId, currentResponse.id);
+      if (!candidate || isRepetitiveOutput(candidate)) {
+        return summary || "Done.";
+      }
+      return candidate;
+    }
   }
 
   const finalText = extractText(currentResponse).trim();
@@ -534,5 +552,8 @@ export async function runAgentMessage({ chatId, text }) {
     updateChatCompaction(db, chatId, compactedId);
   }
 
-  return sanitized || "Done.";
+  if (!sanitized || isRepetitiveOutput(finalText)) {
+    return sanitized || "Done.";
+  }
+  return sanitized;
 }
