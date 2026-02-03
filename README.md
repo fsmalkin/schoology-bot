@@ -1,25 +1,36 @@
-# Schoology Missing Assignments
+# Schoology Bot
 
-Local automation that logs into Schoology, finds missing assignments, and sends a daily summary via Telegram, SMS (Twilio), or email.
+A friendly, local-first Schoology assistant that logs in, finds missing assignments, sends a daily summary, and lets you chat with an agent to update statuses, add notes, and schedule reminders.
+
+It runs on your machine today and is ready to move to a server later.
+
+## What it does
+- Scrapes Schoology grades and detects missing or incomplete work.
+- Sends a daily summary via Telegram (SMS or email optional).
+- Provides an agentic chat interface (GPT-5.2) to answer questions and update statuses.
+- Stores history, notes, and reminders locally.
 
 ## Quick start
-1. Copy `.env.example` to `.env` and fill in values (Telegram, Twilio, or SMTP).
+1. Copy `.env.example` to `.env` and fill in values.
 2. Run `npm install`.
 3. Run `npm run start` to keep the scheduler running.
 
 ## Docker quick start
-1. Copy `.env.example` to `.env` and fill in values (Telegram, Twilio, or SMTP).
+1. Copy `.env.example` to `.env` and fill in values.
 2. Run `docker compose up -d --build`.
 3. Check logs with `docker compose logs -f`.
 
 ## Run modes
-- `npm run scrape` runs the scrape and updates local state.
-- `npm run send` sends the summary using the latest scrape.
-- `npm run run-once` scrapes and then sends a summary immediately.
+- `npm run scrape` scrapes and updates local state.
+- `npm run send` sends the latest summary.
+- `npm run run-once` scrapes and sends immediately.
+- `npm run agent:telegram` starts the Telegram agent (chat).
+- `npm run agent:cli -- "What is missing today?"` runs a local chat query.
 
 ## Data
 - `data/state.json` stores assignment history and last run metadata.
 - `data/storage.json` stores browser session state for faster logins.
+- `data/agent.db` stores assignments, notes, reminders, and chat state.
 
 ## Debug
 Set `DEBUG_DUMP=true` in `.env` to save a screenshot and HTML snapshot to `data/` on failures.
@@ -47,19 +58,14 @@ How to get chat IDs:
 3. Run `npm run telegram:updates` and copy the `chat_id` value.
 
 ## Agent (GPT-5.2)
-Optional: run a Telegram-based agent that can answer questions, update statuses, add notes, and schedule reminders.
+Run a Telegram-based agent that can answer questions, update statuses, add notes, and schedule reminders.
 
 Required `.env` values:
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL` (default `gpt-5.2`)
 
-Run modes:
-- `npm run agent:telegram` starts the Telegram agent (long-running).
-- `npm run agent:cli -- "What is missing today?"` runs a single local query.
-
-Agent data:
-- `data/agent.db` stores assignments, notes, reminders, and chat state.
-- Optional: set `AGENT_LOG_PATH="data/agent.log"` to write message logs to a file.
+Optional:
+- `AGENT_LOG_PATH="data/agent.log"` to write message logs to a file.
 
 Note: If you use a group chat, Telegram bot privacy must be disabled (BotFather -> /setprivacy) or you must mention the bot for it to receive messages.
 
