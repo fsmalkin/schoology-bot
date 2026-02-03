@@ -172,6 +172,39 @@ function parseArguments(args) {
   }
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableError(err) {
+  const status = Number(err?.status || err?.statusCode || 0);
+  if (status === 429) return true;
+  if (status >= 500 && status <= 599) return true;
+  const message = String(err?.message || err || "").toLowerCase();
+  return (
+    message.includes("server error") ||
+    message.includes("temporarily") ||
+    message.includes("timeout") ||
+    message.includes("try again")
+  );
+}
+
+async function createResponseWithRetry(client, payload, retries = 2, baseDelayMs = 600) {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await client.responses.create(payload);
+    } catch (err) {
+      if (!isRetryableError(err) || attempt >= retries) {
+        throw err;
+      }
+      const delay = baseDelayMs * Math.pow(2, attempt) + Math.floor(Math.random() * 200);
+      await sleep(delay);
+      attempt += 1;
+    }
+  }
+}
+
 async function runTool(db, call) {
   const args = parseArguments(call.arguments);
   switch (call.name) {
@@ -226,7 +259,7 @@ export async function runAgentMessage({ chatId, text }) {
 
   let response;
   try {
-    response = await client.responses.create({
+    response = await createResponseWithRetry(client, {
       model: config.openai.model,
       reasoning: { effort: config.openai.reasoningEffort },
       max_output_tokens: config.openai.maxOutputTokens,
@@ -239,7 +272,7 @@ export async function runAgentMessage({ chatId, text }) {
   } catch (err) {
     if (chatState.lastResponseId && isInvalidPreviousResponse(err)) {
       resetChatState(db, chatId);
-      response = await client.responses.create({
+      response = await createResponseWithRetry(client, {
         model: config.openai.model,
         reasoning: { effort: config.openai.reasoningEffort },
         max_output_tokens: config.openai.maxOutputTokens,
@@ -268,7 +301,7 @@ export async function runAgentMessage({ chatId, text }) {
       });
     }
 
-    currentResponse = await client.responses.create({
+    currentResponse = await createResponseWithRetry(client, {
       model: config.openai.model,
       reasoning: { effort: config.openai.reasoningEffort },
       max_output_tokens: config.openai.maxOutputTokens,
