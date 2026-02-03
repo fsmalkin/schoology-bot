@@ -257,30 +257,29 @@ export async function runAgentMessage({ chatId, text }) {
   const chatState = getChatState(db, chatId);
   const client = new OpenAI({ apiKey: config.openai.apiKey });
 
+  const basePayload = {
+    model: config.openai.model,
+    reasoning: { effort: config.openai.reasoningEffort },
+    max_output_tokens: config.openai.maxOutputTokens,
+    instructions: buildSystemPrompt(),
+    input: text,
+    tools: toolDefinitions(),
+    tool_choice: "auto",
+  };
+
   let response;
   try {
     response = await createResponseWithRetry(client, {
-      model: config.openai.model,
-      reasoning: { effort: config.openai.reasoningEffort },
-      max_output_tokens: config.openai.maxOutputTokens,
-      instructions: buildSystemPrompt(),
-      input: text,
-      tools: toolDefinitions(),
-      tool_choice: "auto",
+      ...basePayload,
       previous_response_id: chatState.lastResponseId || undefined,
     });
   } catch (err) {
     if (chatState.lastResponseId && isInvalidPreviousResponse(err)) {
       resetChatState(db, chatId);
-      response = await createResponseWithRetry(client, {
-        model: config.openai.model,
-        reasoning: { effort: config.openai.reasoningEffort },
-        max_output_tokens: config.openai.maxOutputTokens,
-        instructions: buildSystemPrompt(),
-        input: text,
-        tools: toolDefinitions(),
-        tool_choice: "auto",
-      });
+      response = await createResponseWithRetry(client, basePayload);
+    } else if (chatState.lastResponseId && isRetryableError(err)) {
+      // Fallback: retry once without prior context if the server errors out.
+      response = await createResponseWithRetry(client, basePayload);
     } else {
       throw err;
     }
