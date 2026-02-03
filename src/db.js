@@ -242,6 +242,40 @@ export function updateAssignmentStatus(db, { key, title, course, status }) {
   return { ok: true, key: targetKey, status };
 }
 
+export function updateAssignmentStatuses(db, updates = []) {
+  const results = [];
+  let successCount = 0;
+  for (const update of updates) {
+    const result = updateAssignmentStatus(db, update || {});
+    if (result.ok) successCount += 1;
+    results.push({ input: update, result });
+  }
+  return { ok: true, successCount, total: results.length, results };
+}
+
+export function applyNumberedStatuses(db, { statusByIndex = [], listStatus = "missing" } = {}) {
+  const assignments = listAssignments(db, { status: listStatus, limit: 200 });
+  const results = [];
+  let successCount = 0;
+  for (const item of statusByIndex) {
+    const index = Number(item?.index || 0);
+    const status = String(item?.status || "").trim();
+    if (!index || !status) {
+      results.push({ input: item, result: { ok: false, error: "Missing index or status." } });
+      continue;
+    }
+    const assignment = assignments[index - 1];
+    if (!assignment) {
+      results.push({ input: item, result: { ok: false, error: `No assignment at index ${index}.` } });
+      continue;
+    }
+    const result = updateAssignmentStatus(db, { key: assignment.key, status });
+    if (result.ok) successCount += 1;
+    results.push({ input: item, assignment: { key: assignment.key, title: assignment.title, course: assignment.course }, result });
+  }
+  return { ok: true, successCount, total: results.length, results };
+}
+
 export function addAssignmentNote(db, { key, title, course, note }) {
   let targetKey = key || null;
   if (!targetKey && title) {

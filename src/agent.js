@@ -7,9 +7,11 @@ import {
   getChatState,
   getDb,
   listAssignments,
+  applyNumberedStatuses,
   resetChatState,
   scheduleReminder,
   updateAssignmentStatus,
+  updateAssignmentStatuses,
   updateChatCompaction,
   updateChatState,
 } from "./db.js";
@@ -21,6 +23,9 @@ function buildSystemPrompt() {
     "Use tools to fetch assignments, update statuses, add notes, and schedule reminders.",
     "If a request is ambiguous, ask a clarifying question.",
     "Never invent assignments or data.",
+    "Do not claim updates unless tool results confirm success.",
+    "If the user provides numbered updates, use apply_numbered_statuses.",
+    "If the user provides explicit titles and statuses, use bulk_update_assignment_statuses.",
     "Only open bug reports when the user explicitly asks to file a bug or report an error.",
     "Keep responses concise and action-oriented.",
   ].join(" ");
@@ -67,6 +72,57 @@ function toolDefinitions() {
           status: { type: "string", description: "New status text." },
         },
         required: ["status"],
+      },
+    },
+    {
+      type: "function",
+      name: "bulk_update_assignment_statuses",
+      description: "Set manual statuses for multiple assignments at once.",
+      parameters: {
+        type: "object",
+        properties: {
+          updates: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                key: { type: "string" },
+                title: { type: "string" },
+                course: { type: "string" },
+                status: { type: "string" },
+              },
+              required: ["status"],
+            },
+          },
+        },
+        required: ["updates"],
+      },
+    },
+    {
+      type: "function",
+      name: "apply_numbered_statuses",
+      description: "Apply statuses by index using the current missing list ordering.",
+      parameters: {
+        type: "object",
+        properties: {
+          listStatus: {
+            type: "string",
+            enum: ["missing", "resolved", "all"],
+            description: "Which list ordering to use (default missing).",
+          },
+          statusByIndex: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                index: { type: "integer", minimum: 1 },
+                status: { type: "string" },
+              },
+              required: ["index", "status"],
+            },
+          },
+        },
+        required: ["statusByIndex"],
       },
     },
     {
@@ -212,6 +268,10 @@ async function runTool(db, call) {
       return { ok: true, assignments: listAssignments(db, args) };
     case "update_assignment_status":
       return updateAssignmentStatus(db, args);
+    case "bulk_update_assignment_statuses":
+      return updateAssignmentStatuses(db, args.updates || []);
+    case "apply_numbered_statuses":
+      return applyNumberedStatuses(db, args);
     case "add_assignment_note":
       return addAssignmentNote(db, args);
     case "schedule_reminder":
