@@ -17,6 +17,7 @@ import {
 } from "./db.js";
 import { openBugReport, openFeatureRequest } from "./bugs.js";
 import { statusGuideText } from "./statuses.js";
+import { sanitizeRepeatedText } from "./text_utils.js";
 
 function buildSystemPrompt() {
   return [
@@ -282,6 +283,123 @@ async function createResponseWithRetry(client, payload, retries = 2, baseDelayMs
   }
 }
 
+const DIRECT_TOOL_NAMES = new Set([
+  "update_assignment_status",
+  "bulk_update_assignment_statuses",
+  "apply_numbered_statuses",
+  "add_assignment_note",
+  "schedule_reminder",
+  "open_bug_report",
+  "open_feature_request",
+]);
+
+function formatAssignmentLabel(assignment) {
+  if (!assignment) return "Unknown assignment";
+  const course = assignment.course ? `${assignment.course}` : "Unknown course";
+  const title = assignment.title ? `${assignment.title}` : "Untitled";
+  return `${course} — ${title}`;
+}
+
+function formatUpdateSummary(results) {
+  const applied = [];
+  const needs = [];
+  const info = [];
+
+  for (const item of results) {
+    const name = item.call?.name;
+    const output = item.output || {};
+    const args = parseArguments(item.call?.arguments);
+
+    if (name === "open_bug_report" || name === "open_feature_request") {
+      if (output?.issue?.ok) {
+        info.push(`Created issue: ${output.issue.url}`);
+      } else if (output?.logged) {
+        info.push(`Logged locally: ${output.logPath || "data/bugs.log"}`);
+      } else if (output?.issue?.error) {
+        needs.push(`Could not file issue: ${output.issue.error}`);
+      }
+      continue;
+    }
+
+    if (name === "schedule_reminder") {
+      if (output?.ok) {
+        applied.push(`Scheduled reminder for ${formatAssignmentLabel(output.assignment) || output.key}`);
+      } else if (output?.error) {
+        needs.push(output.error);
+      }
+      continue;
+    }
+
+    if (name === "add_assignment_note") {
+      if (output?.ok) {
+        applied.push(`Added note to ${formatAssignmentLabel(output.assignment) || output.key}`);
+      } else if (output?.error) {
+        needs.push(output.error);
+      }
+      continue;
+    }
+
+    if (name === "update_assignment_status") {
+      if (output?.ok) {
+        applied.push(`${formatAssignmentLabel(output.assignment)} → ${output.status}`);
+      } else if (output?.matches?.length) {
+        needs.push(`Multiple matches for "${args.title || "assignment"}".`);
+      } else if (output?.error) {
+        needs.push(output.error);
+      }
+      continue;
+    }
+
+    if (name === "bulk_update_assignment_statuses") {
+      const resultsList = output?.results || [];
+      for (const entry of resultsList) {
+        const res = entry.result;
+        if (res?.ok) {
+          applied.push(`${formatAssignmentLabel(res.assignment)} → ${res.status}`);
+        } else if (res?.matches?.length) {
+          needs.push(`Multiple matches for "${entry.input?.title || "assignment"}".`);
+        } else if (res?.error) {
+          needs.push(res.error);
+        }
+      }
+      continue;
+    }
+
+    if (name === "apply_numbered_statuses") {
+      const resultsList = output?.results || [];
+      for (const entry of resultsList) {
+        const res = entry.result;
+        if (res?.ok) {
+          applied.push(`${formatAssignmentLabel(res.assignment || entry.assignment)} → ${res.status}`);
+        } else if (res?.error) {
+          needs.push(res.error);
+        }
+      }
+      continue;
+    }
+  }
+
+  const lines = [];
+  if (applied.length > 0) {
+    lines.push("Updates applied:");
+    applied.forEach((line, idx) => lines.push(`${idx + 1}. ${line}`));
+  }
+
+  if (needs.length > 0) {
+    if (lines.length > 0) lines.push("");
+    lines.push("Needs clarification:");
+    needs.forEach((line, idx) => lines.push(`${idx + 1}. ${line}`));
+  }
+
+  if (info.length > 0) {
+    if (lines.length > 0) lines.push("");
+    lines.push("Info:");
+    info.forEach((line, idx) => lines.push(`${idx + 1}. ${line}`));
+  }
+
+  return lines.join("\n").trim();
+}
+
 async function runTool(db, call) {
   const args = parseArguments(call.arguments);
   switch (call.name) {
@@ -374,13 +492,22 @@ export async function runAgentMessage({ chatId, text }) {
     if (toolCalls.length === 0) break;
 
     const toolOutputs = [];
+    const executed = [];
     for (const call of toolCalls) {
       const output = await runTool(db, call);
+      executed.push({ call, output });
       toolOutputs.push({
         type: call.outputType,
         call_id: call.id,
         output: JSON.stringify(output),
       });
+    }
+
+    const directOnly = toolCalls.every((call) => DIRECT_TOOL_NAMES.has(call.name));
+    if (directOnly) {
+      const summary = formatUpdateSummary(executed);
+      updateChatState(db, chatId, currentResponse.id);
+      return summary || "Done.";
     }
 
     currentResponse = await createResponseWithRetry(client, {
@@ -393,6 +520,7 @@ export async function runAgentMessage({ chatId, text }) {
   }
 
   const finalText = extractText(currentResponse).trim();
+  const sanitized = sanitizeRepeatedText(finalText);
   updateChatState(db, chatId, currentResponse.id);
 
   const compactedId = await maybeCompact(
@@ -406,5 +534,5 @@ export async function runAgentMessage({ chatId, text }) {
     updateChatCompaction(db, chatId, compactedId);
   }
 
-  return finalText || "Done.";
+  return sanitized || "Done.";
 }

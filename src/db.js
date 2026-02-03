@@ -246,7 +246,11 @@ export function updateAssignmentStatus(db, { key, title, course, status }) {
     return { ok: false, error: "Assignment not found." };
   }
 
-  return { ok: true, key: targetKey, status: normalizedStatus };
+  const assignment = db
+    .prepare("SELECT course, title, due_date AS dueDate FROM assignments WHERE key = ?")
+    .get(targetKey);
+
+  return { ok: true, key: targetKey, status: normalizedStatus, assignment };
 }
 
 export function updateAssignmentStatuses(db, updates = []) {
@@ -309,7 +313,11 @@ export function addAssignmentNote(db, { key, title, course, note }) {
     )
     .run({ key: targetKey, note, created_at: nowIso() });
 
-  return { ok: true, key: targetKey, noteId: result.lastInsertRowid };
+  const assignment = db
+    .prepare("SELECT course, title, due_date AS dueDate FROM assignments WHERE key = ?")
+    .get(targetKey);
+
+  return { ok: true, key: targetKey, noteId: result.lastInsertRowid, assignment };
 }
 
 export function scheduleReminder(db, { key, title, course, remindAt, message }) {
@@ -338,7 +346,11 @@ export function scheduleReminder(db, { key, title, course, remindAt, message }) 
     )
     .run({ key: targetKey, remind_at: remindAt, message: message || "", created_at: nowIso() });
 
-  return { ok: true, key: targetKey, reminderId: result.lastInsertRowid };
+  const assignment = db
+    .prepare("SELECT course, title, due_date AS dueDate FROM assignments WHERE key = ?")
+    .get(targetKey);
+
+  return { ok: true, key: targetKey, reminderId: result.lastInsertRowid, assignment };
 }
 
 export function getChatState(db, chatId) {
