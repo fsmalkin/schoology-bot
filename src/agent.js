@@ -30,6 +30,7 @@ function buildSystemPrompt() {
     "If the user provides explicit titles and statuses, use bulk_update_assignment_statuses.",
     `Manual status codes: ${statusGuideText()}.`,
     "Default reporting buckets: Actionable, Pending, Ignored. Hide Ignored by default unless asked.",
+    "When confirming status updates, include a short list of items waiting on teacher/grade (No grade put in yet, Waiting on teacher).",
     "If the user suggests improvements or feature ideas, ask if they want you to log a feature request.",
     "Only open bug reports when the user explicitly asks to file a bug or report an error.",
     "Keep responses concise and action-oriented.",
@@ -313,7 +314,7 @@ function formatAssignmentLabel(assignment) {
   return `${course} — ${title}`;
 }
 
-function formatUpdateSummary(results) {
+function formatUpdateSummary(results, db) {
   const applied = [];
   const needs = [];
   const info = [];
@@ -408,6 +409,20 @@ function formatUpdateSummary(results) {
     if (lines.length > 0) lines.push("");
     lines.push("Info:");
     info.forEach((line, idx) => lines.push(`${idx + 1}. ${line}`));
+  }
+
+  if (db) {
+    const pending = listAssignments(db, { status: "missing", includeIgnored: true, includePending: true })
+      .filter((row) => row.statusCategory === "pending");
+    if (pending.length > 0) {
+      if (lines.length > 0) lines.push("");
+      lines.push("Follow-up needed (waiting on teacher/grade):");
+      pending.forEach((row, idx) => {
+        const status = row.manualStatus || row.status || "Pending";
+        const due = row.dueDate ? ` (Due ${row.dueDate})` : "";
+        lines.push(`${idx + 1}. ${row.course} — ${row.title}${due} — ${status}`);
+      });
+    }
   }
 
   return lines.join("\n").trim();
@@ -527,7 +542,7 @@ export async function runAgentMessage({ chatId, text }) {
     });
 
     if (directOnly) {
-      const summary = formatUpdateSummary(executed);
+      const summary = formatUpdateSummary(executed, db);
       const candidate = sanitizeRepeatedText(extractText(currentResponse).trim());
       updateChatState(db, chatId, currentResponse.id);
       if (!candidate || isRepetitiveOutput(candidate)) {
