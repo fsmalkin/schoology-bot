@@ -80,6 +80,7 @@ Tips:
 - The agent runs as a single instance; a lock file prevents duplicate responses.
 - Incoming messages are batched briefly (about 1 second) so fast sequences become one request.
 - If a batch exceeds the limit, the oldest messages are dropped to keep the newest context.
+- The agent shows a typing indicator and sends a "Working on it..." message after 8 seconds if needed.
 
 ## Tasks and Reminders
 You can create personal tasks (not tied to Schoology) and get Telegram reminders.

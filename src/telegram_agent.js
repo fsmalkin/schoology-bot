@@ -24,6 +24,8 @@ const processedIds = new Map();
 const MESSAGE_DEDUP_MS = 5 * 60 * 1000;
 const BATCH_DELAY_MS = 1200;
 const MAX_BATCH_CHARS = 3500;
+const TYPING_INTERVAL_MS = 4000;
+const WORKING_MESSAGE_DELAY_MS = 8000;
 
 function acquireLock() {
   try {
@@ -146,22 +148,75 @@ bot.on("message", async (msg) => {
 
       try {
         appendLog(`Received batch from ${chatId} (${items.length} messages).`);
+        let typingTimer = null;
+        let workingTimer = null;
+        let workingMessageId = null;
+        const startTyping = async () => {
+          try {
+            await bot.sendChatAction(chatId, "typing");
+          } catch (err) {
+            // ignore typing errors
+          }
+        };
+        const stopTyping = () => {
+          if (typingTimer) clearInterval(typingTimer);
+          if (workingTimer) clearTimeout(workingTimer);
+        };
+
+        await startTyping();
+        typingTimer = setInterval(startTyping, TYPING_INTERVAL_MS);
+        workingTimer = setTimeout(async () => {
+          try {
+            const msg = await bot.sendMessage(chatId, "Working on it...");
+            workingMessageId = msg?.message_id || null;
+          } catch (err) {
+            // ignore
+          }
+        }, WORKING_MESSAGE_DELAY_MS);
+
         if (combined === "/ping" || combined.toLowerCase() === "ping") {
+          stopTyping();
           await bot.sendMessage(chatId, "pong");
           appendLog(`Sent pong to ${chatId}.`);
           return;
         }
         const reply = await runAgentMessage({ chatId, text: combined });
         if (!reply) return;
+        stopTyping();
         const formatted = renderTelegramHtml(reply);
-        await bot.sendMessage(chatId, formatted, {
-          disable_web_page_preview: true,
-          parse_mode: "HTML",
-        });
+        if (workingMessageId) {
+          try {
+            await bot.editMessageText(formatted, {
+              chat_id: chatId,
+              message_id: workingMessageId,
+              disable_web_page_preview: true,
+              parse_mode: "HTML",
+            });
+          } catch (err) {
+            await bot.sendMessage(chatId, formatted, {
+              disable_web_page_preview: true,
+              parse_mode: "HTML",
+            });
+          }
+        } else {
+          await bot.sendMessage(chatId, formatted, {
+            disable_web_page_preview: true,
+            parse_mode: "HTML",
+          });
+        }
         appendLog(`Replied to ${chatId} (${reply.length} chars).`);
       } catch (err) {
         console.error("Agent error:", err?.message || err);
-        await bot.sendMessage(chatId, "Sorry, I hit an error while processing that.");
+        try {
+          if (typeof stopTyping === "function") stopTyping();
+        } catch (stopErr) {
+          // ignore
+        }
+        try {
+          await bot.sendMessage(chatId, "Sorry, I hit an error while processing that.");
+        } catch (sendErr) {
+          // ignore
+        }
         appendLog(`Error replying to ${chatId}: ${err?.stack || err?.message || err}`);
       }
     }, BATCH_DELAY_MS)
