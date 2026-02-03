@@ -159,22 +159,25 @@ bot.on("message", async (msg) => {
       if (items.length === 0) return;
       const combined = batchMessages(items, MAX_BATCH_CHARS);
 
+      let typingTimer = null;
+      let workingTimer = null;
+      let workingMessageId = null;
+      const startTyping = async () => {
+        try {
+          await bot.sendChatAction(chatId, "typing");
+        } catch (err) {
+          // ignore typing errors
+        }
+      };
+      const stopTyping = () => {
+        if (typingTimer) clearInterval(typingTimer);
+        if (workingTimer) clearTimeout(workingTimer);
+        typingTimer = null;
+        workingTimer = null;
+      };
+
       try {
         appendLog(`Received batch from ${chatId} (${items.length} messages).`);
-        let typingTimer = null;
-        let workingTimer = null;
-        let workingMessageId = null;
-        const startTyping = async () => {
-          try {
-            await bot.sendChatAction(chatId, "typing");
-          } catch (err) {
-            // ignore typing errors
-          }
-        };
-        const stopTyping = () => {
-          if (typingTimer) clearInterval(typingTimer);
-          if (workingTimer) clearTimeout(workingTimer);
-        };
 
         await startTyping();
         typingTimer = setInterval(startTyping, TYPING_INTERVAL_MS);
@@ -188,14 +191,12 @@ bot.on("message", async (msg) => {
         }, WORKING_MESSAGE_DELAY_MS);
 
         if (combined === "/ping" || combined.toLowerCase() === "ping") {
-          stopTyping();
           await bot.sendMessage(chatId, "pong");
           appendLog(`Sent pong to ${chatId}.`);
           return;
         }
         const reply = await runAgentMessage({ chatId, text: combined });
         if (!reply) return;
-        stopTyping();
         const formatted = renderTelegramHtml(reply);
         if (workingMessageId) {
           try {
@@ -221,16 +222,13 @@ bot.on("message", async (msg) => {
       } catch (err) {
         console.error("Agent error:", err?.message || err);
         try {
-          if (typeof stopTyping === "function") stopTyping();
-        } catch (stopErr) {
-          // ignore
-        }
-        try {
           await bot.sendMessage(chatId, "Sorry, I hit an error while processing that.");
         } catch (sendErr) {
           // ignore
         }
         appendLog(`Error replying to ${chatId}: ${err?.stack || err?.message || err}`);
+      } finally {
+        stopTyping();
       }
     }, BATCH_DELAY_MS)
   );
