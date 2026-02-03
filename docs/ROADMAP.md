@@ -11,6 +11,8 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 - Scrape runs at 6:00 AM ET, summary sent at 7:00 AM ET.
 - Reminder scheduler runs every minute to deliver task reminders.
 - Daily summary delivery via Telegram.
+- Telegram agent runs as a single instance to avoid duplicate responses.
+- Incoming Telegram messages are batched briefly and the oldest dropped if too long.
 - Docker support included for easy server migration.
 - If using Twilio later, use Auth Token for now; plan to switch to API Key for server move.
 - Session-based login: use one-time interactive login locally; improve automated auth when moving to server.
@@ -91,6 +93,7 @@ Acceptance:
 - "Mark Algebra HW 3 as waiting on teacher" updates stored status.
 - "Remind me about Lab Report on Friday at 7pm" schedules a reminder.
 - "Remind me to ask a friend tonight at 9pm" creates a task and sends a reminder.
+- Rapid multi-message prompts are combined into a single agent request.
 
 Risks:
 - Cost and latency for longer conversations.

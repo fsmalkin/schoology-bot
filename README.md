@@ -1,6 +1,6 @@
 ﻿# Schoology Bot
 
-A friendly, local-first Schoology assistant that logs in, finds missing assignments, sends a daily summary, and lets you chat with an agent to update statuses, add notes, and schedule reminders.
+A friendly, local-first Schoology assistant that logs in, finds missing assignments, sends a daily summary, and lets you chat with an agent to update statuses, add notes, schedule reminders, and manage tasks.
 
 It runs on your machine today and is ready to move to a server later.
 
@@ -8,7 +8,7 @@ It runs on your machine today and is ready to move to a server later.
 - Scrapes Schoology grades and detects missing or incomplete work.
 - Sends a daily summary via Telegram (SMS or email optional).
 - Provides an agentic chat interface (GPT-5.2) to answer questions and update statuses.
-- Stores history, notes, and reminders locally.
+- Stores history, notes, reminders, tasks, and chat context locally.
 
 ## Quick start
 1. Copy `.env.example` to `.env` and fill in values.
@@ -30,7 +30,7 @@ It runs on your machine today and is ready to move to a server later.
 ## Data
 - `data/state.json` stores assignment history and last run metadata.
 - `data/storage.json` stores browser session state for faster logins.
-- `data/agent.db` stores assignments, notes, reminders, and chat state.
+- `data/agent.db` stores assignments, notes, reminders, tasks, and chat state.
 
 ## Debug
 Set `DEBUG_DUMP=true` in `.env` to save a screenshot and HTML snapshot to `data/` on failures.
@@ -58,7 +58,7 @@ How to get chat IDs:
 3. Run `npm run telegram:updates` and copy the `chat_id` value.
 
 ## Agent (GPT-5.2)
-Run a Telegram-based agent that can answer questions, update statuses, add notes, and schedule reminders.
+Run a Telegram-based agent that can answer questions, update statuses, add notes, schedule reminders, and manage tasks.
 
 Required `.env` values:
 - `OPENAI_API_KEY`
@@ -75,6 +75,25 @@ Note: If you use a group chat, Telegram bot privacy must be disabled (BotFather 
 Tips:
 - Say "file a bug" to log an error.
 - Say "log a feature request" to capture improvements or ideas.
+
+## Telegram Agent Notes
+- The agent runs as a single instance; a lock file prevents duplicate responses.
+- Incoming messages are batched briefly (about 1 second) so fast sequences become one request.
+- If a batch exceeds the limit, the oldest messages are dropped to keep the newest context.
+
+## Tasks and Reminders
+You can create personal tasks (not tied to Schoology) and get Telegram reminders.
+
+Examples:
+- "Remind me to ask a friend tonight at 9pm."
+- "List my tasks for today."
+- "Mark task 3 done."
+
+Tasks roll over by 24 hours if they are not marked done.
+
+Reminder delivery:
+- The scheduler checks tasks every minute by default (`REMINDER_CRON`).
+- The daily summary includes all tasks scheduled for today.
 
 ## Manual Statuses (Explicit Set)
 These are the default manual status codes the agent understands:
@@ -99,6 +118,8 @@ What is covered:
 - Offline grade parsing via HTML fixture.
 - Manual status code mapping.
 - Bulk and numbered status updates.
+- Task reminder scheduling and rollover.
+- Telegram formatting and batching.
 
 ## Twilio SMS
 Required `.env` values for SMS:
@@ -118,4 +139,3 @@ For email delivery, set `DELIVERY_CHANNEL="email"` and the SMTP values.
 
 ## Roadmap
 See `docs/ROADMAP.md`.
-
