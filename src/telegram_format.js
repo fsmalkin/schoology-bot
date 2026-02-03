@@ -46,6 +46,10 @@ function renderInline(text) {
 
 export function renderTelegramHtml(text) {
   const normalized = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const htmlTagPattern = /<\s*(b|i|code|pre|u|s|em|strong|a|br)(\s|>|\/)/i;
+  if (htmlTagPattern.test(normalized)) {
+    return normalized.trim();
+  }
   const segments = normalized.split("```");
   let output = "";
   for (let i = 0; i < segments.length; i += 1) {

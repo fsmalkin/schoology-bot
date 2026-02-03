@@ -38,3 +38,9 @@ test("renderTelegramHtml supports code fences", () => {
   const output = renderTelegramHtml(input);
   assert.match(output, /<pre><code>[\s\S]*line 1 &lt; line 2/);
 });
+
+test("renderTelegramHtml passes through html", () => {
+  const input = "<b>Title</b>\n- <i>Item</i>";
+  const output = renderTelegramHtml(input);
+  assert.equal(output, input);
+});
