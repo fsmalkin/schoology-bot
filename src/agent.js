@@ -13,6 +13,7 @@ import {
   updateChatCompaction,
   updateChatState,
 } from "./db.js";
+import { openBugReport } from "./bugs.js";
 
 function buildSystemPrompt() {
   return [
@@ -20,6 +21,7 @@ function buildSystemPrompt() {
     "Use tools to fetch assignments, update statuses, add notes, and schedule reminders.",
     "If a request is ambiguous, ask a clarifying question.",
     "Never invent assignments or data.",
+    "Only open bug reports when the user explicitly asks to file a bug or report an error.",
     "Keep responses concise and action-oriented.",
   ].join(" ");
 }
@@ -104,6 +106,24 @@ function toolDefinitions() {
         required: ["remindAt"],
       },
     },
+    {
+      type: "function",
+      name: "open_bug_report",
+      description: "Log a bug locally and optionally open a GitHub issue.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "Short bug title." },
+          body: { type: "string", description: "Bug details and steps to reproduce." },
+          labels: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional GitHub labels.",
+          },
+        },
+        required: ["title", "body"],
+      },
+    },
   ];
 }
 
@@ -163,6 +183,8 @@ async function runTool(db, call) {
       return addAssignmentNote(db, args);
     case "schedule_reminder":
       return scheduleReminder(db, args);
+    case "open_bug_report":
+      return await openBugReport(getConfig(), args);
     default:
       return { ok: false, error: `Unknown tool: ${call.name}` };
   }

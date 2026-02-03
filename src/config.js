@@ -68,6 +68,11 @@ const config = {
     botToken: env("TELEGRAM_BOT_TOKEN"),
     chatIds: listEnv("TELEGRAM_CHAT_IDS"),
   },
+  github: {
+    repo: env("GITHUB_REPO"),
+    token: env("GITHUB_TOKEN"),
+    labels: listEnv("GITHUB_LABELS"),
+  },
   openai: {
     apiKey: env("OPENAI_API_KEY"),
     model: env("OPENAI_MODEL", "gpt-5.2"),
@@ -88,6 +93,7 @@ const config = {
     debugHtmlPath: path.join(cwd, "data", "debug.html"),
     debugScreenshotPath: path.join(cwd, "data", "debug.png"),
     agentDbPath: path.join(cwd, "data", "agent.db"),
+    bugLogPath: path.join(cwd, "data", "bugs.log"),
   },
 };
 
