@@ -25,7 +25,7 @@ const MESSAGE_DEDUP_MS = 5 * 60 * 1000;
 const BATCH_DELAY_MS = 1200;
 const MAX_BATCH_CHARS = 3500;
 const TYPING_INTERVAL_MS = 4000;
-const WORKING_MESSAGE_DELAY_MS = 8000;
+const WORKING_MESSAGE_DELAY_MS = 10000;
 
 function acquireLock() {
   try {
