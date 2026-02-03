@@ -22,7 +22,7 @@ function renderLine(line) {
 
   const bulletMatch = line.match(/^\s*[-*]\s+(.+)/);
   if (bulletMatch) {
-    return `&bull; ${formatInline(bulletMatch[1])}`;
+    return `- ${formatInline(bulletMatch[1])}`;
   }
 
   return formatInline(line);
