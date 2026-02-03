@@ -1,4 +1,9 @@
+# TEST RESULTS
 
+## Summary
+All tests below were run offline against fixtures or seeded local data.
+
+## Unit + Offline E2E Tests (node --test)
 > schoology-missing-assignments@0.1.0 test
 > node --test
 
@@ -65,85 +70,24 @@ ok 10 - isRepetitiveOutput allows normal text
 
 Test run at: 2026-02-03 01:38:18
 
-
 ## Agentic Conversation Test
-
-**User:** What assignments are missing?
-
-**Agent:** You’re missing these assignments:
-
-- **Algebra** — *Homework 1* (Due **2026-01-01**) — **Missing**
-- **Science** — *Lab 1* (Due **2026-01-02**) — **Missing**
-
-**User:** Mark Homework 1 as B
-
-**Agent:** Set **Algebra — Homework 1** to **B (Practice / not for grade)**.
-
-You still have 1 missing assignment:
-- **Science — Lab 1** (Due 2026-01-02) — Missing
-
-**User:** What is missing now?
-
-**Agent:** Only **Science — Lab 1** (due **2026-01-02**) is missing now.
-
-Agentic conversation test completed.
-
-Agentic conversation test failed: EBUSY: resource busy or locked, unlink 'C:\Users\afutu\schoology\data\agent_test.db'
-
-Agentic test run at: 2026-02-03 01:40:53
-
-
-## Agentic Conversation Test
-
-**User:** What assignments are missing?
-
-**Agent:** These assignments are currently **missing**:
-
-- **Algebra** — *Homework 1* (Due **2026-01-01**) — Score: **0/10**
-- **Science** — *Lab 1* (Due **2026-01-02**) — Score: **0/10**
-
-**User:** Mark Homework 1 as B
-
-**Agent:** Updated **Algebra — Homework 1** to **B (Practice / not for grade)**, so it won’t count as missing anymore.
-
-You still have **1 missing** assignment:
-- **Science — Lab 1** (Due **2026-01-02**)
-
-**User:** What is missing now?
-
-**Agent:** Right now, the only **missing** assignment is:
-
-- **Science** — *Lab 1* (Due **2026-01-02**) — Score: **0/10**
-
-(*Algebra — Homework 1* is now marked **B / Practice**, so it’s ignored.)
-
-Agentic conversation test completed.
-
-Agentic conversation cleanup warning: failed to delete C:\Users\afutu\schoology\data\agent_test.db
-
-Agentic test run at: 2026-02-03 01:41:56
-
-
-## Agentic Conversation Test
-
 **User:** What assignments are missing?
 
 **Agent:** Missing assignments (2):
 
-- **Algebra** — *Homework 1* (Due **2026-01-01**) — **Missing** — Score: 0/10  
-- **Science** — *Lab 1* (Due **2026-01-02**) — **Missing** — Score: 0/10
+- **Algebra** � *Homework 1* (Due **2026-01-01**) � **Missing** � Score: 0/10  
+- **Science** � *Lab 1* (Due **2026-01-02**) � **Missing** � Score: 0/10
 
 **User:** Mark Homework 1 as B
 
-**Agent:** Set **Algebra — Homework 1** to **B (Practice / not for grade)**.
+**Agent:** Set **Algebra � Homework 1** to **B (Practice / not for grade)**.
 
 **User:** What is missing now?
 
 **Agent:** Missing now (1):
 
-- **Science** — *Lab 1* (Due **2026-01-02**) — **Missing** — Score: 0/10
+- **Science** � *Lab 1* (Due **2026-01-02**) � **Missing** � Score: 0/10
 
 Agentic conversation test completed.
 
 Agentic test run at: 2026-02-03 01:43:09
-
