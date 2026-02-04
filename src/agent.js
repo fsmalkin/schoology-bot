@@ -650,6 +650,18 @@ function formatUpdateSummary(results, db) {
   return lines.join("\n").trim();
 }
 
+function hasToolErrors(results = []) {
+  return results.some((item) => {
+    const output = item.output || {};
+    if (output?.ok === false) return true;
+    if (output?.error) return true;
+    if (Array.isArray(output?.results)) {
+      return output.results.some((entry) => entry?.result?.ok === false || entry?.result?.error);
+    }
+    return false;
+  });
+}
+
 function applyManualStatusPolicy(rows) {
   const cleared = [];
   const kept = [];
@@ -815,6 +827,12 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
     }
 
     const directOnly = toolCalls.every((call) => DIRECT_TOOL_NAMES.has(call.name));
+
+    if (directOnly && hasToolErrors(executed)) {
+      const summary = formatUpdateSummary(executed, db);
+      updateChatState(db, chatId, currentResponse.id);
+      return summary || "Done.";
+    }
 
     currentResponse = await createResponseWithRetry(client, {
       model: config.openai.model,
