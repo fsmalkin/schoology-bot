@@ -30,7 +30,7 @@ import {
 } from "./db.js";
 import { openBugReport, openFeatureRequest } from "./bugs.js";
 import { statusGuideText, isIgnoredStatus, isPendingStatus } from "./statuses.js";
-import { isRepetitiveOutput, sanitizeRepeatedText } from "./text_utils.js";
+import { isRepetitiveOutput, isToolingLoop, normalizeAscii, sanitizeRepeatedText } from "./text_utils.js";
 import { runScrape } from "./tasks.js";
 
 function buildResponsePrompt() {
@@ -39,14 +39,20 @@ function buildResponsePrompt() {
     "Use the provided tool results as the source of truth.",
     "Never claim updates unless tool results confirm success.",
     "If tool results include errors, explain them briefly and ask for the missing detail.",
+    "When talking about tasks or assignment reminders, use the term 'Reminders' and combine them unless the user asks for a specific type.",
+    "If a note implies a follow-up action, ask if the user wants a reminder created.",
     `Manual status codes: ${statusGuideText()}.`,
     "Default reporting buckets: Actionable, Pending, Ignored. Hide Ignored by default unless asked.",
     "When confirming status updates, include a short list of items waiting on teacher/grade (No grade put in yet, Waiting on teacher).",
     "If the user suggests improvements or feature ideas, ask if they want you to log a feature request.",
-    "Respond in Telegram-friendly HTML (use <b>, <code>, <pre> tags; avoid Markdown).",
+    "Return a JSON object with a single key \"message\" containing your reply.",
+    "Inside message, use plain text with simple lists (use '-' for bullets, '1.' for numbering).",
+    "Do not use HTML tags or Markdown code fences inside the message.",
+    "Do not mention tool calls or function names.",
     "Keep responses concise and action-oriented.",
   ].join(" ");
 }
+
 
 function deepClone(value) {
   if (Array.isArray(value)) return value.map((item) => deepClone(item));
@@ -458,6 +464,31 @@ function extractText(response) {
     .join("");
 }
 
+function parseResponseMessage(raw) {
+  if (!raw) return "";
+  const trimmed = String(raw).trim();
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object") {
+      if (typeof parsed.message === "string") return parsed.message.trim();
+      if (typeof parsed.text === "string") return parsed.text.trim();
+      if (typeof parsed.reply === "string") return parsed.reply.trim();
+    }
+  } catch (err) {
+    // fall through
+  }
+
+  const messageMatch = trimmed.match(/"message"\s*:\s*"([\s\S]*)$/);
+  if (messageMatch) {
+    let candidate = messageMatch[1];
+    candidate = candidate.replace(/"\s*}[\s\S]*$/, "");
+    candidate = candidate.replace(/\\n/g, "\n").replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
+    return candidate.trim();
+  }
+
+  return trimmed;
+}
+
 function parseArguments(args) {
   if (!args) return {};
   if (typeof args === "object") return args;
@@ -782,7 +813,25 @@ async function augmentToolPlan(client, config, text, plan, previousResponseId, a
   }
 }
 
-export async function planAction(client, config, text, previousResponseId) {
+export async function planAction(client, config, text, previousResponseId, allowedToolsOverride = null) {
+  if (Array.isArray(allowedToolsOverride) && allowedToolsOverride.length > 0) {
+    const allowedTools = allowedToolsOverride;
+    const plan = await pickToolPlan(client, config, text, previousResponseId, allowedTools);
+    const augmented = await augmentToolPlan(client, config, text, plan, previousResponseId, allowedTools);
+    const fallbackTool = allowedTools[0] || "list_assignments";
+    const finalPlan =
+      augmented.tool || (augmented.calls && augmented.calls.length > 0)
+        ? augmented
+        : { action: "call_tool", tool: fallbackTool, args: {}, calls: null };
+    return {
+      action: finalPlan.action,
+      tool: finalPlan.tool,
+      args: finalPlan.args,
+      calls: finalPlan.calls,
+      message: null,
+    };
+  }
+
   const group = await pickToolGroup(client, config, text, previousResponseId);
   if (group === "none") {
     return { action: "respond", tool: null, args: null, calls: null, message: null };
@@ -834,6 +883,26 @@ function buildFinalInput(text, draftMessage, toolResults) {
   return parts.join("\\n\\n");
 }
 
+function hasWriteTool(executed) {
+  const writeTools = new Set([
+    "update_assignment_status",
+    "bulk_update_assignment_statuses",
+    "apply_numbered_statuses",
+    "add_assignment_note",
+    "schedule_reminder",
+    "update_assignment_reminder",
+    "delete_assignment_reminder",
+    "refresh_schoology",
+    "create_task",
+    "update_task_status",
+    "update_task",
+    "delete_task",
+    "open_bug_report",
+    "open_feature_request",
+  ]);
+  return executed.some((item) => writeTools.has(item.call?.name));
+}
+
 function buildPlanInput(text, pending) {
   if (!pending) return text;
   const pendingSummary = {
@@ -848,6 +917,58 @@ function buildPlanInput(text, pending) {
     "User message:",
     text,
   ].join("\\n");
+}
+
+function buildPendingDecisionSchema() {
+  return {
+    type: "object",
+    properties: {
+      action: { type: "string", enum: ["proceed", "cancel"] },
+      reason: { type: "string" },
+    },
+    required: ["action", "reason"],
+    additionalProperties: false,
+  };
+}
+
+function buildPendingDecisionInstructions() {
+  return [
+    "Return JSON only. No extra text.",
+    "You decide whether the user message is confirming/providing details for the pending action.",
+    "If the user wants to proceed, return action=proceed.",
+    "If the user is cancelling or changing topics, return action=cancel.",
+  ].join(" ");
+}
+
+async function decidePendingAction(client, config, pending, text, previousResponseId) {
+  const schema = buildPendingDecisionSchema();
+  const input = buildPlanInput(text, pending);
+  const response = await createResponseWithRetry(client, {
+    model: config.openai.model,
+    reasoning: { effort: "low" },
+    max_output_tokens: 120,
+    instructions: buildPendingDecisionInstructions(),
+    input,
+    text: {
+      format: {
+        type: "json_schema",
+        name: "pending_decision",
+        strict: true,
+        schema,
+      },
+    },
+    tool_choice: "none",
+    parallel_tool_calls: false,
+    previous_response_id: previousResponseId || undefined,
+  });
+
+  const raw = extractText(response);
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed?.action === "cancel" ? "cancel" : "proceed";
+  } catch (err) {
+    return "proceed";
+  }
 }
 
 function mergePendingArgs(pendingArgs, newArgs) {
@@ -1197,16 +1318,32 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
   const client = clientOverride || new OpenAI({ apiKey: config.openai.apiKey });
 
   const previousResponseId = chatState.lastResponseId || undefined;
-  const planText = buildPlanInput(text, pendingAction);
+  let activePending = pendingAction;
+  let pendingDecision = null;
+  if (pendingAction) {
+    try {
+      pendingDecision = await decidePendingAction(client, config, pendingAction, text, previousResponseId);
+    } catch (err) {
+      pendingDecision = "proceed";
+    }
+    if (pendingDecision === "cancel") {
+      clearPendingAction(db, chatId);
+      activePending = null;
+    }
+  }
+
+  const planText = buildPlanInput(text, activePending);
+  const allowedToolsOverride =
+    activePending && pendingDecision === "proceed" ? [activePending.tool] : null;
   let plan;
   try {
-    plan = await planAction(client, config, planText, previousResponseId);
+    plan = await planAction(client, config, planText, previousResponseId, allowedToolsOverride);
   } catch (err) {
     if (previousResponseId && isInvalidPreviousResponse(err)) {
       resetChatState(db, chatId);
-      plan = await planAction(client, config, planText, undefined);
+      plan = await planAction(client, config, planText, undefined, allowedToolsOverride);
     } else if (previousResponseId && isRetryableError(err)) {
-      plan = await planAction(client, config, planText, undefined);
+      plan = await planAction(client, config, planText, undefined, allowedToolsOverride);
     } else {
       throw err;
     }
@@ -1230,7 +1367,7 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
       continue;
     }
     const pendingArgs =
-      pendingAction && pendingAction.tool === normalizedTool ? pendingAction.args : null;
+      activePending && activePending.tool === normalizedTool ? activePending.args : null;
     const mergedArgs = mergePendingArgs(pendingArgs, call.args);
     const normalizedArgs = normalizeToolArgs(normalizedTool, mergedArgs);
     const output = await runTool(db, { name: normalizedTool, arguments: normalizedArgs });
@@ -1240,7 +1377,7 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
   for (const item of executed) {
     const name = item.call?.name;
     const output = item.output || {};
-    if (pendingAction && name === pendingAction.tool && output?.ok === true) {
+    if (activePending && name === activePending.tool && output?.ok === true) {
       clearPendingAction(db, chatId);
       continue;
     }
@@ -1256,7 +1393,13 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
     args: item.call.arguments,
     output: item.output,
   }));
-  const draftMessage = plan.action === "respond" || plan.action === "clarify" ? plan.message : null;
+  let draftMessage = null;
+  if (hasWriteTool(executed)) {
+    const summaryDraft = formatUpdateSummary(executed, db);
+    if (summaryDraft) draftMessage = summaryDraft;
+  } else if (plan.action === "respond" || plan.action === "clarify") {
+    draftMessage = plan.message;
+  }
   const finalInput = buildFinalInput(text, draftMessage, toolResults);
 
   let response;
@@ -1267,6 +1410,11 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
       max_output_tokens: config.openai.maxOutputTokens,
       instructions: buildResponsePrompt(),
       input: finalInput,
+      text: {
+        format: {
+          type: "json_object",
+        },
+      },
       tool_choice: "none",
       parallel_tool_calls: false,
       previous_response_id: previousResponseId,
@@ -1280,6 +1428,11 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
         max_output_tokens: config.openai.maxOutputTokens,
         instructions: buildResponsePrompt(),
         input: finalInput,
+        text: {
+          format: {
+            type: "json_object",
+          },
+        },
         tool_choice: "none",
         parallel_tool_calls: false,
       });
@@ -1290,6 +1443,11 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
         max_output_tokens: config.openai.maxOutputTokens,
         instructions: buildResponsePrompt(),
         input: finalInput,
+        text: {
+          format: {
+            type: "json_object",
+          },
+        },
         tool_choice: "none",
         parallel_tool_calls: false,
       });
@@ -1298,8 +1456,10 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
     }
   }
 
-  const finalText = extractText(response).trim();
+  const rawText = extractText(response).trim();
+  const finalText = parseResponseMessage(rawText);
   const sanitized = sanitizeRepeatedText(finalText);
+  const normalized = normalizeAscii(sanitized);
   updateChatState(db, chatId, response.id);
 
   const compactedId = await maybeCompact(client, config, chatId, getChatState(db, chatId), response.id);
@@ -1307,9 +1467,9 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
     updateChatCompaction(db, chatId, compactedId);
   }
 
-  if (!sanitized || isRepetitiveOutput(finalText)) {
+  if (!normalized || isRepetitiveOutput(finalText) || isToolingLoop(finalText)) {
     const summary = formatUpdateSummary(executed, db);
-    return summary || sanitized || "Done.";
+    return normalizeAscii(summary || normalized || "Done.");
   }
-  return sanitized;
+  return normalized;
 }

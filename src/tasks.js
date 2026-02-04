@@ -93,13 +93,12 @@ export async function runSend() {
   }
 
   const db = getDb(config);
-  const dbSummary = buildDbSummary(db, { includePending: true, includeIgnored: false });
+  const dbSummary = buildDbSummary(db, { includePending: true, includeIgnored: false, includeNotes: true });
   const legacySummary = buildLegacySummary(dbSummary);
   const today = formatDateYmd(new Date(), config.schedule.timezone);
-  const tasksForToday = listTasks(db, { status: "all" }).filter((task) => {
-    if (!task.remindAt) return false;
-    return formatDateYmd(new Date(task.remindAt), config.schedule.timezone) === today;
-  });
+  const allPendingTasks = listTasks(db, { status: "pending" });
+  const reminders = groupReminders(allPendingTasks, config.schedule.timezone, today);
+  const tasksForToday = reminders.today;
   for (const channel of channels) {
     if (channel === "twilio") {
       await sendSummarySms(config, legacySummary, state, tasksForToday);
@@ -109,7 +108,7 @@ export async function runSend() {
           config,
           summary: dbSummary,
           state,
-          tasksForToday,
+          reminders,
         });
         await sendTelegramMessage(config, text);
       } else {
@@ -134,6 +133,33 @@ export async function runOnce() {
 
 function addDays(date, days) {
   return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+function buildUpcomingSet(baseDate, timeZone, days = 7) {
+  const set = new Set();
+  for (let i = 1; i <= days; i += 1) {
+    const next = addDays(baseDate, i);
+    set.add(formatDateYmd(next, timeZone));
+  }
+  return set;
+}
+
+function groupReminders(tasks, timeZone, today) {
+  const baseDate = new Date();
+  const upcomingSet = buildUpcomingSet(baseDate, timeZone, 7);
+  const groups = { today: [], overdue: [], upcoming: [] };
+  for (const task of tasks) {
+    if (!task.remindAt) continue;
+    const taskDate = formatDateYmd(new Date(task.remindAt), timeZone);
+    if (taskDate < today) {
+      groups.overdue.push(task);
+    } else if (taskDate === today) {
+      groups.today.push(task);
+    } else if (upcomingSet.has(taskDate)) {
+      groups.upcoming.push(task);
+    }
+  }
+  return groups;
 }
 
 export async function runReminders() {

@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isRepetitiveOutput, sanitizeRepeatedText } from "../src/text_utils.js";
+import {
+  isRepetitiveOutput,
+  sanitizeRepeatedText,
+  isToolingLoop,
+  normalizeAscii,
+} from "../src/text_utils.js";
 
 test("sanitizeRepeatedText collapses repeated lines", () => {
   const input = "Updating now...\nUpdating now...\nUpdating now...\nDone";
@@ -22,4 +27,16 @@ test("isRepetitiveOutput detects repeated lines", () => {
 test("isRepetitiveOutput allows normal text", () => {
   const input = "All updates applied. Let me know if you need anything else.";
   assert.equal(isRepetitiveOutput(input), false);
+});
+
+test("isToolingLoop detects tool babble", () => {
+  const input =
+    "Ok. Let's call. Ok. I must call function with correct JSON. Ok. Call. Ok. I'm stuck in loop.";
+  assert.equal(isToolingLoop(input), true);
+});
+
+test("normalizeAscii converts smart punctuation", () => {
+  const input = "Don\u2019t wait\u2014it\u2019s due\u2026";
+  const output = normalizeAscii(input);
+  assert.equal(output, "Don't wait-it's due...");
 });

@@ -25,6 +25,9 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 - Maintain offline unit + E2E tests using fixtures (no live Schoology needed).
 - Daily summary includes tasks scheduled for today.
 - Tasks roll over by 24 hours if not completed.
+- Daily summary is DB-backed (manual statuses honored) and agentic for Telegram.
+- Bug filing auto-generates a title when missing.
+- Pending actions are stored per chat to complete multi-step confirmations.
 
 ## Phase 1
 Scope:
@@ -84,6 +87,23 @@ Implementation approach:
 - Optional: wrap tools with the OpenAI Agents SDK for tracing and orchestration.
 - Optional: add context compaction for long-running chats.
 - Option B (future): unify tasks + assignment reminders into a single Task model (assignment_key optional).
+
+## Reliability and UX Improvements
+- Done: DB-backed daily summary (manual statuses honored).
+- Done: Agentic Telegram daily summary.
+- Done: Pending-action handoff so confirmations complete updates.
+- Done: Pending-action confirmation step to avoid getting stuck on multi-turn updates.
+- Done: Bug filing auto-title + pre-submit validation to prevent blank-title failures.
+- Done: Notes included in daily summary.
+- Done: Reminders/tasks included in daily summary (Today/Upcoming/Overdue for Telegram).
+- Done: Use "Reminders" as the user-facing term for tasks/reminders.
+- Done: Resilient tool routing with group classification and fallback tool selection.
+- Done: Telegram formatting sanitizer (HTML + plain fallback) to avoid raw tags/entities.
+- Done: "Working on it" message cleanup after replies.
+- Done: Output normalization to ASCII for consistent Telegram rendering.
+- Done: Response drafting uses tool results when updates occur.
+- Planned: Convert action-oriented notes into reminders when appropriate (ask user to confirm).
+- Planned: Unified single Task model (Option B).
 
 Deliverables:
 - Tool endpoints: list assignments, update status, add note, schedule reminder.

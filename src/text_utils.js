@@ -29,6 +29,30 @@ export function isRepetitiveOutput(text) {
   return false;
 }
 
+export function isToolingLoop(text) {
+  if (!text) return false;
+  const lower = String(text).toLowerCase();
+  if (lower.includes("stuck in loop")) return true;
+  if (lower.includes("tool call") || lower.includes("function call")) return true;
+
+  const tokens = ["ok", "let's", "call", "tool", "function", "json", "schema", "proceed"];
+  let count = 0;
+  for (const token of tokens) {
+    const matches = lower.match(new RegExp(`\\b${token}\\b`, "g"));
+    if (matches) count += matches.length;
+  }
+
+  const okMatches = lower.match(/\bok\b/g);
+  const okCount = okMatches ? okMatches.length : 0;
+  if (okCount >= 6) return true;
+
+  if (count >= 8 && (lower.includes("call") || lower.includes("tool") || lower.includes("function"))) {
+    return true;
+  }
+
+  return false;
+}
+
 function collapseRepeatedSentences(text) {
   const sentences = text.split(/(?<=[.!?])\s+/);
   const result = [];
@@ -61,4 +85,14 @@ export function sanitizeRepeatedText(text) {
   }
 
   return result.join("\n").trim();
+}
+
+export function normalizeAscii(text) {
+  if (!text) return text;
+  return String(text)
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, "\"")
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/\u2026/g, "...")
+    .replace(/\u00A0/g, " ");
 }

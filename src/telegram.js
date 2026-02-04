@@ -1,5 +1,6 @@
 import TelegramBot from "node-telegram-bot-api";
 import { formatDateTime, formatDateYmd } from "./time.js";
+import { renderTelegramHtml, renderTelegramPlain } from "./telegram_format.js";
 
 function simplifyCourseName(name) {
   const raw = String(name || "").replace(/\s+/g, " ").trim();
@@ -105,14 +106,23 @@ export async function sendSummaryTelegram(config, summary, state, tasksForDay = 
 
 export async function sendTelegramMessage(config, text) {
   const bot = new TelegramBot(config.telegram.botToken, { polling: false });
+  const formatted = renderTelegramHtml(text);
+  const plain = renderTelegramPlain(text);
 
   const results = [];
   for (const chatId of config.telegram.chatIds) {
-    const message = await bot.sendMessage(chatId, text, {
-      disable_web_page_preview: true,
-      parse_mode: "HTML",
-    });
-    results.push(message.message_id);
+    try {
+      const message = await bot.sendMessage(chatId, formatted, {
+        disable_web_page_preview: true,
+        parse_mode: "HTML",
+      });
+      results.push(message.message_id);
+    } catch (err) {
+      const message = await bot.sendMessage(chatId, plain, {
+        disable_web_page_preview: true,
+      });
+      results.push(message.message_id);
+    }
   }
 
   return results;

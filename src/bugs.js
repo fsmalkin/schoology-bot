@@ -13,13 +13,26 @@ function sanitizeLabels(labels) {
   return labels.map((label) => String(label || "").trim()).filter((label) => label.length > 0);
 }
 
+function deriveTitle(title, body, kind) {
+  const trimmed = String(title || "").trim();
+  if (trimmed.length > 0) return trimmed;
+  const bodyText = String(body || "").trim();
+  if (bodyText.length > 0) {
+    const firstLine = bodyText.split("\n").map((line) => line.trim()).find((line) => line.length > 0);
+    if (firstLine) return firstLine.slice(0, 120);
+  }
+  const label = kind === "feature" ? "Feature request" : "Bug report";
+  return `${label} ${nowIso()}`;
+}
+
 export function logBugToFile(config, { title, body, labels, kind = "bug" }) {
   const logPath = config?.paths?.bugLogPath || path.join(process.cwd(), "data", "bugs.log");
   ensureDir(path.dirname(logPath));
+  const normalizedTitle = deriveTitle(title, body, kind);
   const entry = {
     createdAt: nowIso(),
     kind,
-    title: String(title || "").trim(),
+    title: normalizedTitle,
     body: String(body || "").trim(),
     labels: sanitizeLabels(labels),
   };
@@ -34,8 +47,9 @@ export async function createGithubIssue(config, { title, body, labels, kind = "b
     return { ok: false, error: "Missing GITHUB_REPO or GITHUB_TOKEN." };
   }
 
+  const normalizedTitle = deriveTitle(title, body, kind);
   const payload = {
-    title: String(title || "").trim(),
+    title: normalizedTitle,
     body: String(body || "").trim(),
   };
   const labelList = sanitizeLabels((labels && labels.length ? labels : config.github.labels) || []);

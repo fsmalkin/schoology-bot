@@ -1,10 +1,17 @@
+const DEFAULT_TIMEZONE = "America/New_York";
+
+function withDefaultZone(timeZone) {
+  return timeZone && String(timeZone).trim().length > 0 ? timeZone : DEFAULT_TIMEZONE;
+}
+
 export function nowIso() {
   return new Date().toISOString();
 }
 
 export function formatDateYmd(date, timeZone) {
+  const tz = withDefaultZone(timeZone);
   const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
+    timeZone: tz,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -14,8 +21,9 @@ export function formatDateYmd(date, timeZone) {
 }
 
 export function formatTimeHm(date, timeZone) {
+  const tz = withDefaultZone(timeZone);
   return new Intl.DateTimeFormat("en-US", {
-    timeZone,
+    timeZone: tz,
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,

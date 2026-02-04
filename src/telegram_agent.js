@@ -3,7 +3,7 @@ import path from "path";
 import TelegramBot from "node-telegram-bot-api";
 import { getConfig, validateOpenAIConfig, validateTelegramConfig } from "./config.js";
 import { runAgentMessage } from "./agent.js";
-import { renderTelegramHtml } from "./telegram_format.js";
+import { renderTelegramHtml, renderTelegramPlain } from "./telegram_format.js";
 import { batchMessages } from "./telegram_queue.js";
 
 const config = getConfig();
@@ -27,6 +27,39 @@ const BATCH_DELAY_MS = 1200;
 const MAX_BATCH_CHARS = 3500;
 const TYPING_INTERVAL_MS = 4000;
 const WORKING_MESSAGE_DELAY_MS = 10000;
+
+async function sendFormattedMessage(chatId, text, options = {}) {
+  const formatted = renderTelegramHtml(text);
+  const plain = renderTelegramPlain(text);
+  const editMessageId = options.editMessageId || null;
+
+  if (editMessageId) {
+    try {
+      await bot.editMessageText(formatted, {
+        chat_id: chatId,
+        message_id: editMessageId,
+        disable_web_page_preview: true,
+        parse_mode: "HTML",
+      });
+      return { edited: true, usedHtml: true, messageId: editMessageId };
+    } catch (err) {
+      // fall through to send new message
+    }
+  }
+
+  try {
+    const msg = await bot.sendMessage(chatId, formatted, {
+      disable_web_page_preview: true,
+      parse_mode: "HTML",
+    });
+    return { edited: false, usedHtml: true, messageId: msg?.message_id || null };
+  } catch (err) {
+    const msg = await bot.sendMessage(chatId, plain, {
+      disable_web_page_preview: true,
+    });
+    return { edited: false, usedHtml: false, messageId: msg?.message_id || null };
+  }
+}
 
 function acquireLock() {
   try {
@@ -227,27 +260,23 @@ async function processQueue(chatId) {
       clearTimeout(workingTimer);
       workingTimer = null;
     }
-    if (!reply) return;
-    const formatted = renderTelegramHtml(reply);
-    if (workingMessageId) {
-      try {
-        await bot.editMessageText(formatted, {
-          chat_id: chatId,
-          message_id: workingMessageId,
-          disable_web_page_preview: true,
-          parse_mode: "HTML",
-        });
-      } catch (err) {
-        await bot.sendMessage(chatId, formatted, {
-          disable_web_page_preview: true,
-          parse_mode: "HTML",
-        });
+    if (!reply) {
+      if (workingMessageId) {
+        try {
+          await bot.deleteMessage(chatId, workingMessageId);
+        } catch (err) {
+          // ignore delete errors
+        }
       }
-    } else {
-      await bot.sendMessage(chatId, formatted, {
-        disable_web_page_preview: true,
-        parse_mode: "HTML",
-      });
+      return;
+    }
+    const result = await sendFormattedMessage(chatId, reply, { editMessageId: workingMessageId });
+    if (workingMessageId && !result.edited) {
+      try {
+        await bot.deleteMessage(chatId, workingMessageId);
+      } catch (err) {
+        // ignore delete errors
+      }
     }
     appendLog(`Replied to ${chatId} (${reply.length} chars).`);
   } catch (err) {

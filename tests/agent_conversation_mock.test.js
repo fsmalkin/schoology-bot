@@ -47,6 +47,13 @@ function toolAugmentResponse(id, addCalls) {
   };
 }
 
+function pendingDecisionResponse(id, action = "proceed") {
+  return {
+    id,
+    output_text: JSON.stringify({ action, reason: "Pending decision" }),
+  };
+}
+
 function seedState() {
   return {
     assignments: {
@@ -217,7 +224,7 @@ test("agent conversation cases (mock)", async () => {
     }),
     toolAugmentResponse("r12", []),
     textResponse("r13", "Which Lab did you mean?"),
-    toolGroupResponse("r14", "assignments"),
+    pendingDecisionResponse("r14", "proceed"),
     toolPlanResponse("r15", {
       action: "call_tool",
       tool: "update_assignment_status",

@@ -578,6 +578,31 @@ export function addAssignmentNote(db, { key, title, course, note }) {
   return { ok: true, key: targetKey, noteId: result.lastInsertRowid, assignment };
 }
 
+export function listAssignmentNotes(db, { keys = [], limitPerAssignment = 3 } = {}) {
+  if (!Array.isArray(keys) || keys.length === 0) return new Map();
+  const placeholders = keys.map(() => "?").join(",");
+  const rows = db
+    .prepare(
+      `
+      SELECT assignment_key AS assignmentKey, note, created_at AS createdAt
+      FROM assignment_notes
+      WHERE assignment_key IN (${placeholders})
+      ORDER BY created_at DESC
+    `
+    )
+    .all(keys);
+
+  const grouped = new Map();
+  for (const row of rows) {
+    if (!grouped.has(row.assignmentKey)) grouped.set(row.assignmentKey, []);
+    const list = grouped.get(row.assignmentKey);
+    if (list.length >= limitPerAssignment) continue;
+    list.push({ note: row.note, createdAt: row.createdAt });
+  }
+
+  return grouped;
+}
+
 export function scheduleReminder(db, { key, title, course, remindAt, message, replaceExisting = true }) {
   let targetKey = key || null;
   if (!targetKey && title) {

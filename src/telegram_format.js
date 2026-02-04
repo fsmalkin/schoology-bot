@@ -1,3 +1,5 @@
+import { normalizeAscii } from "./text_utils.js";
+
 export function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -35,6 +37,18 @@ function replaceHtmlFormatting(text) {
 
 function stripHtml(text) {
   return String(text || "").replace(/<[^>]+>/g, "");
+}
+
+function stripMarkdown(text) {
+  let out = String(text || "");
+  out = out.replace(/```/g, "");
+  out = out.replace(/`([^`]*)`/g, "$1");
+  out = out.replace(/\*\*(.+?)\*\*/g, "$1");
+  out = out.replace(/__(.+?)__/g, "$1");
+  out = out.replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, "$1$2");
+  out = out.replace(/(^|[^_])_([^_]+)_(?!_)/g, "$1$2");
+  out = out.replace(/^\s*#{1,6}\s+/gm, "");
+  return out;
 }
 
 function formatInline(text) {
@@ -77,7 +91,7 @@ function renderInline(text) {
 }
 
 export function renderTelegramHtml(text) {
-  let normalized = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  let normalized = normalizeAscii(String(text || "")).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   normalized = normalized.replace(/\u2022/g, "-");
   normalized = decodeEntities(normalized);
   normalized = replaceHtmlFormatting(normalized);
@@ -95,4 +109,16 @@ export function renderTelegramHtml(text) {
     output += renderInline(segment);
   }
   return output.trim();
+}
+
+export function renderTelegramPlain(text) {
+  let normalized = normalizeAscii(String(text || "")).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  normalized = normalized.replace(/\u2022/g, "-");
+  normalized = decodeEntities(normalized);
+  normalized = replaceHtmlFormatting(normalized);
+  normalized = stripHtml(normalized);
+  normalized = stripMarkdown(normalized);
+  normalized = normalized.replace(/\s+\n/g, "\n");
+  normalized = normalized.replace(/\n{3,}/g, "\n\n");
+  return normalized.trim();
 }

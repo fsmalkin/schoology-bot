@@ -1,6 +1,6 @@
-import { listAssignments } from "./db.js";
+import { listAssignments, listAssignmentNotes } from "./db.js";
 
-function toSummaryItem(row) {
+function toSummaryItem(row, notes = []) {
   return {
     key: row.key,
     course: row.course || "",
@@ -10,12 +10,14 @@ function toSummaryItem(row) {
     manualStatus: row.manualStatus || "",
     url: row.url || "",
     statusCategory: row.statusCategory || "",
+    notesCount: Number(row.notesCount || 0),
+    notes,
   };
 }
 
 export function buildDbSummary(
   db,
-  { includePending = true, includeIgnored = false, limit = 200 } = {}
+  { includePending = true, includeIgnored = false, limit = 200, includeNotes = true, notesLimit = 3 } = {}
 ) {
   const rows = listAssignments(db, {
     status: "missing",
@@ -23,11 +25,14 @@ export function buildDbSummary(
     includePending,
     limit,
   });
+  const keys = rows.map((row) => row.key);
+  const notesByKey = includeNotes ? listAssignmentNotes(db, { keys, limitPerAssignment: notesLimit }) : new Map();
   const actionable = [];
   const pending = [];
 
   for (const row of rows) {
-    const item = toSummaryItem(row);
+    const notes = notesByKey.get(row.key) || [];
+    const item = toSummaryItem(row, notes);
     if (row.statusCategory === "pending") {
       if (includePending) pending.push(item);
     } else {
