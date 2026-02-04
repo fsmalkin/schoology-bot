@@ -166,6 +166,7 @@ bot.on("message", async (msg) => {
       let typingTimer = null;
       let workingTimer = null;
       let workingMessageId = null;
+      let responseSent = false;
       const startTyping = async () => {
         try {
           await bot.sendChatAction(chatId, "typing");
@@ -187,6 +188,7 @@ bot.on("message", async (msg) => {
         typingTimer = setInterval(startTyping, TYPING_INTERVAL_MS);
         workingTimer = setTimeout(async () => {
           try {
+            if (responseSent) return;
             const msg = await bot.sendMessage(chatId, "Working on it...");
             workingMessageId = msg?.message_id || null;
           } catch (err) {
@@ -201,6 +203,7 @@ bot.on("message", async (msg) => {
         }
         const reply = await runAgentMessage({ chatId, text: combined });
         if (!reply) return;
+        responseSent = true;
         const formatted = renderTelegramHtml(reply);
         if (workingMessageId) {
           try {
