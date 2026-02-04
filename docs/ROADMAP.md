@@ -13,6 +13,7 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 - Daily summary delivery via Telegram.
 - Telegram agent runs as a single instance to avoid duplicate responses.
 - Incoming Telegram messages are batched briefly and the oldest dropped if too long.
+- Availability target: run via Docker with restart policy + health check; update with `docker compose up -d --build`.
 - Docker support included for easy server migration.
 - If using Twilio later, use Auth Token for now; plan to switch to API Key for server move.
 - Session-based login: use one-time interactive login locally; improve automated auth when moving to server.

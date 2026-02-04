@@ -20,6 +20,15 @@ It runs on your machine today and is ready to move to a server later.
 2. Run `docker compose up -d --build`.
 3. Check logs with `docker compose logs -f`.
 
+## Uptime and Updates (Docker)
+For higher uptime and safer updates, use Docker with auto-restart and health checks.
+
+Common commands:
+- Start or update: `docker compose up -d --build`
+- Check health: `docker compose ps`
+- Tail logs: `docker compose logs -f`
+- Stop: `docker compose down`
+
 ## Run modes
 - `npm run scrape` scrapes and updates local state.
 - `npm run send` sends the latest summary.
