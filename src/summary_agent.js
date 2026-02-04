@@ -30,7 +30,7 @@ function buildInstructions() {
     "2) Missing but waiting on teacher/grade (Pending)",
     "3) Reminders (Today, Overdue, Upcoming) if provided",
     "For each assignment include: course, title, due date if present, and status.",
-    "If notes are present, show them under the assignment as short bullet lines.",
+    "If notes are present, add a line starting with 'Note:' immediately after the assignment.",
     "If a URL is provided, put it on its own line after the item.",
     "Keep it concise.",
   ].join(" ");
