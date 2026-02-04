@@ -20,6 +20,7 @@ const logPath =
 const lockPath = path.join(config.paths.dataDir, "telegram_agent.lock");
 const queueByChat = new Map();
 const timerByChat = new Map();
+const processingByChat = new Set();
 const processedIds = new Map();
 const MESSAGE_DEDUP_MS = 5 * 60 * 1000;
 const BATCH_DELAY_MS = 1200;
@@ -153,93 +154,118 @@ bot.on("message", async (msg) => {
     if (now - ts > MESSAGE_DEDUP_MS) processedIds.delete(id);
   }
 
+  scheduleProcessing(chatId);
+});
+
+function scheduleProcessing(chatId) {
   if (timerByChat.has(chatId)) return;
   timerByChat.set(
     chatId,
-    setTimeout(async () => {
+    setTimeout(() => {
       timerByChat.delete(chatId);
-      const items = queueByChat.get(chatId) || [];
-      queueByChat.set(chatId, []);
-      if (items.length === 0) return;
-      const combined = batchMessages(items, MAX_BATCH_CHARS);
-
-      let typingTimer = null;
-      let workingTimer = null;
-      let workingMessageId = null;
-      let responseSent = false;
-      const startTyping = async () => {
-        try {
-          await bot.sendChatAction(chatId, "typing");
-        } catch (err) {
-          // ignore typing errors
-        }
-      };
-      const stopTyping = () => {
-        if (typingTimer) clearInterval(typingTimer);
-        if (workingTimer) clearTimeout(workingTimer);
-        typingTimer = null;
-        workingTimer = null;
-      };
-
-      try {
-        appendLog(`Received batch from ${chatId} (${items.length} messages).`);
-
-        await startTyping();
-        typingTimer = setInterval(startTyping, TYPING_INTERVAL_MS);
-        workingTimer = setTimeout(async () => {
-          try {
-            if (responseSent) return;
-            const msg = await bot.sendMessage(chatId, "Working on it...");
-            workingMessageId = msg?.message_id || null;
-          } catch (err) {
-            // ignore
-          }
-        }, WORKING_MESSAGE_DELAY_MS);
-
-        if (combined === "/ping" || combined.toLowerCase() === "ping") {
-          await bot.sendMessage(chatId, "pong");
-          appendLog(`Sent pong to ${chatId}.`);
-          return;
-        }
-        const reply = await runAgentMessage({ chatId, text: combined });
-        if (!reply) return;
-        responseSent = true;
-        const formatted = renderTelegramHtml(reply);
-        if (workingMessageId) {
-          try {
-            await bot.editMessageText(formatted, {
-              chat_id: chatId,
-              message_id: workingMessageId,
-              disable_web_page_preview: true,
-              parse_mode: "HTML",
-            });
-          } catch (err) {
-            await bot.sendMessage(chatId, formatted, {
-              disable_web_page_preview: true,
-              parse_mode: "HTML",
-            });
-          }
-        } else {
-          await bot.sendMessage(chatId, formatted, {
-            disable_web_page_preview: true,
-            parse_mode: "HTML",
-          });
-        }
-        appendLog(`Replied to ${chatId} (${reply.length} chars).`);
-      } catch (err) {
-        console.error("Agent error:", err?.message || err);
-        try {
-          await bot.sendMessage(chatId, "Sorry, I hit an error while processing that.");
-        } catch (sendErr) {
-          // ignore
-        }
-        appendLog(`Error replying to ${chatId}: ${err?.stack || err?.message || err}`);
-      } finally {
-        stopTyping();
-      }
+      processQueue(chatId);
     }, BATCH_DELAY_MS)
   );
-});
+}
+
+async function processQueue(chatId) {
+  if (processingByChat.has(chatId)) {
+    scheduleProcessing(chatId);
+    return;
+  }
+  processingByChat.add(chatId);
+
+  let typingTimer = null;
+  let workingTimer = null;
+  let workingMessageId = null;
+  let responseSent = false;
+
+  const startTyping = async () => {
+    try {
+      await bot.sendChatAction(chatId, "typing");
+    } catch (err) {
+      // ignore typing errors
+    }
+  };
+  const stopTyping = () => {
+    if (typingTimer) clearInterval(typingTimer);
+    if (workingTimer) clearTimeout(workingTimer);
+    typingTimer = null;
+    workingTimer = null;
+  };
+
+  try {
+    const items = queueByChat.get(chatId) || [];
+    queueByChat.set(chatId, []);
+    if (items.length === 0) return;
+    const combined = batchMessages(items, MAX_BATCH_CHARS);
+
+    appendLog(`Received batch from ${chatId} (${items.length} messages).`);
+
+    await startTyping();
+    typingTimer = setInterval(startTyping, TYPING_INTERVAL_MS);
+    workingTimer = setTimeout(async () => {
+      try {
+        if (responseSent) return;
+        const msg = await bot.sendMessage(chatId, "Working on it...");
+        workingMessageId = msg?.message_id || null;
+      } catch (err) {
+        // ignore
+      }
+    }, WORKING_MESSAGE_DELAY_MS);
+
+    if (combined === "/ping" || combined.toLowerCase() === "ping") {
+      responseSent = true;
+      await bot.sendMessage(chatId, "pong");
+      appendLog(`Sent pong to ${chatId}.`);
+      return;
+    }
+
+    const reply = await runAgentMessage({ chatId, text: combined });
+    responseSent = true;
+    if (workingTimer) {
+      clearTimeout(workingTimer);
+      workingTimer = null;
+    }
+    if (!reply) return;
+    const formatted = renderTelegramHtml(reply);
+    if (workingMessageId) {
+      try {
+        await bot.editMessageText(formatted, {
+          chat_id: chatId,
+          message_id: workingMessageId,
+          disable_web_page_preview: true,
+          parse_mode: "HTML",
+        });
+      } catch (err) {
+        await bot.sendMessage(chatId, formatted, {
+          disable_web_page_preview: true,
+          parse_mode: "HTML",
+        });
+      }
+    } else {
+      await bot.sendMessage(chatId, formatted, {
+        disable_web_page_preview: true,
+        parse_mode: "HTML",
+      });
+    }
+    appendLog(`Replied to ${chatId} (${reply.length} chars).`);
+  } catch (err) {
+    console.error("Agent error:", err?.message || err);
+    try {
+      await bot.sendMessage(chatId, "Sorry, I hit an error while processing that.");
+    } catch (sendErr) {
+      // ignore
+    }
+    appendLog(`Error replying to ${chatId}: ${err?.stack || err?.message || err}`);
+  } finally {
+    stopTyping();
+    processingByChat.delete(chatId);
+    if ((queueByChat.get(chatId) || []).length > 0) {
+      scheduleProcessing(chatId);
+    }
+  }
+}
 
 process.on("SIGINT", () => {
   releaseLock();

@@ -30,90 +30,170 @@ import { statusGuideText, isIgnoredStatus, isPendingStatus } from "./statuses.js
 import { isRepetitiveOutput, sanitizeRepeatedText } from "./text_utils.js";
 import { runScrape } from "./tasks.js";
 
-function buildSystemPrompt() {
+function buildResponsePrompt() {
   return [
     "You are a Schoology assistant.",
-    "Use tools to fetch assignments, update statuses, add notes, and schedule reminders.",
-    "If a request is ambiguous, ask a clarifying question.",
-    "Never invent assignments or data.",
-    "Do not claim updates unless tool results confirm success.",
-    "If the user provides numbered updates, use apply_numbered_statuses.",
-    "If the user provides explicit titles and statuses, use bulk_update_assignment_statuses.",
+    "Use the provided tool results as the source of truth.",
+    "Never claim updates unless tool results confirm success.",
+    "If tool results include errors, explain them briefly and ask for the missing detail.",
     `Manual status codes: ${statusGuideText()}.`,
     "Default reporting buckets: Actionable, Pending, Ignored. Hide Ignored by default unless asked.",
     "When confirming status updates, include a short list of items waiting on teacher/grade (No grade put in yet, Waiting on teacher).",
-    "You can create, list, update, or delete personal tasks with reminders (not tied to Schoology).",
-    "You can run a fresh Schoology scrape on demand if the user asks to check again.",
-    "When refreshing, only auto-clear ignored manual statuses (A/B/C) for resolved items with no notes; keep pending and custom statuses.",
     "If the user suggests improvements or feature ideas, ask if they want you to log a feature request.",
-    "Only open bug reports when the user explicitly asks to file a bug or report an error.",
     "Respond in Telegram-friendly HTML (use <b>, <code>, <pre> tags; avoid Markdown).",
     "Keep responses concise and action-oriented.",
   ].join(" ");
 }
 
-function toolDefinitions() {
+function deepClone(value) {
+  if (Array.isArray(value)) return value.map((item) => deepClone(item));
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value).map(([key, val]) => [key, deepClone(val)]);
+    return Object.fromEntries(entries);
+  }
+  return value;
+}
+
+function allowNullValue(prop) {
+  const next = deepClone(prop);
+  if (next && typeof next === "object") {
+    if (Array.isArray(next.enum) && !next.enum.includes(null)) {
+      next.enum = [...next.enum, null];
+    }
+    if (Array.isArray(next.type)) {
+      if (!next.type.includes("null")) next.type = [...next.type, "null"];
+    } else if (typeof next.type === "string") {
+      next.type = [next.type, "null"];
+    }
+  }
+  return next;
+}
+
+function buildStrictParams(properties, requiredKeys = []) {
+  const allKeys = Object.keys(properties);
+  const requiredSet = new Set(requiredKeys);
+  const nextProps = {};
+  for (const [key, prop] of Object.entries(properties)) {
+    nextProps[key] = requiredSet.has(key) ? deepClone(prop) : allowNullValue(prop);
+  }
+  return {
+    type: "object",
+    properties: nextProps,
+    required: allKeys,
+    additionalProperties: false,
+  };
+}
+
+const TOOL_NAMES = [
+  "list_assignments",
+  "update_assignment_status",
+  "bulk_update_assignment_statuses",
+  "apply_numbered_statuses",
+  "add_assignment_note",
+  "schedule_reminder",
+  "list_assignment_reminders",
+  "update_assignment_reminder",
+  "delete_assignment_reminder",
+  "refresh_schoology",
+  "create_task",
+  "list_tasks",
+  "update_task_status",
+  "update_task",
+  "delete_task",
+  "open_bug_report",
+  "open_feature_request",
+];
+
+const TOOL_GROUPS = {
+  assignments: [
+    "list_assignments",
+    "update_assignment_status",
+    "bulk_update_assignment_statuses",
+    "apply_numbered_statuses",
+    "add_assignment_note",
+    "schedule_reminder",
+    "list_assignment_reminders",
+    "update_assignment_reminder",
+    "delete_assignment_reminder",
+    "refresh_schoology",
+  ],
+  tasks: ["create_task", "list_tasks", "update_task_status", "update_task", "delete_task"],
+  bugs: ["open_bug_report", "open_feature_request"],
+};
+
+function normalizeToolName(value, allowedTools = TOOL_NAMES) {
+  if (!value || typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (allowedTools.includes(trimmed)) return trimmed;
+  const lower = trimmed.toLowerCase();
+  const direct = allowedTools.find((name) => name.toLowerCase() === lower);
+  if (direct) return direct;
+  const compact = lower.replace(/[^a-z0-9]/g, "");
+  const matched = allowedTools.find(
+    (name) => name.toLowerCase().replace(/[^a-z0-9]/g, "") === compact
+  );
+  return matched || null;
+}
+
+export function toolDefinitions() {
   return [
     {
       type: "function",
       name: "list_assignments",
       description: "List assignments with optional filters.",
-      parameters: {
-        type: "object",
-        properties: {
-          status: {
-            type: "string",
-            enum: ["missing", "resolved", "all"],
-            description: "Filter by missing/resolved/all.",
-          },
-          course: {
-            type: "string",
-            description: "Filter by course name (substring).",
-          },
-          limit: {
-            type: "integer",
-            minimum: 1,
-            maximum: 200,
-            description: "Max number of assignments to return.",
-          },
-          includeIgnored: {
-            type: "boolean",
-            description: "Include ignored manual statuses (default false).",
-          },
-          includePending: {
-            type: "boolean",
-            description: "Include pending manual statuses (default true).",
-          },
-          bucketed: {
-            type: "boolean",
-            description: "Return assignments grouped into actionable/pending/ignored buckets.",
-          },
+      strict: true,
+      parameters: buildStrictParams({
+        status: {
+          type: "string",
+          enum: ["missing", "resolved", "all"],
+          description: "Filter by missing/resolved/all.",
         },
-        required: [],
-      },
+        course: {
+          type: "string",
+          description: "Filter by course name (substring).",
+        },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 200,
+          description: "Max number of assignments to return.",
+        },
+        includeIgnored: {
+          type: "boolean",
+          description: "Include ignored manual statuses (default false).",
+        },
+        includePending: {
+          type: "boolean",
+          description: "Include pending manual statuses (default true).",
+        },
+        bucketed: {
+          type: "boolean",
+          description: "Return assignments grouped into actionable/pending/ignored buckets.",
+        },
+      }),
     },
     {
       type: "function",
       name: "update_assignment_status",
       description: "Set a manual status for an assignment.",
-      parameters: {
-        type: "object",
-        properties: {
+      strict: true,
+      parameters: buildStrictParams(
+        {
           key: { type: "string", description: "Assignment key." },
           title: { type: "string", description: "Assignment title to match." },
           course: { type: "string", description: "Course name to match." },
           status: { type: "string", description: "New status text." },
         },
-        required: ["status"],
-      },
+        ["status"]
+      ),
     },
     {
       type: "function",
       name: "bulk_update_assignment_statuses",
       description: "Set manual statuses for multiple assignments at once.",
-      parameters: {
-        type: "object",
-        properties: {
+      strict: true,
+      parameters: buildStrictParams(
+        {
           updates: {
             type: "array",
             items: {
@@ -124,20 +204,21 @@ function toolDefinitions() {
                 course: { type: "string" },
                 status: { type: "string" },
               },
-              required: ["status"],
+              required: ["key", "title", "course", "status"],
+              additionalProperties: false,
             },
           },
         },
-        required: ["updates"],
-      },
+        ["updates"]
+      ),
     },
     {
       type: "function",
       name: "apply_numbered_statuses",
       description: "Apply statuses by index using the current missing list ordering.",
-      parameters: {
-        type: "object",
-        properties: {
+      strict: true,
+      parameters: buildStrictParams(
+        {
           listStatus: {
             type: "string",
             enum: ["missing", "resolved", "all"],
@@ -152,34 +233,35 @@ function toolDefinitions() {
                 status: { type: "string" },
               },
               required: ["index", "status"],
+              additionalProperties: false,
             },
           },
         },
-        required: ["statusByIndex"],
-      },
+        ["statusByIndex"]
+      ),
     },
     {
       type: "function",
       name: "add_assignment_note",
       description: "Add a note to an assignment.",
-      parameters: {
-        type: "object",
-        properties: {
+      strict: true,
+      parameters: buildStrictParams(
+        {
           key: { type: "string", description: "Assignment key." },
           title: { type: "string", description: "Assignment title to match." },
           course: { type: "string", description: "Course name to match." },
           note: { type: "string", description: "Note text." },
         },
-        required: ["note"],
-      },
+        ["note"]
+      ),
     },
     {
       type: "function",
       name: "schedule_reminder",
       description: "Schedule a reminder for an assignment.",
-      parameters: {
-        type: "object",
-        properties: {
+      strict: true,
+      parameters: buildStrictParams(
+        {
           key: { type: "string", description: "Assignment key." },
           title: { type: "string", description: "Assignment title to match." },
           course: { type: "string", description: "Course name to match." },
@@ -196,139 +278,133 @@ function toolDefinitions() {
             description: "Replace existing pending reminder(s) for the same assignment.",
           },
         },
-        required: ["remindAt"],
-      },
+        ["remindAt"]
+      ),
     },
     {
       type: "function",
       name: "list_assignment_reminders",
       description: "List reminders for an assignment.",
-      parameters: {
-        type: "object",
-        properties: {
+      strict: true,
+      parameters: buildStrictParams(
+        {
           key: { type: "string", description: "Assignment key." },
           status: { type: "string", enum: ["pending", "sent", "all"] },
         },
-        required: ["key"],
-      },
+        ["key"]
+      ),
     },
     {
       type: "function",
       name: "update_assignment_reminder",
       description: "Update a reminder time or message.",
-      parameters: {
-        type: "object",
-        properties: {
+      strict: true,
+      parameters: buildStrictParams(
+        {
           id: { type: "integer", description: "Reminder id." },
           remindAt: { type: "string", description: "Reminder time in ISO-8601 format." },
           message: { type: "string", description: "Reminder message." },
         },
-        required: ["id"],
-      },
+        ["id"]
+      ),
     },
     {
       type: "function",
       name: "delete_assignment_reminder",
       description: "Delete a reminder.",
-      parameters: {
-        type: "object",
-        properties: {
+      strict: true,
+      parameters: buildStrictParams(
+        {
           id: { type: "integer", description: "Reminder id." },
         },
-        required: ["id"],
-      },
+        ["id"]
+      ),
     },
     {
       type: "function",
       name: "refresh_schoology",
       description: "Run a fresh Schoology scrape and reconcile manual statuses using the safe policy.",
-      parameters: {
-        type: "object",
-        properties: {
-          notes: { type: "string", description: "Optional reason or note for audit." },
-        },
-        required: [],
-      },
+      strict: true,
+      parameters: buildStrictParams({
+        notes: { type: "string", description: "Optional reason or note for audit." },
+      }),
     },
     {
       type: "function",
       name: "create_task",
       description: "Create a personal task with a reminder.",
-      parameters: {
-        type: "object",
-        properties: {
+      strict: true,
+      parameters: buildStrictParams(
+        {
           title: { type: "string", description: "Task title." },
           remindAt: { type: "string", description: "Reminder time in ISO-8601 format." },
           message: { type: "string", description: "Optional reminder note." },
         },
-        required: ["title", "remindAt"],
-      },
+        ["title", "remindAt"]
+      ),
     },
     {
       type: "function",
       name: "list_tasks",
       description: "List tasks with optional filters.",
-      parameters: {
-        type: "object",
-        properties: {
-          status: {
-            type: "string",
-            enum: ["pending", "done", "all"],
-            description: "Filter by status.",
-          },
-          start: { type: "string", description: "ISO start datetime filter." },
-          end: { type: "string", description: "ISO end datetime filter." },
+      strict: true,
+      parameters: buildStrictParams({
+        status: {
+          type: "string",
+          enum: ["pending", "done", "all"],
+          description: "Filter by status.",
         },
-        required: [],
-      },
+        start: { type: "string", description: "ISO start datetime filter." },
+        end: { type: "string", description: "ISO end datetime filter." },
+      }),
     },
     {
       type: "function",
       name: "update_task_status",
       description: "Mark a task as done or pending.",
-      parameters: {
-        type: "object",
-        properties: {
+      strict: true,
+      parameters: buildStrictParams(
+        {
           id: { type: "integer", description: "Task id." },
           status: { type: "string", description: "done or pending." },
         },
-        required: ["id", "status"],
-      },
+        ["id", "status"]
+      ),
     },
     {
       type: "function",
       name: "update_task",
       description: "Update a task title, reminder time, or note.",
-      parameters: {
-        type: "object",
-        properties: {
+      strict: true,
+      parameters: buildStrictParams(
+        {
           id: { type: "integer", description: "Task id." },
           title: { type: "string", description: "Task title." },
           remindAt: { type: "string", description: "Reminder time in ISO-8601 format." },
           message: { type: "string", description: "Optional reminder note." },
         },
-        required: ["id"],
-      },
+        ["id"]
+      ),
     },
     {
       type: "function",
       name: "delete_task",
       description: "Delete a task.",
-      parameters: {
-        type: "object",
-        properties: {
+      strict: true,
+      parameters: buildStrictParams(
+        {
           id: { type: "integer", description: "Task id." },
         },
-        required: ["id"],
-      },
+        ["id"]
+      ),
     },
     {
       type: "function",
       name: "open_bug_report",
       description: "Log a bug locally and optionally open a GitHub issue.",
-      parameters: {
-        type: "object",
-        properties: {
+      strict: true,
+      parameters: buildStrictParams(
+        {
           title: { type: "string", description: "Short bug title." },
           body: { type: "string", description: "Bug details and steps to reproduce." },
           labels: {
@@ -337,16 +413,16 @@ function toolDefinitions() {
             description: "Optional GitHub labels.",
           },
         },
-        required: ["title", "body"],
-      },
+        ["title", "body"]
+      ),
     },
     {
       type: "function",
       name: "open_feature_request",
       description: "Log a feature request locally and optionally open a GitHub issue.",
-      parameters: {
-        type: "object",
-        properties: {
+      strict: true,
+      parameters: buildStrictParams(
+        {
           title: { type: "string", description: "Short request title." },
           body: { type: "string", description: "Request details and desired outcome." },
           labels: {
@@ -355,8 +431,8 @@ function toolDefinitions() {
             description: "Optional GitHub labels.",
           },
         },
-        required: ["title", "body"],
-      },
+        ["title", "body"]
+      ),
     },
   ];
 }
@@ -377,23 +453,6 @@ function extractText(response) {
       return "";
     })
     .join("");
-}
-
-function extractToolCalls(response) {
-  const output = response?.output;
-  if (!Array.isArray(output)) return [];
-  return output
-    .map((item) => {
-      if (!item) return null;
-      if (!["tool_call", "function_call", "custom_tool_call"].includes(item.type)) return null;
-      const name = item.name || item.function?.name;
-      const args = item.arguments || item.function?.arguments || item.input;
-      if (!name) return null;
-      const callId = item.call_id || item.callId || item.id;
-      const outputType = item.type === "custom_tool_call" ? "custom_tool_call_output" : "function_call_output";
-      return { id: callId, name, arguments: args, outputType };
-    })
-    .filter(Boolean);
 }
 
 function parseArguments(args) {
@@ -439,22 +498,330 @@ async function createResponseWithRetry(client, payload, retries = 2, baseDelayMs
   }
 }
 
-const DIRECT_TOOL_NAMES = new Set([
-  "update_assignment_status",
-  "bulk_update_assignment_statuses",
-  "apply_numbered_statuses",
-  "add_assignment_note",
-  "schedule_reminder",
-  "update_assignment_reminder",
-  "delete_assignment_reminder",
-  "create_task",
-  "update_task_status",
-  "update_task",
-  "delete_task",
-  "refresh_schoology",
-  "open_bug_report",
-  "open_feature_request",
-]);
+function parsePlanArgs(value) {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch (err) {
+    return null;
+  }
+}
+
+function normalizeToolPlan(raw, allowedTools = TOOL_NAMES) {
+  const plan = raw && typeof raw === "object" ? raw : {};
+  let action =
+    typeof plan.action === "string" && ["call_tool", "call_tools"].includes(plan.action)
+      ? plan.action
+      : "call_tool";
+  const tool = normalizeToolName(plan.tool, allowedTools);
+  const args = parsePlanArgs(plan.args);
+  const calls = Array.isArray(plan.calls)
+    ? plan.calls
+        .map((call) => {
+          if (!call || typeof call !== "object") return null;
+          const name = normalizeToolName(call.tool, allowedTools);
+          const callArgs = parsePlanArgs(call.args);
+          if (!name) return null;
+          return { tool: name, args: callArgs || {} };
+        })
+        .filter(Boolean)
+    : null;
+  const resolvedTool = tool || (calls && calls.length > 0 ? calls[0].tool : null);
+  if (action === "call_tools" && (!calls || calls.length === 0)) {
+    action = "call_tool";
+  }
+  return { action, tool: resolvedTool, args, calls };
+}
+
+function buildToolGroupSchema() {
+  return {
+    type: "object",
+    properties: {
+      group: {
+        type: "string",
+        enum: ["assignments", "tasks", "bugs", "none"],
+      },
+      reason: { type: "string" },
+    },
+    required: ["group", "reason"],
+    additionalProperties: false,
+  };
+}
+
+function buildToolPlanSchema(allowedTools = TOOL_NAMES) {
+  return {
+    type: "object",
+    properties: {
+      action: {
+        type: "string",
+        enum: ["call_tool", "call_tools"],
+      },
+      tool: {
+        type: "string",
+        enum: allowedTools,
+      },
+      args: {
+        type: ["string", "null"],
+        description: "JSON string with arguments for the single tool call.",
+      },
+      calls: {
+        type: ["array", "null"],
+        items: {
+          type: "object",
+          properties: {
+            tool: {
+              type: "string",
+              enum: allowedTools,
+            },
+            args: {
+              type: ["string", "null"],
+            },
+          },
+          required: ["tool", "args"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["action", "tool", "args", "calls"],
+    additionalProperties: false,
+  };
+}
+
+function buildToolGroupInstructions() {
+  return [
+    "Return JSON only. No extra text.",
+    "Pick group=assignments for Schoology, assignments, grades, missing work, reminders, notes, status updates, refresh/sync.",
+    "Pick group=tasks for personal tasks/reminders not tied to assignments.",
+    "Pick group=bugs for requests to file bugs or feature requests.",
+    "Pick group=none only for greetings, thanks, or small talk.",
+    "If unsure, choose group=assignments.",
+  ].join(" ");
+}
+
+function buildToolPlanInstructions(allowedTools = TOOL_NAMES) {
+  return [
+    "Return JSON only. No extra text.",
+    "Choose the single best tool (or multiple tools) to satisfy the user request.",
+    "Always call tools for assignment/reminder/task data. Do not respond with the answer.",
+    "If exactly one tool is needed, use action=call_tool with tool + args.",
+    "If multiple tools are needed, use action=call_tools with calls in order.",
+    "Always set tool to the primary tool (for call_tools, use the first tool in calls).",
+    "For args, provide a JSON string like \"{}\" or \"{\\\"status\\\":\\\"missing\\\"}\".",
+    `Allowed tools: ${allowedTools.join(", ")}.`,
+    "Examples:",
+    "User: refresh my assignments -> {\"action\":\"call_tool\",\"tool\":\"refresh_schoology\",\"args\":\"{}\",\"calls\":null}",
+    "User: refresh and list missing -> {\"action\":\"call_tools\",\"tool\":null,\"args\":null,\"calls\":[{\"tool\":\"refresh_schoology\",\"args\":\"{}\"},{\"tool\":\"list_assignments\",\"args\":\"{\\\"status\\\":\\\"missing\\\",\\\"includePending\\\":true,\\\"includeIgnored\\\":false,\\\"bucketed\\\":true}\"}]}",
+    "User: what are my missing assignments -> {\"action\":\"call_tool\",\"tool\":\"list_assignments\",\"args\":\"{\\\"status\\\":\\\"missing\\\",\\\"includePending\\\":true,\\\"includeIgnored\\\":false,\\\"bucketed\\\":true}\",\"calls\":null}",
+  ].join(" ");
+}
+
+function buildToolAugmentSchema(allowedTools = TOOL_NAMES) {
+  return {
+    type: "object",
+    properties: {
+      add_calls: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            tool: { type: "string", enum: allowedTools },
+            args: { type: ["string", "null"] },
+          },
+          required: ["tool", "args"],
+          additionalProperties: false,
+        },
+      },
+      reason: { type: "string" },
+    },
+    required: ["add_calls", "reason"],
+    additionalProperties: false,
+  };
+}
+
+function buildToolAugmentInstructions() {
+  return [
+    "Return JSON only. No extra text.",
+    "You are checking if the current tool plan fully satisfies the user request.",
+    "If additional tools are needed, return them in add_calls in the order they should run AFTER the current plan.",
+    "If no additional tools are needed, return an empty add_calls array.",
+    "Only add tools if the user explicitly asked for extra actions beyond the current plan.",
+    "For args, provide a JSON string like \"{}\" or \"{\\\"status\\\":\\\"missing\\\"}\".",
+  ].join(" ");
+}
+
+async function pickToolGroup(client, config, text, previousResponseId) {
+  const schema = buildToolGroupSchema();
+  const response = await createResponseWithRetry(client, {
+    model: config.openai.model,
+    reasoning: { effort: "low" },
+    max_output_tokens: 120,
+    instructions: buildToolGroupInstructions(),
+    input: text,
+    text: {
+      format: {
+        type: "json_schema",
+        name: "tool_group",
+        strict: true,
+        schema,
+      },
+    },
+    tool_choice: "none",
+    parallel_tool_calls: false,
+    previous_response_id: previousResponseId || undefined,
+  });
+
+  const raw = extractText(response);
+  try {
+    const parsed = JSON.parse(raw);
+    const group = typeof parsed?.group === "string" ? parsed.group : "assignments";
+    if (["assignments", "tasks", "bugs", "none"].includes(group)) return group;
+    return "assignments";
+  } catch (err) {
+    return "assignments";
+  }
+}
+
+async function pickToolPlan(client, config, text, previousResponseId, allowedTools = TOOL_NAMES) {
+  const schema = buildToolPlanSchema(allowedTools);
+  const runPlan = async (instructions, name) => {
+    const response = await createResponseWithRetry(client, {
+      model: config.openai.model,
+      reasoning: { effort: "low" },
+      max_output_tokens: 280,
+      instructions,
+      input: text,
+      text: {
+        format: {
+          type: "json_schema",
+          name,
+          strict: true,
+          schema,
+        },
+      },
+      tool_choice: "none",
+      parallel_tool_calls: false,
+      previous_response_id: previousResponseId || undefined,
+    });
+    const raw = extractText(response);
+    try {
+      const parsed = JSON.parse(raw);
+      return normalizeToolPlan(parsed, allowedTools);
+    } catch (err) {
+      return normalizeToolPlan(null, allowedTools);
+    }
+  };
+
+  const first = await runPlan(buildToolPlanInstructions(allowedTools), "tool_plan");
+  const isValidFirst =
+    first.tool && (first.action === "call_tool" || (first.action === "call_tools" && first.calls));
+  if (isValidFirst) return first;
+
+  const retryInstructions = `${buildToolPlanInstructions(allowedTools)} Tool must be one of: ${allowedTools.join(
+    ", "
+  )}. Tool cannot be null.`;
+  return await runPlan(retryInstructions, "tool_plan_retry");
+}
+
+async function augmentToolPlan(client, config, text, plan, previousResponseId, allowedTools = TOOL_NAMES) {
+  if (!plan || plan.action !== "call_tool" || !plan.tool) return plan;
+  const schema = buildToolAugmentSchema(allowedTools);
+  const input = `User message:\n${text}\n\nCurrent plan:\n${JSON.stringify({
+    action: plan.action,
+    tool: plan.tool,
+    args: plan.args || {},
+  })}`;
+  const response = await createResponseWithRetry(client, {
+    model: config.openai.model,
+    reasoning: { effort: "low" },
+    max_output_tokens: 200,
+    instructions: buildToolAugmentInstructions(),
+    input,
+    text: {
+      format: {
+        type: "json_schema",
+        name: "tool_augments",
+        strict: true,
+        schema,
+      },
+    },
+    tool_choice: "none",
+    parallel_tool_calls: false,
+    previous_response_id: previousResponseId || undefined,
+  });
+
+  const raw = extractText(response);
+  try {
+    const parsed = JSON.parse(raw);
+    const addCalls = Array.isArray(parsed?.add_calls)
+      ? parsed.add_calls
+          .map((call) => {
+            if (!call || typeof call !== "object") return null;
+            const name = normalizeToolName(call.tool, allowedTools);
+            const callArgs = parsePlanArgs(call.args);
+            if (!name) return null;
+            return { tool: name, args: callArgs || {} };
+          })
+          .filter(Boolean)
+      : [];
+    if (addCalls.length === 0) return plan;
+    return {
+      action: "call_tools",
+      tool: plan.tool,
+      args: plan.args,
+      calls: [{ tool: plan.tool, args: plan.args || {} }, ...addCalls],
+    };
+  } catch (err) {
+    return plan;
+  }
+}
+
+export async function planAction(client, config, text, previousResponseId) {
+  const group = await pickToolGroup(client, config, text, previousResponseId);
+  if (group === "none") {
+    return { action: "respond", tool: null, args: null, calls: null, message: null };
+  }
+  const allowedTools = TOOL_GROUPS[group] || TOOL_NAMES;
+  const plan = await pickToolPlan(client, config, text, previousResponseId, allowedTools);
+  const augmented = await augmentToolPlan(client, config, text, plan, previousResponseId, allowedTools);
+  return {
+    action: augmented.action,
+    tool: augmented.tool,
+    args: augmented.args,
+    calls: augmented.calls,
+    message: null,
+  };
+}
+
+function normalizeToolArgs(toolName, args) {
+  const tool = toolDefinitions().find((entry) => entry.name === toolName);
+  const props = tool?.parameters?.properties;
+  const base = args && typeof args === "object" ? args : {};
+  if (!props || typeof props !== "object") return base;
+  const filled = {};
+  for (const key of Object.keys(props)) {
+    if (Object.prototype.hasOwnProperty.call(base, key)) {
+      filled[key] = base[key];
+    } else {
+      filled[key] = null;
+    }
+  }
+  return filled;
+}
+
+function buildFinalInput(text, draftMessage, toolResults) {
+  const parts = [`User message:\\n${text}`];
+  if (toolResults && toolResults.length > 0) {
+    parts.push(`Tool results (JSON):\\n${JSON.stringify(toolResults)}`);
+  }
+  if (draftMessage) {
+    parts.push(`Draft response (use if helpful):\\n${draftMessage}`);
+  }
+  return parts.join("\\n\\n");
+}
 
 function formatAssignmentLabel(assignment) {
   if (!assignment) return "Unknown assignment";
@@ -768,7 +1135,12 @@ async function maybeCompact(client, config, chatId, chatState, responseId) {
 
 function isInvalidPreviousResponse(err) {
   const message = String(err?.message || err || "").toLowerCase();
-  return message.includes("previous_response_id") || message.includes("response_id") || message.includes("not found");
+  return (
+    message.includes("previous_response_id") ||
+    message.includes("response_id") ||
+    message.includes("not found") ||
+    message.includes("no tool output found")
+  );
 }
 
 export async function runAgentMessage({ chatId, text, clientOverride }) {
@@ -781,95 +1153,102 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
   const chatState = getChatState(db, chatId);
   const client = clientOverride || new OpenAI({ apiKey: config.openai.apiKey });
 
-  const basePayload = {
-    model: config.openai.model,
-    reasoning: { effort: config.openai.reasoningEffort },
-    max_output_tokens: config.openai.maxOutputTokens,
-    instructions: buildSystemPrompt(),
-    input: text,
-    tools: toolDefinitions(),
-    tool_choice: "auto",
-  };
-
-  let response;
+  const previousResponseId = chatState.lastResponseId || undefined;
+  let plan;
   try {
-    response = await createResponseWithRetry(client, {
-      ...basePayload,
-      previous_response_id: chatState.lastResponseId || undefined,
-    });
+    plan = await planAction(client, config, text, previousResponseId);
   } catch (err) {
-    if (chatState.lastResponseId && isInvalidPreviousResponse(err)) {
+    if (previousResponseId && isInvalidPreviousResponse(err)) {
       resetChatState(db, chatId);
-      response = await createResponseWithRetry(client, basePayload);
-    } else if (chatState.lastResponseId && isRetryableError(err)) {
-      // Fallback: retry once without prior context if the server errors out.
-      response = await createResponseWithRetry(client, basePayload);
+      plan = await planAction(client, config, text, undefined);
+    } else if (previousResponseId && isRetryableError(err)) {
+      plan = await planAction(client, config, text, undefined);
     } else {
       throw err;
     }
   }
 
-  let currentResponse = response;
-  while (true) {
-    const toolCalls = extractToolCalls(currentResponse);
-    if (toolCalls.length === 0) break;
+  let calls = [];
+  if (plan.action === "call_tool" && plan.tool) {
+    calls = [{ tool: plan.tool, args: plan.args || {} }];
+  } else if (plan.action === "call_tools" && Array.isArray(plan.calls)) {
+    calls = plan.calls;
+  }
 
-    const toolOutputs = [];
-    const executed = [];
-    for (const call of toolCalls) {
-      const output = await runTool(db, call);
-      executed.push({ call, output });
-      toolOutputs.push({
-        type: call.outputType,
-        call_id: call.id,
-        output: JSON.stringify(output),
+  const executed = [];
+  for (const call of calls) {
+    const normalizedTool = normalizeToolName(call?.tool);
+    if (!call || !normalizedTool) {
+      executed.push({
+        call: { name: call?.tool || "unknown", arguments: call?.args || {} },
+        output: { ok: false, error: "Invalid or missing tool name." },
       });
+      continue;
     }
+    const normalizedArgs = normalizeToolArgs(normalizedTool, call.args);
+    const output = await runTool(db, { name: normalizedTool, arguments: normalizedArgs });
+    executed.push({ call: { name: normalizedTool, arguments: normalizedArgs }, output });
+  }
 
-    const directOnly = toolCalls.every((call) => DIRECT_TOOL_NAMES.has(call.name));
+  const toolResults = executed.map((item) => ({
+    tool: item.call.name,
+    args: item.call.arguments,
+    output: item.output,
+  }));
+  const draftMessage = plan.action === "respond" || plan.action === "clarify" ? plan.message : null;
+  const finalInput = buildFinalInput(text, draftMessage, toolResults);
 
-    if (directOnly && hasToolErrors(executed)) {
-      const summary = formatUpdateSummary(executed, db);
-      updateChatState(db, chatId, currentResponse.id);
-      return summary || "Done.";
-    }
-
-    currentResponse = await createResponseWithRetry(client, {
+  let response;
+  try {
+    response = await createResponseWithRetry(client, {
       model: config.openai.model,
       reasoning: { effort: config.openai.reasoningEffort },
       max_output_tokens: config.openai.maxOutputTokens,
-      input: toolOutputs,
-      previous_response_id: currentResponse.id,
+      instructions: buildResponsePrompt(),
+      input: finalInput,
+      tool_choice: "none",
+      parallel_tool_calls: false,
+      previous_response_id: previousResponseId,
     });
-
-    if (directOnly) {
-      const summary = formatUpdateSummary(executed, db);
-      const candidate = sanitizeRepeatedText(extractText(currentResponse).trim());
-      updateChatState(db, chatId, currentResponse.id);
-      if (!candidate || isRepetitiveOutput(candidate)) {
-        return summary || "Done.";
-      }
-      return candidate;
+  } catch (err) {
+    if (previousResponseId && isInvalidPreviousResponse(err)) {
+      resetChatState(db, chatId);
+      response = await createResponseWithRetry(client, {
+        model: config.openai.model,
+        reasoning: { effort: config.openai.reasoningEffort },
+        max_output_tokens: config.openai.maxOutputTokens,
+        instructions: buildResponsePrompt(),
+        input: finalInput,
+        tool_choice: "none",
+        parallel_tool_calls: false,
+      });
+    } else if (previousResponseId && isRetryableError(err)) {
+      response = await createResponseWithRetry(client, {
+        model: config.openai.model,
+        reasoning: { effort: config.openai.reasoningEffort },
+        max_output_tokens: config.openai.maxOutputTokens,
+        instructions: buildResponsePrompt(),
+        input: finalInput,
+        tool_choice: "none",
+        parallel_tool_calls: false,
+      });
+    } else {
+      throw err;
     }
   }
 
-  const finalText = extractText(currentResponse).trim();
+  const finalText = extractText(response).trim();
   const sanitized = sanitizeRepeatedText(finalText);
-  updateChatState(db, chatId, currentResponse.id);
+  updateChatState(db, chatId, response.id);
 
-  const compactedId = await maybeCompact(
-    client,
-    config,
-    chatId,
-    getChatState(db, chatId),
-    currentResponse.id
-  );
-  if (compactedId !== currentResponse.id) {
+  const compactedId = await maybeCompact(client, config, chatId, getChatState(db, chatId), response.id);
+  if (compactedId !== response.id) {
     updateChatCompaction(db, chatId, compactedId);
   }
 
   if (!sanitized || isRepetitiveOutput(finalText)) {
-    return sanitized || "Done.";
+    const summary = formatUpdateSummary(executed, db);
+    return summary || sanitized || "Done.";
   }
   return sanitized;
 }

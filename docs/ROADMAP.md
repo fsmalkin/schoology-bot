@@ -13,6 +13,8 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 - Daily summary delivery via Telegram.
 - Telegram agent runs as a single instance to avoid duplicate responses.
 - Incoming Telegram messages are batched briefly and the oldest dropped if too long.
+- Agent tool routing uses a multi-step structured-output planner (tool group -> tool picker -> augment) to avoid tool-babble.
+- Tool execution is handled by app code (not model tool-calling) for reliability.
 - Availability target: run via Docker with restart policy + health check; update with `docker compose up -d --build`.
 - Docker support included for easy server migration.
 - If using Twilio later, use Auth Token for now; plan to switch to API Key for server move.
@@ -78,7 +80,7 @@ Scope:
 - CRUD personal tasks with reminders via chat.
 
 Implementation approach:
-- Use OpenAI Responses API with GPT-5.2 for agent responses and tool calling.
+- Use OpenAI Responses API with GPT-5.2 for agent responses and structured tool planning.
 - Optional: wrap tools with the OpenAI Agents SDK for tracing and orchestration.
 - Optional: add context compaction for long-running chats.
 

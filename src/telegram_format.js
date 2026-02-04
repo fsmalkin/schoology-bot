@@ -1,8 +1,40 @@
-﻿export function escapeHtml(value) {
+export function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+function decodeEntities(text) {
+  let out = String(text || "");
+  // Decode ampersand first so double-escaped entities get normalized.
+  out = out.replace(/&amp;/gi, "&");
+  out = out.replace(/&bull;|&#8226;|&#x2022;/gi, "-");
+  out = out.replace(/&nbsp;/gi, " ");
+  out = out.replace(/&lt;/gi, "<");
+  out = out.replace(/&gt;/gi, ">");
+  out = out.replace(/&quot;/gi, "\"");
+  out = out.replace(/&#39;/gi, "'");
+  return out;
+}
+
+function replaceHtmlFormatting(text) {
+  let out = String(text || "");
+  out = out.replace(/<\s*br\s*\/?\s*>/gi, "\n");
+  out = out.replace(/<\/\s*p\s*>/gi, "\n");
+  out = out.replace(/<\s*pre\s*>\s*<\s*code\s*>/gi, "```");
+  out = out.replace(/<\s*\/\s*code\s*>\s*<\s*\/\s*pre\s*>/gi, "```");
+  out = out.replace(/<\s*code\s*>/gi, "`");
+  out = out.replace(/<\s*\/\s*code\s*>/gi, "`");
+  out = out.replace(/<\s*(b|strong)\s*>/gi, "**");
+  out = out.replace(/<\s*\/\s*(b|strong)\s*>/gi, "**");
+  out = out.replace(/<\s*(i|em)\s*>/gi, "*");
+  out = out.replace(/<\s*\/\s*(i|em)\s*>/gi, "*");
+  return out;
+}
+
+function stripHtml(text) {
+  return String(text || "").replace(/<[^>]+>/g, "");
 }
 
 function formatInline(text) {
@@ -45,11 +77,13 @@ function renderInline(text) {
 }
 
 export function renderTelegramHtml(text) {
-  const normalized = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  const htmlTagPattern = /<\s*(b|i|code|pre|u|s|em|strong|a|br)(\s|>|\/)/i;
-  if (htmlTagPattern.test(normalized)) {
-    return normalized.trim();
-  }
+  let normalized = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  normalized = normalized.replace(/\u2022/g, "-");
+  normalized = decodeEntities(normalized);
+  normalized = replaceHtmlFormatting(normalized);
+  normalized = stripHtml(normalized);
+  normalized = normalized.trim();
+
   const segments = normalized.split("```");
   let output = "";
   for (let i = 0; i < segments.length; i += 1) {

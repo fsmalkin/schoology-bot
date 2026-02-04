@@ -25,22 +25,26 @@ function createMockClient(responses) {
   };
 }
 
-function toolCallResponse(id, name, args) {
+function textResponse(id, text) {
+  return { id, output_text: text };
+}
+
+function toolGroupResponse(id, group) {
   return {
     id,
-    output: [
-      {
-        type: "function_call",
-        name,
-        arguments: JSON.stringify(args || {}),
-        call_id: `${id}-call`,
-      },
-    ],
+    output_text: JSON.stringify({ group, reason: `Group ${group}` }),
   };
 }
 
-function textResponse(id, text) {
-  return { id, output_text: text };
+function toolPlanResponse(id, payload) {
+  return { id, output_text: JSON.stringify(payload) };
+}
+
+function toolAugmentResponse(id, addCalls) {
+  return {
+    id,
+    output_text: JSON.stringify({ add_calls: addCalls || [], reason: "No extra tools" }),
+  };
 }
 
 function seedState() {
@@ -139,26 +143,34 @@ test("agent conversation cases (mock)", async () => {
   db.close();
 
   const mockList = createMockClient([
-    toolCallResponse("r1", "list_assignments", { status: "missing", bucketed: true }),
-    textResponse("r2", "Missing assignments: Algebra Homework 1; Latin Quiz 1; Science Lab 1; Science Lab 2."),
+    toolGroupResponse("r0", "assignments"),
+    toolPlanResponse("r1", {
+      action: "call_tool",
+      tool: "list_assignments",
+      args: "{\"status\":\"missing\",\"bucketed\":true}",
+      calls: null,
+    }),
+    toolAugmentResponse("r2", []),
+    textResponse("r3", "Missing assignments: Algebra Homework 1; Latin Quiz 1; Science Lab 1; Science Lab 2."),
   ]);
 
   const chatId = `chat-mock-${Date.now()}`;
   const reply1 = await runAgentMessage({ chatId, text: "What is missing?", clientOverride: mockList });
   assert.match(reply1, /Missing assignments/i);
-  assert.equal(mockList.calls.length, 2);
+  assert.equal(mockList.calls.length, 4);
 
   const mockUpdate = createMockClient([
-    toolCallResponse("r3", "apply_numbered_statuses", {
-      statusByIndex: [
-        { index: 1, status: "C" },
-        { index: 2, status: "B" },
-        { index: 3, status: "D" },
-        { index: 4, status: "E" },
-      ],
+    toolGroupResponse("r4", "assignments"),
+    toolPlanResponse("r5", {
+      action: "call_tool",
+      tool: "apply_numbered_statuses",
+      args:
+        "{\"statusByIndex\":[{\"index\":1,\"status\":\"C\"},{\"index\":2,\"status\":\"B\"},{\"index\":3,\"status\":\"D\"},{\"index\":4,\"status\":\"E\"}]}",
+      calls: null,
     }),
+    toolAugmentResponse("r6", []),
     textResponse(
-      "r4",
+      "r7",
       "Updating now.\nDone.\nUpdating now.\nDone.\nUpdating now.\nDone.\nUpdating now."
     ),
   ]);
@@ -182,7 +194,8 @@ test("agent conversation cases (mock)", async () => {
   assert.equal(statusByKey.get("a4"), "Waiting on teacher");
 
   const mockClarify = createMockClient([
-    textResponse("r5", "Which assignment did you mean?"),
+    toolGroupResponse("r8", "none"),
+    textResponse("r9", "Which assignment did you mean?"),
   ]);
   const reply3 = await runAgentMessage({ chatId, text: "Mark Lab as B", clientOverride: mockClarify });
   assert.equal(reply3, "Which assignment did you mean?");
