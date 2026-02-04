@@ -83,6 +83,7 @@ Implementation approach:
 - Use OpenAI Responses API with GPT-5.2 for agent responses and structured tool planning.
 - Optional: wrap tools with the OpenAI Agents SDK for tracing and orchestration.
 - Optional: add context compaction for long-running chats.
+- Option B (future): unify tasks + assignment reminders into a single Task model (assignment_key optional).
 
 Deliverables:
 - Tool endpoints: list assignments, update status, add note, schedule reminder.

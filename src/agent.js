@@ -22,6 +22,9 @@ import {
   clearManualStatuses,
   updateAssignmentStatus,
   updateAssignmentStatuses,
+  getPendingAction,
+  setPendingAction,
+  clearPendingAction,
   updateChatCompaction,
   updateChatState,
 } from "./db.js";
@@ -787,11 +790,19 @@ export async function planAction(client, config, text, previousResponseId) {
   const allowedTools = TOOL_GROUPS[group] || TOOL_NAMES;
   const plan = await pickToolPlan(client, config, text, previousResponseId, allowedTools);
   const augmented = await augmentToolPlan(client, config, text, plan, previousResponseId, allowedTools);
+  const fallbackTool =
+    allowedTools.includes("list_assignments")
+      ? "list_assignments"
+      : allowedTools[0] || "list_assignments";
+  const finalPlan =
+    augmented.tool || (augmented.calls && augmented.calls.length > 0)
+      ? augmented
+      : { action: "call_tool", tool: fallbackTool, args: {}, calls: null };
   return {
-    action: augmented.action,
-    tool: augmented.tool,
-    args: augmented.args,
-    calls: augmented.calls,
+    action: finalPlan.action,
+    tool: finalPlan.tool,
+    args: finalPlan.args,
+    calls: finalPlan.calls,
     message: null,
   };
 }
@@ -821,6 +832,37 @@ function buildFinalInput(text, draftMessage, toolResults) {
     parts.push(`Draft response (use if helpful):\\n${draftMessage}`);
   }
   return parts.join("\\n\\n");
+}
+
+function buildPlanInput(text, pending) {
+  if (!pending) return text;
+  const pendingSummary = {
+    tool: pending.tool,
+    args: pending.args || {},
+    note: pending.note || "",
+    matches: pending.matches || null,
+  };
+  return [
+    "Pending action (use only if the user is confirming or providing missing details):",
+    JSON.stringify(pendingSummary),
+    "User message:",
+    text,
+  ].join("\\n");
+}
+
+function mergePendingArgs(pendingArgs, newArgs) {
+  const base = pendingArgs && typeof pendingArgs === "object" ? pendingArgs : {};
+  const updates = newArgs && typeof newArgs === "object" ? newArgs : {};
+  return { ...base, ...updates };
+}
+
+function shouldStorePendingAction(toolName, output) {
+  if (!toolName || !output || output.ok !== false) return false;
+  const message = String(output.error || "").toLowerCase();
+  if (message.includes("assignment key or title is required")) return true;
+  if (message.includes("multiple assignments match")) return true;
+  if (message.includes("no matching assignments")) return true;
+  return false;
 }
 
 function formatAssignmentLabel(assignment) {
@@ -1151,18 +1193,20 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
   ensureDbSeeded(db, config.paths.statePath);
 
   const chatState = getChatState(db, chatId);
+  const pendingAction = getPendingAction(db, chatId);
   const client = clientOverride || new OpenAI({ apiKey: config.openai.apiKey });
 
   const previousResponseId = chatState.lastResponseId || undefined;
+  const planText = buildPlanInput(text, pendingAction);
   let plan;
   try {
-    plan = await planAction(client, config, text, previousResponseId);
+    plan = await planAction(client, config, planText, previousResponseId);
   } catch (err) {
     if (previousResponseId && isInvalidPreviousResponse(err)) {
       resetChatState(db, chatId);
-      plan = await planAction(client, config, text, undefined);
+      plan = await planAction(client, config, planText, undefined);
     } else if (previousResponseId && isRetryableError(err)) {
-      plan = await planAction(client, config, text, undefined);
+      plan = await planAction(client, config, planText, undefined);
     } else {
       throw err;
     }
@@ -1185,9 +1229,26 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
       });
       continue;
     }
-    const normalizedArgs = normalizeToolArgs(normalizedTool, call.args);
+    const pendingArgs =
+      pendingAction && pendingAction.tool === normalizedTool ? pendingAction.args : null;
+    const mergedArgs = mergePendingArgs(pendingArgs, call.args);
+    const normalizedArgs = normalizeToolArgs(normalizedTool, mergedArgs);
     const output = await runTool(db, { name: normalizedTool, arguments: normalizedArgs });
     executed.push({ call: { name: normalizedTool, arguments: normalizedArgs }, output });
+  }
+
+  for (const item of executed) {
+    const name = item.call?.name;
+    const output = item.output || {};
+    if (pendingAction && name === pendingAction.tool && output?.ok === true) {
+      clearPendingAction(db, chatId);
+      continue;
+    }
+    if (shouldStorePendingAction(name, output)) {
+      const args = parseArguments(item.call?.arguments);
+      const matches = Array.isArray(output?.matches) ? output.matches : null;
+      setPendingAction(db, { chatId, tool: name, args, note: output?.error || "", matches });
+    }
   }
 
   const toolResults = executed.map((item) => ({

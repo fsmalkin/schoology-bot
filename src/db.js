@@ -13,6 +13,20 @@ function ensureDir(dirPath) {
   }
 }
 
+function ensureSchemaMigrations(db) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version INTEGER PRIMARY KEY,
+      applied_at TEXT NOT NULL
+    );
+  `);
+}
+
+function getSchemaVersion(db) {
+  const row = db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get();
+  return row?.version ? Number(row.version) : 0;
+}
+
 function initDb(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS assignments (
@@ -53,10 +67,13 @@ function initDb(db) {
 
     CREATE TABLE IF NOT EXISTS tasks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      assignment_key TEXT,
       title TEXT NOT NULL,
       message TEXT,
       remind_at TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending',
+      kind TEXT NOT NULL DEFAULT 'personal',
+      auto_cancel_on_resolve INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       completed_at TEXT,
       last_sent_at TEXT,
@@ -72,6 +89,16 @@ function initDb(db) {
       updated_at TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS pending_actions (
+      chat_id TEXT PRIMARY KEY,
+      tool TEXT NOT NULL,
+      args_json TEXT,
+      note TEXT,
+      matches_json TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_assignments_course ON assignments(course);
     CREATE INDEX IF NOT EXISTS idx_assignments_due_date ON assignments(due_date);
     CREATE INDEX IF NOT EXISTS idx_assignments_missing ON assignments(is_missing);
@@ -80,6 +107,122 @@ function initDb(db) {
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
     CREATE INDEX IF NOT EXISTS idx_tasks_remind_at ON tasks(remind_at);
   `);
+
+  runMigrations(db);
+}
+
+function ensureTaskColumns(db) {
+  const columns = db.prepare("PRAGMA table_info(tasks)").all().map((row) => row.name);
+  const addColumn = (name, type, defaultValue) => {
+    if (columns.includes(name)) return;
+    const clause = defaultValue !== undefined ? ` DEFAULT ${defaultValue}` : "";
+    db.exec(`ALTER TABLE tasks ADD COLUMN ${name} ${type}${clause}`);
+  };
+
+  addColumn("assignment_key", "TEXT");
+  addColumn("kind", "TEXT", "'personal'");
+  addColumn("auto_cancel_on_resolve", "INTEGER", "0");
+}
+
+function ensureTaskIndexes(db) {
+  try {
+    db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_assignment ON tasks(assignment_key);");
+  } catch (err) {
+    // Column may not exist on older DBs until migration completes; ignore.
+  }
+}
+
+function migrateRemindersToTasks(db) {
+  const pending = db
+    .prepare(
+      `
+      SELECT id, assignment_key AS assignmentKey, remind_at AS remindAt, message, created_at AS createdAt
+      FROM reminders
+      WHERE sent_at IS NULL
+    `
+    )
+    .all();
+  if (!pending.length) return;
+
+  const lookupAssignment = db.prepare("SELECT course, title FROM assignments WHERE key = ?");
+  const insertTask = db.prepare(
+    `
+    INSERT INTO tasks (assignment_key, title, message, remind_at, status, kind, auto_cancel_on_resolve, created_at)
+    VALUES (@assignment_key, @title, @message, @remind_at, 'pending', 'assignment', 1, @created_at)
+  `
+  );
+
+  for (const reminder of pending) {
+    const existing = db
+      .prepare(
+        `
+        SELECT id FROM tasks
+        WHERE assignment_key = @assignment_key AND remind_at = @remind_at AND kind = 'assignment' AND status = 'pending'
+      `
+      )
+      .get({ assignment_key: reminder.assignmentKey, remind_at: reminder.remindAt });
+    if (existing) {
+      db.prepare("DELETE FROM reminders WHERE id = ?").run(reminder.id);
+      continue;
+    }
+    const assignment = lookupAssignment.get(reminder.assignmentKey);
+    const title = assignment ? `${assignment.course} - ${assignment.title}` : "Assignment reminder";
+    insertTask.run({
+      assignment_key: reminder.assignmentKey,
+      title,
+      message: reminder.message || "",
+      remind_at: reminder.remindAt,
+      created_at: reminder.createdAt || nowIso(),
+    });
+    db.prepare("DELETE FROM reminders WHERE id = ?").run(reminder.id);
+  }
+}
+
+function runMigrations(db) {
+  ensureSchemaMigrations(db);
+  const migrations = [
+    {
+      version: 1,
+      name: "tasks-columns-and-index",
+      apply: () => {
+        ensureTaskColumns(db);
+        ensureTaskIndexes(db);
+      },
+    },
+    {
+      version: 2,
+      name: "pending-actions",
+      apply: () => {
+        db.exec(`
+          CREATE TABLE IF NOT EXISTS pending_actions (
+            chat_id TEXT PRIMARY KEY,
+            tool TEXT NOT NULL,
+            args_json TEXT,
+            note TEXT,
+            matches_json TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          );
+        `);
+      },
+    },
+  ];
+
+  const currentVersion = getSchemaVersion(db);
+  for (const migration of migrations) {
+    if (migration.version <= currentVersion) continue;
+    const applyTx = db.transaction(() => {
+      migration.apply();
+      db.prepare(
+        "INSERT INTO schema_migrations (version, applied_at) VALUES (@version, @applied_at)"
+      ).run({ version: migration.version, applied_at: nowIso() });
+    });
+    applyTx();
+  }
+}
+
+export function migrateDb(db) {
+  runMigrations(db);
 }
 
 export function createDb(dbPath = ":memory:") {
@@ -103,6 +246,68 @@ export function closeDb() {
     dbInstance.close();
     dbInstance = null;
   }
+}
+
+export function getPendingAction(db, chatId) {
+  if (!chatId) return null;
+  const row = db
+    .prepare(
+      `SELECT chat_id AS chatId, tool, args_json AS argsJson, note, matches_json AS matchesJson
+       FROM pending_actions WHERE chat_id = ?`
+    )
+    .get(chatId);
+  if (!row) return null;
+  let args = null;
+  let matches = null;
+  try {
+    args = row.argsJson ? JSON.parse(row.argsJson) : null;
+  } catch (err) {
+    args = null;
+  }
+  try {
+    matches = row.matchesJson ? JSON.parse(row.matchesJson) : null;
+  } catch (err) {
+    matches = null;
+  }
+  return {
+    chatId: row.chatId,
+    tool: row.tool,
+    args,
+    note: row.note || null,
+    matches,
+  };
+}
+
+export function setPendingAction(db, { chatId, tool, args, note, matches }) {
+  if (!chatId || !tool) return { ok: false, error: "Missing chatId or tool." };
+  const payload = {
+    chat_id: chatId,
+    tool,
+    args_json: args ? JSON.stringify(args) : null,
+    note: note || null,
+    matches_json: matches ? JSON.stringify(matches) : null,
+    created_at: nowIso(),
+    updated_at: nowIso(),
+  };
+  db.prepare(
+    `
+    INSERT INTO pending_actions (chat_id, tool, args_json, note, matches_json, created_at, updated_at)
+    VALUES (@chat_id, @tool, @args_json, @note, @matches_json, @created_at, @updated_at)
+    ON CONFLICT(chat_id) DO UPDATE SET
+      tool = excluded.tool,
+      args_json = excluded.args_json,
+      note = excluded.note,
+      matches_json = excluded.matches_json,
+      updated_at = excluded.updated_at
+  `
+  ).run(payload);
+  return { ok: true };
+}
+
+export function clearPendingAction(db, chatId) {
+  if (!chatId) return { ok: false, error: "Missing chatId." };
+  const result = db.prepare("DELETE FROM pending_actions WHERE chat_id = ?").run(chatId);
+  return { ok: true, cleared: result.changes || 0 };
 }
 
 export function syncAssignmentsFromState(db, state) {

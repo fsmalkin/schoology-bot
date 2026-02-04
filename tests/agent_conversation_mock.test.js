@@ -133,7 +133,14 @@ test("agent conversation cases (mock)", async () => {
   process.env.OPENAI_COMPACT_AFTER_TURNS = "0";
   process.env.AGENT_DB_PATH = dbPath;
 
-  const { createDb, syncAssignmentsFromState, getDb, closeDb, listAssignments } = await import("../src/db.js");
+  const {
+    createDb,
+    syncAssignmentsFromState,
+    getDb,
+    closeDb,
+    listAssignments,
+    getPendingAction,
+  } = await import("../src/db.js");
   const { getConfig } = await import("../src/config.js");
   const { runAgentMessage } = await import("../src/agent.js");
 
@@ -199,6 +206,39 @@ test("agent conversation cases (mock)", async () => {
   ]);
   const reply3 = await runAgentMessage({ chatId, text: "Mark Lab as B", clientOverride: mockClarify });
   assert.equal(reply3, "Which assignment did you mean?");
+
+  const mockPending = createMockClient([
+    toolGroupResponse("r10", "assignments"),
+    toolPlanResponse("r11", {
+      action: "call_tool",
+      tool: "update_assignment_status",
+      args: "{\"title\":\"Lab\",\"status\":\"C\"}",
+      calls: null,
+    }),
+    toolAugmentResponse("r12", []),
+    textResponse("r13", "Which Lab did you mean?"),
+    toolGroupResponse("r14", "assignments"),
+    toolPlanResponse("r15", {
+      action: "call_tool",
+      tool: "update_assignment_status",
+      args: "{\"title\":\"Lab 1\"}",
+      calls: null,
+    }),
+    toolAugmentResponse("r16", []),
+    textResponse("r17", "Updated."),
+  ]);
+
+  const reply4 = await runAgentMessage({ chatId, text: "Mark Lab as C", clientOverride: mockPending });
+  assert.match(reply4, /Which Lab/i);
+  const pending = getPendingAction(getDb(getConfig()), chatId);
+  assert.ok(pending);
+  assert.equal(pending.tool, "update_assignment_status");
+  assert.equal(pending.args.status, "C");
+
+  const reply5 = await runAgentMessage({ chatId, text: "Lab 1", clientOverride: mockPending });
+  assert.match(reply5, /Updated/i);
+  const pendingAfter = getPendingAction(getDb(getConfig()), chatId);
+  assert.equal(pendingAfter, null);
 
   closeDb();
   await cleanupDb();
