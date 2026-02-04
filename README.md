@@ -20,6 +20,10 @@ It runs on your machine today and is ready to move to a server later.
 2. Run `docker compose up -d --build`.
 3. Check logs with `docker compose logs -f`.
 
+Note: Docker runs two services:
+- `schoology` (scheduler for scrape/send/reminders)
+- `telegram-agent` (chat agent)
+
 ## Uptime and Updates (Docker)
 For higher uptime and safer updates, use Docker with auto-restart and health checks.
 
