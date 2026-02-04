@@ -9,7 +9,19 @@ import {
 import { scrapeMissingAssignments } from "./schoology.js";
 import { buildSummary, loadState, saveState, updateStateWithScrape } from "./storage.js";
 import { formatDateYmd, formatDateTime, nowIso } from "./time.js";
-import { createTask, deleteTask, getDb, listDueTasks, listTasks, markTaskReminderSent, syncAssignmentsFromState, updateTask, updateTaskStatus } from "./db.js";
+import {
+  createTask,
+  deleteTask,
+  getDb,
+  listDueTasks,
+  listTasks,
+  markTaskReminderSent,
+  syncAssignmentsFromState,
+  updateTask,
+  updateTaskStatus,
+} from "./db.js";
+import { buildDbSummary, buildLegacySummary } from "./summary.js";
+import { buildAgenticTelegramSummary } from "./summary_agent.js";
 import { sendSummaryEmail } from "./email.js";
 import { sendSummarySms } from "./sms.js";
 import { sendSummaryTelegram, sendTelegramMessage } from "./telegram.js";
@@ -80,8 +92,9 @@ export async function runSend() {
     state = loadState(config.paths.statePath);
   }
 
-  const summary = buildSummary(state, state.lastSummarySentAt);
   const db = getDb(config);
+  const dbSummary = buildDbSummary(db, { includePending: true, includeIgnored: false });
+  const legacySummary = buildLegacySummary(dbSummary);
   const today = formatDateYmd(new Date(), config.schedule.timezone);
   const tasksForToday = listTasks(db, { status: "all" }).filter((task) => {
     if (!task.remindAt) return false;
@@ -89,11 +102,21 @@ export async function runSend() {
   });
   for (const channel of channels) {
     if (channel === "twilio") {
-      await sendSummarySms(config, summary, state, tasksForToday);
+      await sendSummarySms(config, legacySummary, state, tasksForToday);
     } else if (channel === "telegram") {
-      await sendSummaryTelegram(config, summary, state, tasksForToday);
+      if (config.openai.apiKey) {
+        const text = await buildAgenticTelegramSummary({
+          config,
+          summary: dbSummary,
+          state,
+          tasksForToday,
+        });
+        await sendTelegramMessage(config, text);
+      } else {
+        await sendSummaryTelegram(config, legacySummary, state, tasksForToday);
+      }
     } else if (channel === "email") {
-      await sendSummaryEmail(config, summary, state, tasksForToday);
+      await sendSummaryEmail(config, legacySummary, state, tasksForToday);
     }
   }
 
