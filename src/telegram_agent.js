@@ -33,12 +33,16 @@ function acquireLock() {
       const raw = fs.readFileSync(lockPath, "utf8");
       const existing = JSON.parse(raw);
       if (existing?.pid) {
-        try {
-          process.kill(existing.pid, 0);
-          console.error(`Another agent instance is already running (pid ${existing.pid}).`);
-          process.exit(1);
-        } catch (err) {
-          // stale lock
+        if (existing.pid === process.pid) {
+          // same process, safe to continue
+        } else {
+          try {
+            process.kill(existing.pid, 0);
+            console.error(`Another agent instance is already running (pid ${existing.pid}).`);
+            process.exit(1);
+          } catch (err) {
+            // stale lock
+          }
         }
       }
     }

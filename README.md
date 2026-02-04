@@ -53,6 +53,7 @@ If the login flow changes or is protected by Microsoft, run:
 - `npm run login:interactive`
 Complete the login in the browser window, then press Enter in the terminal.
 This saves `data/storage.json`, which is reused for scheduled runs.
+If you are running in Docker, run the login command on your host (not inside the container) so the browser can open.
 
 ## Login IdP
 If your district uses Microsoft/SSO, set `SCHOLOGY_IDP="microsoft"` in `.env`.
