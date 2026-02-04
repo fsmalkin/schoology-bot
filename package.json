@@ -13,6 +13,7 @@
     "openai:smoke": "node src/openai_smoke.js",
     "agent:telegram": "node src/telegram_agent.js",
     "agent:cli": "node src/agent_cli.js",
+    "reminders:cleanup": "node src/reminder_cleanup.js",
     "test": "node --test",
     "test:agent": "node tests/agent_conversation.js"
   },

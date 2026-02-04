@@ -373,7 +373,7 @@ export function addAssignmentNote(db, { key, title, course, note }) {
   return { ok: true, key: targetKey, noteId: result.lastInsertRowid, assignment };
 }
 
-export function scheduleReminder(db, { key, title, course, remindAt, message }) {
+export function scheduleReminder(db, { key, title, course, remindAt, message, replaceExisting = true }) {
   let targetKey = key || null;
   if (!targetKey && title) {
     const matches = findAssignments(db, { title, course });
@@ -390,6 +390,48 @@ export function scheduleReminder(db, { key, title, course, remindAt, message }) 
     return { ok: false, error: "Assignment key or title is required." };
   }
 
+  if (replaceExisting) {
+    const existing = db
+      .prepare(
+        `
+        SELECT id
+        FROM reminders
+        WHERE assignment_key = @key AND sent_at IS NULL
+        ORDER BY id DESC
+      `
+      )
+      .all({ key: targetKey });
+
+    if (existing.length > 0) {
+      const [keep, ...rest] = existing;
+      db.prepare(
+        `
+        UPDATE reminders
+        SET remind_at = @remind_at,
+            message = @message
+        WHERE id = @id
+      `
+      ).run({ remind_at: remindAt, message: message || "", id: keep.id });
+      if (rest.length > 0) {
+        const ids = rest.map((row) => row.id);
+        db.prepare(`DELETE FROM reminders WHERE id IN (${ids.map(() => "?").join(",")})`).run(ids);
+      }
+
+      const assignment = db
+        .prepare("SELECT course, title, due_date AS dueDate FROM assignments WHERE key = ?")
+        .get(targetKey);
+
+      return {
+        ok: true,
+        key: targetKey,
+        reminderId: keep.id,
+        replaced: true,
+        deletedDuplicates: rest.length,
+        assignment,
+      };
+    }
+  }
+
   const result = db
     .prepare(
       `
@@ -404,6 +446,152 @@ export function scheduleReminder(db, { key, title, course, remindAt, message }) 
     .get(targetKey);
 
   return { ok: true, key: targetKey, reminderId: result.lastInsertRowid, assignment };
+}
+
+export function listReminders(db, { key, status = "pending" } = {}) {
+  const filters = [];
+  const params = {};
+  if (key) {
+    filters.push("assignment_key = @key");
+    params.key = key;
+  }
+  if (status !== "all") {
+    filters.push(status === "sent" ? "sent_at IS NOT NULL" : "sent_at IS NULL");
+  }
+  const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+  return db
+    .prepare(
+      `
+      SELECT id, assignment_key AS assignmentKey, remind_at AS remindAt, message, created_at AS createdAt, sent_at AS sentAt
+      FROM reminders
+      ${where}
+      ORDER BY remind_at, id
+    `
+    )
+    .all(params);
+}
+
+export function updateReminder(db, { id, remindAt, message }) {
+  const reminderId = Number(id);
+  if (!Number.isFinite(reminderId)) {
+    return { ok: false, error: "Reminder id is required." };
+  }
+  const fields = [];
+  const params = { id: reminderId };
+  if (remindAt !== undefined) {
+    const remindTime = String(remindAt || "").trim();
+    if (!remindTime) return { ok: false, error: "Reminder time is required." };
+    fields.push("remind_at = @remind_at");
+    params.remind_at = remindTime;
+  }
+  if (message !== undefined) {
+    fields.push("message = @message");
+    params.message = message ? String(message) : "";
+  }
+  if (fields.length === 0) {
+    return { ok: false, error: "No updates provided." };
+  }
+  const result = db
+    .prepare(
+      `
+      UPDATE reminders
+      SET ${fields.join(", ")}
+      WHERE id = @id
+    `
+    )
+    .run(params);
+  if (result.changes === 0) {
+    return { ok: false, error: "Reminder not found." };
+  }
+  const reminder = db
+    .prepare(
+      "SELECT id, assignment_key AS assignmentKey, remind_at AS remindAt, message, sent_at AS sentAt FROM reminders WHERE id = ?"
+    )
+    .get(reminderId);
+  return { ok: true, reminder };
+}
+
+export function deleteReminder(db, { id }) {
+  const reminderId = Number(id);
+  if (!Number.isFinite(reminderId)) {
+    return { ok: false, error: "Reminder id is required." };
+  }
+  const result = db.prepare("DELETE FROM reminders WHERE id = ?").run(reminderId);
+  if (result.changes === 0) {
+    return { ok: false, error: "Reminder not found." };
+  }
+  return { ok: true, id: reminderId };
+}
+
+export function dedupePendingReminders(db, { key } = {}) {
+  const params = {};
+  const where = key ? "WHERE assignment_key = @key" : "";
+  if (key) params.key = key;
+  const groups = db
+    .prepare(
+      `
+      SELECT assignment_key AS assignmentKey, COUNT(*) AS count
+      FROM reminders
+      WHERE sent_at IS NULL
+      ${key ? "AND assignment_key = @key" : ""}
+      GROUP BY assignment_key
+      HAVING COUNT(*) > 1
+    `
+    )
+    .all(params);
+
+  let removed = 0;
+  for (const group of groups) {
+    const rows = db
+      .prepare(
+        `
+        SELECT id
+        FROM reminders
+        WHERE assignment_key = @key AND sent_at IS NULL
+        ORDER BY created_at DESC, id DESC
+      `
+      )
+      .all({ key: group.assignmentKey });
+    const [keep, ...rest] = rows;
+    if (rest.length > 0) {
+      const ids = rest.map((row) => row.id);
+      const res = db.prepare(`DELETE FROM reminders WHERE id IN (${ids.map(() => "?").join(",")})`).run(ids);
+      removed += res.changes || 0;
+    }
+  }
+  return { ok: true, removed };
+}
+
+export function listResolvedWithManualStatus(db, sinceIso) {
+  return db
+    .prepare(
+      `
+      SELECT a.key, a.course, a.title, a.manual_status AS manualStatus,
+             (SELECT COUNT(*) FROM assignment_notes n WHERE n.assignment_key = a.key) AS notesCount
+      FROM assignments a
+      WHERE a.is_missing = 0
+        AND a.resolved_at >= @since
+        AND a.manual_status IS NOT NULL
+      ORDER BY a.resolved_at DESC
+    `
+    )
+    .all({ since: sinceIso });
+}
+
+export function clearManualStatuses(db, keys = []) {
+  if (!Array.isArray(keys) || keys.length === 0) return { ok: true, cleared: 0 };
+  const placeholders = keys.map(() => "?").join(",");
+  const result = db
+    .prepare(
+      `
+      UPDATE assignments
+      SET manual_status = NULL,
+          manual_status_updated_at = NULL
+      WHERE key IN (${placeholders})
+    `
+    )
+    .run(keys);
+  return { ok: true, cleared: result.changes || 0 };
 }
 
 export function createTask(db, { title, remindAt, message }) {

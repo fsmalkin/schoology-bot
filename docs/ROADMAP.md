@@ -84,6 +84,7 @@ Implementation approach:
 Deliverables:
 - Tool endpoints: list assignments, update status, add note, schedule reminder.
 - Tool endpoints: create/list/update/delete tasks with reminders.
+- Tool endpoint: refresh Schoology on demand and reconcile manual statuses.
 - Local storage for notes and reminders (SQLite or JSON).
 - Telegram bridge to agent (natural language, not brittle commands).
 - Feature request logging via agent tool.
@@ -93,6 +94,7 @@ Acceptance:
 - "Mark Algebra HW 3 as waiting on teacher" updates stored status.
 - "Remind me about Lab Report on Friday at 7pm" schedules a reminder.
 - "Remind me to ask a friend tonight at 9pm" creates a task and sends a reminder.
+- "Check again, I turned that in" refreshes Schoology and clears only safe manual statuses.
 - Rapid multi-message prompts are combined into a single agent request.
 
 Risks:

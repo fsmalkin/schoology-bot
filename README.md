@@ -95,6 +95,8 @@ Tasks roll over by 24 hours if they are not marked done.
 Reminder delivery:
 - The scheduler checks tasks every minute by default (`REMINDER_CRON`).
 - The daily summary includes all tasks scheduled for today.
+- If you change a reminder time, the agent will replace the existing pending reminder.
+- To remove any legacy duplicates, run `npm run reminders:cleanup`.
 
 ## Manual Statuses (Explicit Set)
 These are the default manual status codes the agent understands:
@@ -140,3 +142,11 @@ For email delivery, set `DELIVERY_CHANNEL="email"` and the SMTP values.
 
 ## Roadmap
 See `docs/ROADMAP.md`.
+
+## Refreshing Schoology
+If someone says "check again" or "I turned that in", the agent can run a fresh scrape and reconcile manual statuses.
+
+Policy for manual statuses on resolved items:
+- Auto-clear only A/B/C (ignored statuses) when the assignment is resolved and has no notes.
+- Keep D/E (pending), any custom statuses, and anything with notes.
+- The agent will summarize what it cleared and what it kept.

@@ -15,14 +15,20 @@ import {
   applyNumberedStatuses,
   resetChatState,
   scheduleReminder,
+  listReminders,
+  updateReminder,
+  deleteReminder,
+  listResolvedWithManualStatus,
+  clearManualStatuses,
   updateAssignmentStatus,
   updateAssignmentStatuses,
   updateChatCompaction,
   updateChatState,
 } from "./db.js";
 import { openBugReport, openFeatureRequest } from "./bugs.js";
-import { statusGuideText } from "./statuses.js";
+import { statusGuideText, isIgnoredStatus, isPendingStatus } from "./statuses.js";
 import { isRepetitiveOutput, sanitizeRepeatedText } from "./text_utils.js";
+import { runScrape } from "./tasks.js";
 
 function buildSystemPrompt() {
   return [
@@ -37,6 +43,8 @@ function buildSystemPrompt() {
     "Default reporting buckets: Actionable, Pending, Ignored. Hide Ignored by default unless asked.",
     "When confirming status updates, include a short list of items waiting on teacher/grade (No grade put in yet, Waiting on teacher).",
     "You can create, list, update, or delete personal tasks with reminders (not tied to Schoology).",
+    "You can run a fresh Schoology scrape on demand if the user asks to check again.",
+    "When refreshing, only auto-clear ignored manual statuses (A/B/C) for resolved items with no notes; keep pending and custom statuses.",
     "If the user suggests improvements or feature ideas, ask if they want you to log a feature request.",
     "Only open bug reports when the user explicitly asks to file a bug or report an error.",
     "Respond in Telegram-friendly HTML (use <b>, <code>, <pre> tags; avoid Markdown).",
@@ -183,8 +191,63 @@ function toolDefinitions() {
             type: "string",
             description: "Optional reminder message.",
           },
+          replaceExisting: {
+            type: "boolean",
+            description: "Replace existing pending reminder(s) for the same assignment.",
+          },
         },
         required: ["remindAt"],
+      },
+    },
+    {
+      type: "function",
+      name: "list_assignment_reminders",
+      description: "List reminders for an assignment.",
+      parameters: {
+        type: "object",
+        properties: {
+          key: { type: "string", description: "Assignment key." },
+          status: { type: "string", enum: ["pending", "sent", "all"] },
+        },
+        required: ["key"],
+      },
+    },
+    {
+      type: "function",
+      name: "update_assignment_reminder",
+      description: "Update a reminder time or message.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "integer", description: "Reminder id." },
+          remindAt: { type: "string", description: "Reminder time in ISO-8601 format." },
+          message: { type: "string", description: "Reminder message." },
+        },
+        required: ["id"],
+      },
+    },
+    {
+      type: "function",
+      name: "delete_assignment_reminder",
+      description: "Delete a reminder.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "integer", description: "Reminder id." },
+        },
+        required: ["id"],
+      },
+    },
+    {
+      type: "function",
+      name: "refresh_schoology",
+      description: "Run a fresh Schoology scrape and reconcile manual statuses using the safe policy.",
+      parameters: {
+        type: "object",
+        properties: {
+          notes: { type: "string", description: "Optional reason or note for audit." },
+        },
+        required: [],
       },
     },
     {
@@ -382,10 +445,13 @@ const DIRECT_TOOL_NAMES = new Set([
   "apply_numbered_statuses",
   "add_assignment_note",
   "schedule_reminder",
+  "update_assignment_reminder",
+  "delete_assignment_reminder",
   "create_task",
   "update_task_status",
   "update_task",
   "delete_task",
+  "refresh_schoology",
   "open_bug_report",
   "open_feature_request",
 ]);
@@ -420,7 +486,44 @@ function formatUpdateSummary(results, db) {
 
     if (name === "schedule_reminder") {
       if (output?.ok) {
-        applied.push(`Scheduled reminder for ${formatAssignmentLabel(output.assignment) || output.key}`);
+        const verb = output.replaced ? "Updated reminder for" : "Scheduled reminder for";
+        applied.push(`${verb} ${formatAssignmentLabel(output.assignment) || output.key}`);
+        if (output.deletedDuplicates) {
+          info.push(`Removed ${output.deletedDuplicates} duplicate reminder(s).`);
+        }
+      } else if (output?.error) {
+        needs.push(output.error);
+      }
+      continue;
+    }
+
+    if (name === "update_assignment_reminder") {
+      if (output?.ok) {
+        applied.push(`Updated reminder #${output.reminder?.id}`);
+      } else if (output?.error) {
+        needs.push(output.error);
+      }
+      continue;
+    }
+
+    if (name === "delete_assignment_reminder") {
+      if (output?.ok) {
+        applied.push(`Deleted reminder #${output.id}`);
+      } else if (output?.error) {
+        needs.push(output.error);
+      }
+      continue;
+    }
+
+    if (name === "refresh_schoology") {
+      if (output?.ok) {
+        applied.push(`Refreshed Schoology. Missing: ${output.missingCount}, Resolved: ${output.resolvedCount}.`);
+        if (output.clearedManualCount > 0) {
+          info.push(`Cleared ${output.clearedManualCount} manual status(es).`);
+        }
+        if (output.keptManual?.length) {
+          info.push(`Kept ${output.keptManual.length} manual status(es) that may still be relevant.`);
+        }
       } else if (output?.error) {
         needs.push(output.error);
       }
@@ -547,6 +650,28 @@ function formatUpdateSummary(results, db) {
   return lines.join("\n").trim();
 }
 
+function applyManualStatusPolicy(rows) {
+  const cleared = [];
+  const kept = [];
+  for (const row of rows) {
+    const hasNotes = Number(row.notesCount || 0) > 0;
+    if (hasNotes) {
+      kept.push({ ...row, reason: "Has notes" });
+      continue;
+    }
+    if (isIgnoredStatus(row.manualStatus)) {
+      cleared.push(row);
+      continue;
+    }
+    if (isPendingStatus(row.manualStatus)) {
+      kept.push({ ...row, reason: "Pending status" });
+      continue;
+    }
+    kept.push({ ...row, reason: "Custom status" });
+  }
+  return { cleared, kept };
+}
+
 async function runTool(db, call) {
   const args = parseArguments(call.arguments);
   switch (call.name) {
@@ -562,6 +687,12 @@ async function runTool(db, call) {
       return addAssignmentNote(db, args);
     case "schedule_reminder":
       return scheduleReminder(db, args);
+    case "list_assignment_reminders":
+      return { ok: true, reminders: listReminders(db, args) };
+    case "update_assignment_reminder":
+      return updateReminder(db, args);
+    case "delete_assignment_reminder":
+      return deleteReminder(db, args);
     case "create_task":
       return createTask(db, args);
     case "list_tasks":
@@ -572,6 +703,29 @@ async function runTool(db, call) {
       return updateTask(db, args);
     case "delete_task":
       return deleteTask(db, args);
+    case "refresh_schoology": {
+      try {
+        const { state } = await runScrape();
+        const since = state?.lastScrapeAt || new Date().toISOString();
+        const resolved = listResolvedWithManualStatus(db, since);
+        const { cleared, kept } = applyManualStatusPolicy(resolved);
+        const clearResult = clearManualStatuses(db, cleared.map((row) => row.key));
+        const missingCount = listAssignments(db, {
+          status: "missing",
+          includeIgnored: true,
+          includePending: true,
+        }).length;
+        return {
+          ok: true,
+          missingCount,
+          resolvedCount: resolved.length,
+          clearedManualCount: clearResult.cleared || 0,
+          keptManual: kept,
+        };
+      } catch (err) {
+        return { ok: false, error: err?.message || String(err) };
+      }
+    }
     case "open_bug_report":
       return await openBugReport(getConfig(), args);
     case "open_feature_request":
