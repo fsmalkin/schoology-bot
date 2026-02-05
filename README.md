@@ -33,6 +33,18 @@ Common commands:
 - Tail logs: `docker compose logs -f`
 - Stop: `docker compose down`
 
+## Auto-Update (Optional)
+There is no CI/CD pipeline by default. If you want the machine to pull `main`
+and rebuild Docker automatically, use the script:
+
+`scripts/auto_update.ps1`
+
+Examples:
+- Dry run: `powershell -ExecutionPolicy Bypass -File scripts/auto_update.ps1 -DryRun`
+- Update main: `powershell -ExecutionPolicy Bypass -File scripts/auto_update.ps1 -Branch main`
+
+You can run this on a schedule via Windows Task Scheduler if desired.
+
 ## Run modes
 - `npm run scrape` scrapes and updates local state.
 - `npm run send` sends the latest summary.

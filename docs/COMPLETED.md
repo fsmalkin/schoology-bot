@@ -24,6 +24,7 @@ This document records completed milestones and major capability deliveries.
 - Auto-ignore prior-quarter/practice items (configurable keywords and age cutoff).
 - Auto-plan reminders for upcoming assignments (configurable window and reminder time).
 - Refresh responses now summarize Actionable/Pending/Archived instead of raw missing counts.
+- Optional auto-update script for pulling a branch and rebuilding Docker.
 
 ## Beta Program
 - Beta bot branch and separate env/data dir (`.env.beta`, `DATA_DIR=data/beta`).

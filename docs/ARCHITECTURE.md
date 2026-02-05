@@ -41,6 +41,7 @@ The system is a local-first automation that:
 ## Deployment
 - Local dev: `npm run start` and `npm run agent:telegram`.
 - Docker: `docker compose up -d --build` (two services).
+- Optional auto-update: `scripts/auto_update.ps1` to pull a branch and rebuild Docker (no CI/CD by default).
 
 ## Beta/Prod Separation
 - Beta uses `.env.beta` with `DATA_DIR=data/beta`.
