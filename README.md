@@ -123,6 +123,28 @@ Reminder delivery:
 - If you change a reminder time, the agent will replace the existing pending reminder.
 - To remove any legacy duplicates, run `npm run reminders:cleanup`.
 
+## Auto-upcoming Reminders
+The scheduler can auto-plan reminders for upcoming assignments.
+
+Defaults (override via `.env`):
+- `AUTO_UPCOMING_ENABLED=true`
+- `AUTO_UPCOMING_DAYS=7`
+- `AUTO_UPCOMING_REMIND_HOUR=19` (7pm local)
+- `AUTO_UPCOMING_REMIND_MINUTE=0`
+
+The auto-planner only creates a reminder when:
+- The assignment is not missing.
+- It has a due date within the next N days.
+- It is not manually ignored.
+
+## Auto-ignore Old or Non-graded Items
+To reduce noise, missing items can be auto-ignored when they are clearly not actionable.
+
+Defaults (override via `.env`):
+- `AUTO_IGNORE_ENABLED=true`
+- `AUTO_IGNORE_OLD_DAYS=120`
+- `AUTO_IGNORE_KEYWORDS=practice,not for grade,non-graded,participation,optional`
+
 ## Manual Statuses (Explicit Set)
 These are the default manual status codes the agent understands:
 - `A` = `Excused (doesn't count)`

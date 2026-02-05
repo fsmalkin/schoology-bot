@@ -36,9 +36,7 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 4. Institutionalize retros: after each incident or learning point, update AGENTS/TOOLS/SOUL and roadmap with the fix.
 
 ## Next (Stack Ranked)
-1. P1 - Scrape/store upcoming assignments and auto-plan reminders (GitHub #4).
-2. P1 - Exclude or auto-ignore prior-quarter/practice/non-graded items from missing list (from bugs.log).
-3. P2 - Triage empty bug report created by auto-filer and close/replace with real details (GitHub #5).
+1. P2 - Triage empty bug report created by auto-filer and close/replace with real details (GitHub #5).
 
 ## Later
 - Convert action-oriented notes into reminders when appropriate (ask user to confirm).

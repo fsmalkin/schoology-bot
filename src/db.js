@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
 import { getManualStatusCategory, normalizeManualStatus, isIgnoredStatus, isPendingStatus } from "./statuses.js";
-import { nowIso } from "./time.js";
+import { nowIso, parseSchoologyDate } from "./time.js";
 import { loadState } from "./storage.js";
 
 let dbInstance = null;
@@ -60,7 +60,10 @@ function initDb(db) {
       resolved_at TEXT,
       is_missing INTEGER NOT NULL DEFAULT 0,
       manual_status TEXT,
-      manual_status_updated_at TEXT
+      manual_status_updated_at TEXT,
+      auto_ignored INTEGER NOT NULL DEFAULT 0,
+      auto_ignore_reason TEXT,
+      auto_ignored_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS assignment_notes (
@@ -138,6 +141,23 @@ function ensureTaskColumns(db) {
   addColumn("assignment_key", "TEXT");
   addColumn("kind", "TEXT", "'personal'");
   addColumn("auto_cancel_on_resolve", "INTEGER", "0");
+}
+
+function ensureAssignmentAutoIgnoreColumns(db) {
+  const tableExists = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='assignments'")
+    .get();
+  if (!tableExists) return;
+  const columns = db.prepare("PRAGMA table_info(assignments)").all().map((row) => row.name);
+  const addColumn = (name, type, defaultValue) => {
+    if (columns.includes(name)) return;
+    const clause = defaultValue !== undefined ? ` DEFAULT ${defaultValue}` : "";
+    db.exec(`ALTER TABLE assignments ADD COLUMN ${name} ${type}${clause}`);
+  };
+
+  addColumn("auto_ignored", "INTEGER", "0");
+  addColumn("auto_ignore_reason", "TEXT");
+  addColumn("auto_ignored_at", "TEXT");
 }
 
 function ensureTaskIndexes(db) {
@@ -220,6 +240,13 @@ function runMigrations(db) {
             updated_at TEXT NOT NULL
           );
         `);
+      },
+    },
+    {
+      version: 3,
+      name: "assignment-auto-ignore",
+      apply: () => {
+        ensureAssignmentAutoIgnoreColumns(db);
       },
     },
   ];
@@ -385,7 +412,7 @@ export function ensureDbSeeded(db, statePath) {
 export function listAssignments(db, options = {}) {
   const status = (options.status || "missing").toLowerCase();
   const course = options.course ? String(options.course).toLowerCase() : null;
-  const limit = Number.isFinite(options.limit) ? Math.max(1, Math.min(options.limit, 200)) : 50;
+  const limit = Number.isFinite(options.limit) ? Math.max(1, Math.min(options.limit, 1000)) : 50;
   const includeIgnored = options.includeIgnored === true;
   const includePending = options.includePending !== false;
   const bucketed = options.bucketed === true;
@@ -395,6 +422,9 @@ export function listAssignments(db, options = {}) {
 
   if (status === "missing") filters.push("is_missing = 1");
   if (status === "resolved") filters.push("is_missing = 0");
+  if (status === "all") {
+    // no-op
+  }
   if (course) {
     filters.push("LOWER(course) LIKE @course");
     params.course = `%${course}%`;
@@ -412,6 +442,9 @@ export function listAssignments(db, options = {}) {
         due_date AS dueDate,
         status,
         manual_status AS manualStatus,
+        auto_ignored AS autoIgnored,
+        auto_ignore_reason AS autoIgnoreReason,
+        auto_ignored_at AS autoIgnoredAt,
         score,
         url,
         first_seen_at AS firstSeenAt,
@@ -431,16 +464,18 @@ export function listAssignments(db, options = {}) {
   const mapped = rows.map((row) => {
     const manualStatus = row.manualStatus || "";
     const statusCategory = getManualStatusCategory(manualStatus);
+    const autoIgnored = row.autoIgnored === 1;
     return {
-    ...row,
-    isMissing: row.isMissing === 1,
-    effectiveStatus: manualStatus || row.status || "",
-    statusCategory,
+      ...row,
+      isMissing: row.isMissing === 1,
+      autoIgnored,
+      effectiveStatus: manualStatus || row.status || "",
+      statusCategory: autoIgnored ? "ignored" : statusCategory,
     };
   });
 
   const filtered = mapped.filter((row) => {
-    if (!includeIgnored && isIgnoredStatus(row.manualStatus)) return false;
+    if (!includeIgnored && (isIgnoredStatus(row.manualStatus) || row.autoIgnored)) return false;
     if (!includePending && isPendingStatus(row.manualStatus)) return false;
     return true;
   });
@@ -461,6 +496,127 @@ export function listAssignments(db, options = {}) {
   }
 
   return { buckets, total: mapped.length, filteredTotal: filtered.length };
+}
+
+export function applyAutoIgnoreRules(db, { now, oldDays = 120, keywords = [] } = {}) {
+  const nowDate = now ? new Date(now) : new Date();
+  const cutoffMs = nowDate.getTime() - oldDays * 24 * 60 * 60 * 1000;
+  const keywordList = (keywords || [])
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter((value) => value.length > 0);
+
+  const rows = db
+    .prepare(
+      `
+      SELECT key, title, status, raw_text AS rawText, due_date AS dueDate,
+             manual_status AS manualStatus, auto_ignored AS autoIgnored, is_missing AS isMissing
+      FROM assignments
+    `
+    )
+    .all();
+
+  let updated = 0;
+  const setIgnore = db.prepare(
+    `
+    UPDATE assignments
+    SET auto_ignored = 1,
+        auto_ignore_reason = @reason,
+        auto_ignored_at = @now
+    WHERE key = @key
+  `
+  );
+  const clearIgnore = db.prepare(
+    `
+    UPDATE assignments
+    SET auto_ignored = 0,
+        auto_ignore_reason = NULL,
+        auto_ignored_at = NULL
+    WHERE key = @key
+  `
+  );
+
+  for (const row of rows) {
+    if (row.manualStatus) {
+      if (row.autoIgnored) {
+        clearIgnore.run({ key: row.key });
+        updated += 1;
+      }
+      continue;
+    }
+
+    if (row.isMissing !== 1) {
+      if (row.autoIgnored) {
+        clearIgnore.run({ key: row.key });
+        updated += 1;
+      }
+      continue;
+    }
+
+    let reason = "";
+    const dueDate = parseSchoologyDate(row.dueDate);
+    if (dueDate && dueDate.getTime() < cutoffMs) {
+      reason = "Past grading period (auto)";
+    }
+
+    if (!reason && keywordList.length > 0) {
+      const haystack = `${row.title || ""} ${row.status || ""} ${row.rawText || ""}`.toLowerCase();
+      const matched = keywordList.find((keyword) => keyword && haystack.includes(keyword));
+      if (matched) {
+        reason = `Auto-ignored keyword: ${matched}`;
+      }
+    }
+
+    if (reason && !row.autoIgnored) {
+      setIgnore.run({ key: row.key, reason, now: nowIso() });
+      updated += 1;
+      continue;
+    }
+    if (!reason && row.autoIgnored) {
+      clearIgnore.run({ key: row.key });
+      updated += 1;
+    }
+  }
+
+  return { ok: true, updated };
+}
+
+export function findPendingAssignmentTask(db, { key }) {
+  if (!key) return null;
+  return db
+    .prepare(
+      `
+      SELECT id, remind_at AS remindAt, status, message
+      FROM tasks
+      WHERE assignment_key = @key AND status = 'pending' AND kind = 'assignment'
+      ORDER BY remind_at ASC
+      LIMIT 1
+    `
+    )
+    .get({ key });
+}
+
+export function createAssignmentTask(db, { key, title, remindAt, message }) {
+  if (!key) return { ok: false, error: "Assignment key is required." };
+  const remindCheck = normalizeRemindAt(remindAt);
+  if (!remindCheck.ok) return { ok: false, error: remindCheck.error };
+  const remindTime = remindCheck.value;
+  const taskTitle = String(title || "Assignment reminder").trim() || "Assignment reminder";
+  const result = db
+    .prepare(
+      `
+      INSERT INTO tasks (assignment_key, title, message, remind_at, status, kind, auto_cancel_on_resolve, created_at)
+      VALUES (@assignment_key, @title, @message, @remind_at, 'pending', 'assignment', 1, @created_at)
+    `
+    )
+    .run({
+      assignment_key: key,
+      title: taskTitle,
+      message: message ? String(message) : null,
+      remind_at: remindTime,
+      created_at: nowIso(),
+    });
+
+  return { ok: true, id: result.lastInsertRowid, remindAt: remindTime };
 }
 
 export function findAssignments(db, options = {}) {

@@ -8,12 +8,16 @@ import {
 } from "./config.js";
 import { scrapeMissingAssignments } from "./schoology.js";
 import { buildSummary, loadState, saveState, updateStateWithScrape } from "./storage.js";
-import { formatDateYmd, formatDateTime, nowIso } from "./time.js";
+import { formatDateYmd, formatDateTime, nowIso, parseSchoologyDate } from "./time.js";
 import {
+  applyAutoIgnoreRules,
+  createAssignmentTask,
   createTask,
   deleteTask,
+  findPendingAssignmentTask,
   getDb,
   listDueTasks,
+  listAssignments,
   listTasks,
   markTaskReminderSent,
   syncAssignmentsFromState,
@@ -68,8 +72,19 @@ export async function runScrape() {
   saveState(config.paths.statePath, state);
   const db = getDb(config);
   syncAssignmentsFromState(db, state);
+  if (config.autoIgnore.enabled) {
+    applyAutoIgnoreRules(db, {
+      now: scrapeAt,
+      oldDays: config.autoIgnore.oldDays,
+      keywords: config.autoIgnore.keywords,
+    });
+  }
+  if (config.autoUpcoming.enabled) {
+    autoPlanUpcomingReminders(db, config);
+  }
 
-  console.log(`Scrape complete. Missing assignments found: ${assignments.length}`);
+  const missingCount = assignments.filter((item) => item.isMissing).length;
+  console.log(`Scrape complete. Missing assignments found: ${missingCount}`);
   return { state, assignments };
 }
 
@@ -160,6 +175,56 @@ function groupReminders(tasks, timeZone, today) {
     }
   }
   return groups;
+}
+
+export function autoPlanUpcomingReminders(db, config, nowOverride) {
+  const upcomingDays = Math.max(1, Number(config.autoUpcoming.days || 7));
+  const now = nowOverride ? new Date(nowOverride) : new Date();
+  const windowEnd = addDays(now, upcomingDays);
+  const assignments = listAssignments(db, { status: "all", includeIgnored: true, includePending: true, limit: 500 });
+
+  let created = 0;
+  for (const assignment of assignments) {
+    if (assignment.isMissing) continue;
+    if (!assignment.dueDate) continue;
+    if (assignment.manualStatus) continue;
+    if (assignment.autoIgnored) continue;
+
+    const due = parseSchoologyDate(assignment.dueDate, config.schedule.timezone);
+    if (!due) continue;
+    if (due < now || due > windowEnd) continue;
+
+    const remindAt = buildAutoReminderTime(due, config);
+    if (!remindAt || remindAt < now) continue;
+
+    const existing = findPendingAssignmentTask(db, { key: assignment.key });
+    if (existing) continue;
+
+    const title = `${assignment.course} - ${assignment.title}`;
+    const message = `Auto reminder for upcoming due date (${assignment.dueDate}).`;
+    const result = createAssignmentTask(db, {
+      key: assignment.key,
+      title,
+      remindAt: remindAt.toISOString(),
+      message,
+    });
+    if (result.ok) created += 1;
+  }
+  if (created > 0) {
+    console.log(`Auto-planned ${created} upcoming reminder(s).`);
+  }
+}
+
+function buildAutoReminderTime(dueDate, config) {
+  const remindHour = Number(config.autoUpcoming.remindHour ?? 19);
+  const remindMinute = Number(config.autoUpcoming.remindMinute ?? 0);
+  const remindDate = new Date(dueDate.getTime());
+  remindDate.setDate(remindDate.getDate() - 1);
+  remindDate.setHours(remindHour, remindMinute, 0, 0);
+  if (remindDate > dueDate) {
+    remindDate.setDate(remindDate.getDate() - 1);
+  }
+  return remindDate;
 }
 
 export async function runReminders() {

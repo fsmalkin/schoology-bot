@@ -31,9 +31,11 @@ The system is a local-first automation that:
 ## Data Flow
 1. Scheduler triggers scrape -> Playwright logs in -> grades page parsed.
 2. Assignments are normalized and stored in SQLite; state.json also updated.
-3. Summary builder reads DB (manual statuses honored).
-4. Telegram delivery formats summary with HTML-safe output.
-5. Agent chat uses a structured planner to choose a tool and executes it.
+3. Auto-ignore rules suppress prior-quarter/practice items (configurable).
+4. Auto-planner creates reminders for upcoming assignments (configurable).
+5. Summary builder reads DB (manual statuses honored).
+6. Telegram delivery formats summary with HTML-safe output.
+7. Agent chat uses a structured planner to choose a tool and executes it.
 
 ## Deployment
 - Local dev: `npm run start` and `npm run agent:telegram`.

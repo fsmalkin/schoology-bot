@@ -167,7 +167,7 @@ export function toolDefinitions() {
         limit: {
           type: "integer",
           minimum: 1,
-          maximum: 200,
+          maximum: 1000,
           description: "Max number of assignments to return.",
         },
         includeIgnored: {

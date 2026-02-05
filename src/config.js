@@ -83,6 +83,19 @@ const config = {
     maxOutputTokens: numEnv("OPENAI_MAX_OUTPUT_TOKENS", 700),
     compactAfterTurns: numEnv("OPENAI_COMPACT_AFTER_TURNS", 20),
   },
+  autoIgnore: {
+    enabled: boolEnv("AUTO_IGNORE_ENABLED", true),
+    oldDays: numEnv("AUTO_IGNORE_OLD_DAYS", 120),
+    keywords: listEnv("AUTO_IGNORE_KEYWORDS").length
+      ? listEnv("AUTO_IGNORE_KEYWORDS")
+      : ["practice", "not for grade", "non-graded", "participation", "optional"],
+  },
+  autoUpcoming: {
+    enabled: boolEnv("AUTO_UPCOMING_ENABLED", true),
+    days: numEnv("AUTO_UPCOMING_DAYS", 7),
+    remindHour: numEnv("AUTO_UPCOMING_REMIND_HOUR", 19),
+    remindMinute: numEnv("AUTO_UPCOMING_REMIND_MINUTE", 0),
+  },
   delivery: {
     channel: env("DELIVERY_CHANNEL", "auto"),
   },

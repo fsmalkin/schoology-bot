@@ -21,6 +21,8 @@ This document records completed milestones and major capability deliveries.
 - Output normalization to ASCII for consistent Telegram rendering.
 - Response drafting uses tool results when updates occur.
 - Bootstrap context loader (AGENTS/TOOLS/SOUL/skills) to mirror Clawdbot-style workspace context.
+- Auto-ignore prior-quarter/practice items (configurable keywords and age cutoff).
+- Auto-plan reminders for upcoming assignments (configurable window and reminder time).
 
 ## Beta Program
 - Beta bot branch and separate env/data dir (`.env.beta`, `DATA_DIR=data/beta`).

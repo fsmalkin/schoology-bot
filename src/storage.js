@@ -51,20 +51,23 @@ export function updateStateWithScrape(state, scrapeAt, assignments) {
     seenKeys.add(key);
     const existing = state.assignments[key] || {};
     const firstSeenAt = existing.firstSeenAt || scrapeAt;
+    const isMissing = item.isMissing === true;
+    const wasMissing = existing.isMissing === true;
+    const resolvedAt = !isMissing && wasMissing ? scrapeAt : existing.resolvedAt || null;
     state.assignments[key] = {
       key,
       course: item.course || existing.course || "",
       title: item.title || existing.title || "",
       dueDate: item.dueDate || existing.dueDate || "",
-      status: item.status || existing.status || "Missing",
+      status: item.status || existing.status || "",
       score: item.score || existing.score || "",
       url: item.url || existing.url || "",
       rawText: item.rawText || existing.rawText || "",
       firstSeenAt,
       lastSeenAt: scrapeAt,
-      isMissing: true,
-      lastMissingAt: scrapeAt,
-      resolvedAt: existing.resolvedAt || null,
+      isMissing,
+      lastMissingAt: isMissing ? scrapeAt : existing.lastMissingAt || null,
+      resolvedAt,
     };
   }
 

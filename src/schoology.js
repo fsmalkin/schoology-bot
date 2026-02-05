@@ -318,7 +318,7 @@ function normalizeText(text) {
   return text.replace(/\s+/g, " ").trim().replace(/\u00e2\u20ac\u201d/g, "-");
 }
 
-async function extractMissingAssignments(page) {
+async function extractAssignments(page) {
   return await page.evaluate(() => {
     const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
     const cleanTrailingLabel = (value) =>
@@ -377,11 +377,6 @@ async function extractMissingAssignments(page) {
           .filter(Boolean)
           .join(" ");
 
-        const isMissing = missingPatterns.some((pattern) => pattern.test(statusHints));
-        if (!isMissing) {
-          continue;
-        }
-
         results.push({
           course,
           title,
@@ -390,6 +385,7 @@ async function extractMissingAssignments(page) {
           score: gradeText,
           url,
           rawText: normalize(row.textContent || ""),
+          isMissing: missingPatterns.some((pattern) => pattern.test(statusHints)),
         });
       }
     }
@@ -430,7 +426,7 @@ export async function scrapeMissingAssignments(config) {
     await selectStudentIfNeeded(page, config.schoology.studentName);
     await page.waitForLoadState("networkidle");
 
-    const assignments = await extractMissingAssignments(page);
+    const assignments = await extractAssignments(page);
 
     await context.storageState({ path: config.paths.storagePath });
 
@@ -446,6 +442,7 @@ export async function scrapeMissingAssignments(config) {
       score: normalizeText(a.score || ""),
       url: a.url || "",
       rawText: normalizeText(a.rawText || ""),
+      isMissing: Boolean(a.isMissing),
     }));
   } catch (err) {
     await dumpDebug(page, config);
@@ -460,7 +457,19 @@ export async function extractMissingAssignmentsFromHtml(html) {
   const page = await browser.newPage();
   try {
     await page.setContent(html, { waitUntil: "domcontentloaded" });
-    return await extractMissingAssignments(page);
+    const assignments = await extractAssignments(page);
+    return assignments.filter((item) => item.isMissing);
+  } finally {
+    await browser.close();
+  }
+}
+
+export async function extractAssignmentsFromHtml(html) {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  try {
+    await page.setContent(html, { waitUntil: "domcontentloaded" });
+    return await extractAssignments(page);
   } finally {
     await browser.close();
   }
