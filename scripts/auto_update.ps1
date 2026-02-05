@@ -1,6 +1,8 @@
 param(
   [string]$Branch = "",
-  [switch]$DryRun
+  [switch]$DryRun,
+  [switch]$SkipTests,
+  [switch]$RunLiveTests
 )
 
 $ErrorActionPreference = "Stop"
@@ -37,6 +39,12 @@ Write-Step "Target branch: $Branch"
 Run-Command "git fetch"
 Run-Command "git checkout $Branch"
 Run-Command "git pull --ff-only"
+if (-not $SkipTests) {
+  if (-not $RunLiveTests) {
+    $env:SKIP_LIVE_TESTS = "1"
+  }
+  Run-Command "npm test"
+}
 Run-Command "docker compose up -d --build"
 Run-Command "docker compose ps"
 

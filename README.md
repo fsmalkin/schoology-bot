@@ -42,6 +42,10 @@ and rebuild Docker automatically, use the script:
 Examples:
 - Dry run: `powershell -ExecutionPolicy Bypass -File scripts/auto_update.ps1 -DryRun`
 - Update main: `powershell -ExecutionPolicy Bypass -File scripts/auto_update.ps1 -Branch main`
+- Skip tests: `powershell -ExecutionPolicy Bypass -File scripts/auto_update.ps1 -Branch main -SkipTests`
+
+The script runs `npm test` by default with `SKIP_LIVE_TESTS=1`.
+To run live OpenAI tests during update, add `-RunLiveTests`.
 
 You can run this on a schedule via Windows Task Scheduler if desired.
 
