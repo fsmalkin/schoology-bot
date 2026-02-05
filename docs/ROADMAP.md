@@ -30,14 +30,13 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 - Pending actions are stored per chat to complete multi-step confirmations.
 
 ## Now
-1. Promote beta to production once UAT passes (bot behavior, formatting, reminders, refresh).
-2. Add long-term memory + context compaction (summary-based) for agent chats.
-3. Adopt a library-first approach for agent behavior (evaluate OpenAI Agents SDK, AgentSkills, LangGraph) before custom code.
-4. Institutionalize retros: after each incident or learning point, update AGENTS/TOOLS/SOUL and roadmap with the fix.
+1. Tool capability awareness: expose tool constraints (ex: no recurring tasks yet) via MCP/skills or a tool-capabilities registry.
+2. Long-term memory + context compaction (summary-based) for agent chats.
 
 ## Next (Stack Ranked)
-1. P2 - Triage empty bug report created by auto-filer and close/replace with real details (GitHub #5).
-2. P2 - Improve tool capability awareness: expose tool constraints (ex: no recurring tasks yet) via MCP/skills or a tool-capabilities registry, and have the agent reference it before replying.
+1. Define compaction policy (trigger, scope, summary format).
+2. Choose a library baseline for agent behavior (Agents SDK vs AgentSkills vs LangGraph).
+3. Decide if/when to add a scheduled auto-update task (Windows Task Scheduler).
 
 ## Later
 - Convert action-oriented notes into reminders when appropriate (ask user to confirm).
@@ -50,12 +49,6 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 - Phase 5 (Local Web UI): local admin UI for status/notes/reminders.
 
 ## Open Items
-- Provide Telegram bot token and chat IDs.
-- Optional: Provide Twilio credentials for SMS fallback.
-- Optional: Provide SMTP credentials for email fallback.
-- Decide when to switch to Twilio API Key credentials.
-- Provide OpenAI API key for agent integration.
-- Choose GPT model tier (gpt-5.2 vs gpt-5.2-pro vs gpt-5-mini).
+- Optional: Twilio/SMS path (not fully tested).
+- Optional: SMTP email delivery.
 - Decide whether to use Agents SDK or direct Responses API.
-- Define compaction policy (trigger and summary scope).
-- Choose a library-first agent baseline (Agents SDK vs AgentSkills vs LangGraph).
