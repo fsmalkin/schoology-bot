@@ -3,6 +3,7 @@ node_modules/
 docs/TEST_RESULTS.md
 .env.*
 !.env.example
+!.env.beta.example
 data/
 playwright-report/
 test-results/

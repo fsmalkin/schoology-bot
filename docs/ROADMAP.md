@@ -105,6 +105,37 @@ Implementation approach:
 - Planned: Convert action-oriented notes into reminders when appropriate (ask user to confirm).
 - Planned: Unified single Task model (Option B).
 
+## Beta Telegram Branch Plan
+Goal: Create a beta Telegram bot on a separate branch for safe testing and rollout of new agent behaviors.
+
+Scope:
+- New Git branch for beta testing.
+- Separate Telegram bot token + chat ID(s).
+- Beta environment uses same DB schema but separate data dir.
+- Deploy with Docker Compose using beta env file.
+
+Steps:
+1) Create branch `beta-telegram` (Done).
+2) Create a new Telegram bot for beta testing and add it to the beta group chat.
+3) Add a new `.env.beta` with:
+   - TELEGRAM_BOT_TOKEN (beta bot)
+   - TELEGRAM_CHAT_IDS (beta chat/group)
+   - AGENT_DB_PATH (beta DB path)
+   - STATE_PATH (beta state path)
+4) Add a `docker-compose.beta.yml` that points to `.env.beta`.
+5) Run the beta stack and validate:
+   - Polling starts
+   - Agent replies once per batch
+   - Reminder scheduling flow works end-to-end
+6) Promote fixes from beta to main after UAT sign-off.
+
+Risks:
+- Confusion between prod/beta chats.
+- Shared DB paths causing cross-talk if env separation is missed.
+
+Rollback:
+- Stop beta compose stack and delete beta env/db/state files.
+
 Deliverables:
 - Tool endpoints: list assignments, update status, add note, schedule reminder.
 - Tool endpoints: create/list/update/delete tasks with reminders.

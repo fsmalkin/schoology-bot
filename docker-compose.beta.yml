@@ -1,0 +1,22 @@
+services:
+  schoology-beta:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env.beta
+    command: npm run start
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+
+  telegram-agent-beta:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env.beta
+    command: npm run agent:telegram
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
