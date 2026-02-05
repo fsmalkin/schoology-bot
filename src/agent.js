@@ -32,6 +32,7 @@ import { openBugReport, openFeatureRequest } from "./bugs.js";
 import { statusGuideText, isIgnoredStatus, isPendingStatus } from "./statuses.js";
 import { isRepetitiveOutput, isToolingLoop, normalizeAscii, sanitizeRepeatedText } from "./text_utils.js";
 import { runScrape } from "./tasks.js";
+import { getBootstrapContext } from "./bootstrap.js";
 
 function buildResponsePrompt() {
   return [
@@ -51,6 +52,7 @@ function buildResponsePrompt() {
     "Do not mention tool calls or function names.",
     "If a reminder time is missing or invalid, ask for a specific time (example: 2026-02-05 4:00pm ET).",
     "Keep responses concise and action-oriented.",
+    getBootstrapContext() ? `\\nBootstrap Context:\\n${getBootstrapContext()}` : "",
   ].join(" ");
 }
 
@@ -904,8 +906,9 @@ function hasWriteTool(executed) {
   return executed.some((item) => writeTools.has(item.call?.name));
 }
 
-function buildPlanInput(text, pending) {
-  if (!pending) return text;
+function buildPlanInput(text, pending, bootstrap) {
+  const base = bootstrap ? `${bootstrap}\\n\\nUser message:\\n${text}` : text;
+  if (!pending) return base;
   const pendingSummary = {
     tool: pending.tool,
     args: pending.args || {},
@@ -943,7 +946,7 @@ function buildPendingDecisionInstructions() {
 
 async function decidePendingAction(client, config, pending, text, previousResponseId) {
   const schema = buildPendingDecisionSchema();
-  const input = buildPlanInput(text, pending);
+  const input = buildPlanInput(text, pending, getBootstrapContext());
   const response = await createResponseWithRetry(client, {
     model: config.openai.model,
     reasoning: { effort: "low" },
@@ -1335,7 +1338,7 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
     }
   }
 
-  const planText = buildPlanInput(text, activePending);
+  const planText = buildPlanInput(text, activePending, getBootstrapContext());
   const allowedToolsOverride =
     activePending && pendingDecision === "proceed" ? [activePending.tool] : null;
   let plan;

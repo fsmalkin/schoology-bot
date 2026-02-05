@@ -102,6 +102,7 @@ Implementation approach:
 - Done: "Working on it" message cleanup after replies.
 - Done: Output normalization to ASCII for consistent Telegram rendering.
 - Done: Response drafting uses tool results when updates occur.
+- Done: Bootstrap context loader (AGENTS/TOOLS/SOUL/skills) to mirror Clawdbot-style workspace context.
 - Planned: Convert action-oriented notes into reminders when appropriate (ask user to confirm).
 - Planned: Unified single Task model (Option B).
 

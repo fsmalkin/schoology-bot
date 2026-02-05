@@ -83,6 +83,7 @@ Optional:
 - `AGENT_DB_PATH="data/agent.db"` to override where agent data is stored.
 - `GITHUB_REPO="yourname/schoology-bot"` and `GITHUB_TOKEN="..."` to allow the agent to open GitHub issues.
 - `GITHUB_LABELS="bug,agent"` to apply default labels when opening issues.
+- `DATA_DIR="data"` to override the base data folder (useful for beta).
 
 Note: If you use a group chat, Telegram bot privacy must be disabled (BotFather -> /setprivacy) or you must mention the bot for it to receive messages.
 
@@ -95,6 +96,16 @@ Tips:
 - Incoming messages are batched briefly (about 1 second) so fast sequences become one request.
 - If a batch exceeds the limit, the oldest messages are dropped to keep the newest context.
 - The agent shows a typing indicator and sends a "Working on it..." message after 8 seconds if needed.
+- Bootstrap context files are loaded if present: `AGENTS.md`, `TOOLS.md`, `SOUL.md`, and any markdown files in `skills/`.
+
+## Skills (Local)
+Place short, ASCII-only markdown files in `skills/` to extend the agent with local skills.
+These are loaded into the agent context on each run.
+
+## Beta Telegram Stack
+Use a separate bot for beta testing to avoid conflicts with prod.
+1. Create `.env.beta` and set `DATA_DIR="data/beta"` plus a new Telegram bot token and chat id.
+2. Run: `docker compose -f docker-compose.beta.yml --env-file .env.beta up -d --build`
 
 ## Tasks and Reminders
 You can create personal tasks (not tied to Schoology) and get Telegram reminders.
