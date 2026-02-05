@@ -29,6 +29,12 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 - Bug filing auto-generates a title when missing.
 - Pending actions are stored per chat to complete multi-step confirmations.
 
+## Top Priorities (Now)
+1. Promote beta to production once UAT passes (bot behavior, formatting, reminders, refresh).
+2. Add long-term memory + context compaction (summary-based) for agent chats.
+3. Adopt a library-first approach for agent behavior (evaluate OpenAI Agents SDK, AgentSkills, LangGraph) before custom code.
+4. Institutionalize retros: after each incident or learning point, update AGENTS/TOOLS/SOUL and roadmap with the fix.
+
 ## Phase 1
 Scope:
 - Log in to Schoology and reach grades page.
@@ -85,7 +91,7 @@ Scope:
 Implementation approach:
 - Use OpenAI Responses API with GPT-5.2 for agent responses and structured tool planning.
 - Optional: wrap tools with the OpenAI Agents SDK for tracing and orchestration.
-- Optional: add context compaction for long-running chats.
+- Optional: add context compaction for long-running chats (summary stored per chat_id).
 - Option B (future): unify tasks + assignment reminders into a single Task model (assignment_key optional).
 
 ## Reliability and UX Improvements
@@ -105,6 +111,10 @@ Implementation approach:
 - Done: Bootstrap context loader (AGENTS/TOOLS/SOUL/skills) to mirror Clawdbot-style workspace context.
 - Planned: Convert action-oriented notes into reminders when appropriate (ask user to confirm).
 - Planned: Unified single Task model (Option B).
+- Planned: Long-term memory summary stored in DB (per chat), injected into prompts.
+- Planned: Context compaction triggers (turn count and/or token budget) with safe summaries.
+- Planned: Library-first agent upgrades (prefer OpenAI Agents SDK or AgentSkills before custom code).
+- Planned: Retros and instruction updates after incidents (AGENTS.md + core prompt changes).
 
 ## Beta Telegram Branch Plan
 Goal: Create a beta Telegram bot on a separate branch for safe testing and rollout of new agent behaviors.
@@ -130,6 +140,11 @@ Steps:
    - Agent replies once per batch
    - Reminder scheduling flow works end-to-end
 6) Promote fixes from beta to main after UAT sign-off.
+7) Promote beta to production:
+   - Stop beta stack
+   - Update prod env with proven config (tokens, paths)
+   - Rebuild prod containers
+   - Validate prod bot responses and reminders
 
 Risks:
 - Confusion between prod/beta chats.
@@ -212,3 +227,5 @@ Rollback:
 - Provide OpenAI API key for agent integration.
 - Choose GPT model tier (gpt-5.2 vs gpt-5.2-pro vs gpt-5-mini).
 - Decide whether to use Agents SDK or direct Responses API.
+- Define compaction policy (trigger and summary scope).
+- Choose a library-first agent baseline (Agents SDK vs AgentSkills vs LangGraph).
