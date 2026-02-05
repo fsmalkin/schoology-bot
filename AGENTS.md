@@ -18,6 +18,14 @@ Codex owns Docker operations for this repo. Do not ask the user to restart servi
 - When investigating issues, check Docker logs first, then `data/agent.log` if needed.
 - If chat state/tool-call errors occur, restart services in Docker and re-test.
 
+## Process (Library-First + Retros)
+- Prefer existing libraries or standard approaches before implementing new logic.
+- After incidents or learning points, run a short retro and update:
+  - AGENTS.md (process rules)
+  - TOOLS.md / SOUL.md (agent behavior and constraints)
+  - docs/ROADMAP.md (future work or guardrails)
+- For new agent behaviors, keep a brief “Decision + Outcome” note in docs (what was chosen, why, fallback).
+
 ## Rollback
 - Revert to previous image by rebuilding from last committed state:
   `git checkout .` then `docker compose up -d --build`
