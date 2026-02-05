@@ -1,9 +1,9 @@
-$ErrorActionPreference = "Stop"
-
 param(
   [string]$Branch = "",
   [switch]$DryRun
 )
+
+$ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Resolve-Path (Join-Path $scriptDir "..")
