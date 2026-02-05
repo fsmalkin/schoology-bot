@@ -203,3 +203,7 @@ Policy for manual statuses on resolved items:
 - Auto-clear only A/B/C (ignored statuses) when the assignment is resolved and has no notes.
 - Keep D/E (pending), any custom statuses, and anything with notes.
 - The agent will summarize what it cleared and what it kept.
+
+Refresh response behavior:
+- The agent reports Actionable / Pending / Archived counts (not raw missing).
+- Archived items are still stored and can be shown on request (ex: "show ignored").
