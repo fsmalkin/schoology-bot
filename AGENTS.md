@@ -25,6 +25,7 @@ Codex owns Docker operations for this repo. Do not ask the user to restart servi
   - TOOLS.md / SOUL.md (agent behavior and constraints)
   - docs/ROADMAP.md (future work or guardrails)
 - For new agent behaviors, keep a brief “Decision + Outcome” note in docs (what was chosen, why, fallback).
+- SOP: auto-update is manual unless a scheduler is configured. Use `scripts/auto_update.ps1 -Branch main` to pull and rebuild, and consider adding a scheduled task later.
 
 ## Rollback
 - Revert to previous image by rebuilding from last committed state:
