@@ -84,6 +84,7 @@ Optional:
 - `GITHUB_REPO="yourname/schoology-bot"` and `GITHUB_TOKEN="..."` to allow the agent to open GitHub issues.
 - `GITHUB_LABELS="bug,agent"` to apply default labels when opening issues.
 - `DATA_DIR="data"` to override the base data folder (useful for beta).
+- `OPENAI_MAX_OUTPUT_TOKENS` to increase response length if replies are getting cut off.
 
 Note: If you use a group chat, Telegram bot privacy must be disabled (BotFather -> /setprivacy) or you must mention the bot for it to receive messages.
 
