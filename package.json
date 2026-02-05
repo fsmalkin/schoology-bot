@@ -9,6 +9,7 @@
     "run-once": "node src/run.js once",
     "start": "node src/scheduler.js",
     "telegram:updates": "node src/telegram_updates.js",
+    "telegram:updates:beta": "set DOTENV_CONFIG_PATH=.env.beta&& node -r dotenv/config src/telegram_updates.js",
     "login:interactive": "node src/interactive_login.js",
     "openai:smoke": "node src/openai_smoke.js",
     "agent:telegram": "node src/telegram_agent.js",
