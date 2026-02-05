@@ -13,8 +13,8 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 - Daily summary delivery via Telegram.
 - Telegram agent runs as a single instance to avoid duplicate responses.
 - Incoming Telegram messages are batched briefly and the oldest dropped if too long.
-- Agent tool routing uses a multi-step structured-output planner (tool group -> tool picker -> augment) to avoid tool-babble.
-- Tool execution is handled by app code (not model tool-calling) for reliability.
+- Agent tool routing uses a multi-step structured-output planner (tool group -> tool picker -> augment).
+- Tool execution is handled by app code (not model tool-calling).
 - Availability target: run via Docker with restart policy + health check; update with `docker compose up -d --build`.
 - Docker support included for easy server migration.
 - If using Twilio later, use Auth Token for now; plan to switch to API Key for server move.
@@ -29,200 +29,26 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 - Bug filing auto-generates a title when missing.
 - Pending actions are stored per chat to complete multi-step confirmations.
 
-## Top Priorities (Now)
+## Now
 1. Promote beta to production once UAT passes (bot behavior, formatting, reminders, refresh).
 2. Add long-term memory + context compaction (summary-based) for agent chats.
 3. Adopt a library-first approach for agent behavior (evaluate OpenAI Agents SDK, AgentSkills, LangGraph) before custom code.
 4. Institutionalize retros: after each incident or learning point, update AGENTS/TOOLS/SOUL and roadmap with the fix.
 
-## Stack Ranked Backlog (From Issues/Requests)
+## Next (Stack Ranked)
 1. P1 - Scrape/store upcoming assignments and auto-plan reminders (GitHub #4).
 2. P1 - Exclude or auto-ignore prior-quarter/practice/non-graded items from missing list (from bugs.log).
 3. P2 - Triage empty bug report created by auto-filer and close/replace with real details (GitHub #5).
 
-## Phase 1
-Scope:
-- Log in to Schoology and reach grades page.
-- Detect missing assignments from the grades view.
-- Persist assignment history and resolved items.
-- Send daily summary message (SMS or email).
-
-Deliverables:
-- Local scheduler for scrape and send.
-- Data store for state history.
-- Summary content with unresolved items only (missing/incomplete/not submitted/absent).
-
-Acceptance:
-- 6:00 AM ET scrape updates state successfully.
-- 7:00 AM ET summary is delivered.
-- Summary lists all unresolved items with clear class names and due dates.
-
-Risks:
-- Login flow changes or new MFA prompt.
-- Page layout changes on Schoology.
-- Missing assignments not labeled consistently.
-
-Rollback:
-- Stop scheduler process.
-- Remove `.env` and `data/` directory.
-
-## Phase 2
-Scope:
-- Track manual statuses and notes not in Schoology, such as "waiting on teacher".
-- Keep manual data linked to assignments.
-- Show manual status and notes in daily summary.
-
-Deliverables:
-- Manual status and notes storage.
-- Commands to set status, add notes, resolve, reopen.
-
-Acceptance:
-- Notes and status persist across runs.
-- Summary includes manual notes where present.
-
-Risks:
-- Assignment matching drift.
-
-Rollback:
-- Delete manual notes storage.
-
-## Phase 3 (Agentic Chat + Tools)
-Scope:
-- Add a chat-driven agent layer that can answer questions about assignments.
-- Let users update assignment statuses and add notes through chat.
-- Schedule reminders for followups on specific assignments.
-- CRUD personal tasks with reminders via chat.
-
-Implementation approach:
-- Use OpenAI Responses API with GPT-5.2 for agent responses and structured tool planning.
-- Optional: wrap tools with the OpenAI Agents SDK for tracing and orchestration.
-- Optional: add context compaction for long-running chats (summary stored per chat_id).
-- Option B (future): unify tasks + assignment reminders into a single Task model (assignment_key optional).
-
-## Reliability and UX Improvements
-- Done: DB-backed daily summary (manual statuses honored).
-- Done: Agentic Telegram daily summary.
-- Done: Pending-action handoff so confirmations complete updates.
-- Done: Pending-action confirmation step to avoid getting stuck on multi-turn updates.
-- Done: Bug filing auto-title + pre-submit validation to prevent blank-title failures.
-- Done: Notes included in daily summary.
-- Done: Reminders/tasks included in daily summary (Today/Upcoming/Overdue for Telegram).
-- Done: Use "Reminders" as the user-facing term for tasks/reminders.
-- Done: Resilient tool routing with group classification and fallback tool selection.
-- Done: Telegram formatting sanitizer (HTML + plain fallback) to avoid raw tags/entities.
-- Done: "Working on it" message cleanup after replies.
-- Done: Output normalization to ASCII for consistent Telegram rendering.
-- Done: Response drafting uses tool results when updates occur.
-- Done: Bootstrap context loader (AGENTS/TOOLS/SOUL/skills) to mirror Clawdbot-style workspace context.
-- Planned: Convert action-oriented notes into reminders when appropriate (ask user to confirm).
-- Planned: Unified single Task model (Option B).
-- Planned: Long-term memory summary stored in DB (per chat), injected into prompts.
-- Planned: Context compaction triggers (turn count and/or token budget) with safe summaries.
-- Planned: Library-first agent upgrades (prefer OpenAI Agents SDK or AgentSkills before custom code).
-- Planned: Retros and instruction updates after incidents (AGENTS.md + core prompt changes).
-
-## Beta Telegram Branch Plan
-Goal: Create a beta Telegram bot on a separate branch for safe testing and rollout of new agent behaviors.
-
-Scope:
-- New Git branch for beta testing.
-- Separate Telegram bot token + chat ID(s).
-- Beta environment uses same DB schema but separate data dir.
-- Deploy with Docker Compose using beta env file.
-
-Steps:
-1) Create branch `beta-telegram` (Done).
-2) Create a new Telegram bot for beta testing and add it to the beta group chat.
-3) Add a new `.env.beta` with:
-   - TELEGRAM_BOT_TOKEN (beta bot)
-   - TELEGRAM_CHAT_IDS (beta chat/group)
-   - DATA_DIR (beta data folder, e.g. data/beta)
-   - AGENT_DB_PATH (beta DB path)
-   - STATE_PATH (beta state path)
-4) Add a `docker-compose.beta.yml` that points to `.env.beta`.
-5) Run the beta stack and validate:
-   - Polling starts
-   - Agent replies once per batch
-   - Reminder scheduling flow works end-to-end
-6) Promote fixes from beta to main after UAT sign-off.
-7) Promote beta to production:
-   - Stop beta stack
-   - Update prod env with proven config (tokens, paths)
-   - Rebuild prod containers
-   - Validate prod bot responses and reminders
-
-Risks:
-- Confusion between prod/beta chats.
-- Shared DB paths causing cross-talk if env separation is missed.
-
-Rollback:
-- Stop beta compose stack and delete beta env/db/state files.
-
-Deliverables:
-- Tool endpoints: list assignments, update status, add note, schedule reminder.
-- Tool endpoints: create/list/update/delete tasks with reminders.
-- Tool endpoint: refresh Schoology on demand and reconcile manual statuses.
-- Local storage for notes and reminders (SQLite or JSON).
-- Telegram bridge to agent (natural language, not brittle commands).
-- Feature request logging via agent tool.
-
-Acceptance:
-- "What is missing this week?" returns accurate summary.
-- "Mark Algebra HW 3 as waiting on teacher" updates stored status.
-- "Remind me about Lab Report on Friday at 7pm" schedules a reminder.
-- "Remind me to ask a friend tonight at 9pm" creates a task and sends a reminder.
-- "Check again, I turned that in" refreshes Schoology and clears only safe manual statuses.
-- Rapid multi-message prompts are combined into a single agent request.
-
-Risks:
-- Cost and latency for longer conversations.
-- Tool misuse if guardrails are weak.
-- Context window limits for long chat history.
-
-Rollback:
-- Disable agent mode and keep standard daily summary.
-
-## Phase 4 (Cost Monitoring)
-Scope:
-- Track daily and total OpenAI API spend.
-- Send a daily cost summary message.
-
-Deliverables:
-- Cost tracker that aggregates usage by day and total.
-- Daily Telegram message with spend totals.
-
-Acceptance:
-- Daily summary shows yesterday's spend and month-to-date total.
-
-Risks:
-- API usage reporting delays.
-
-Rollback:
-- Disable cost summary message.
-
-## Phase 5 (Local Web UI)
-Scope:
-- Provide a small local webpage to view assignments and update statuses/notes.
-- Avoid brittle text-only commands for manual updates.
-
-Deliverables:
-- Local web UI with authentication (local-only).
-- Forms to edit status, add notes, and schedule reminders.
-
-Acceptance:
-- Manual updates can be made reliably from the web UI.
-
-Risks:
-- Additional local service to run.
-
-Rollback:
-- Stop the web UI process.
-
-## Execution Sequence
-1. Build and validate Phase 1 locally.
-2. Harden scheduler and add retries or alerts.
-3. Add Phase 2 manual status and notes.
-4. Add Phase 3 messaging agent.
+## Later
+- Convert action-oriented notes into reminders when appropriate (ask user to confirm).
+- Unified single Task model (Option B).
+- Long-term memory summary stored in DB (per chat), injected into prompts.
+- Context compaction triggers (turn count and/or token budget) with safe summaries.
+- Library-first agent upgrades (prefer OpenAI Agents SDK or AgentSkills before custom code).
+- Retros and instruction updates after incidents (AGENTS.md + core prompt changes).
+- Phase 4 (Cost Monitoring): daily cost summary message.
+- Phase 5 (Local Web UI): local admin UI for status/notes/reminders.
 
 ## Open Items
 - Provide Telegram bot token and chat IDs.

@@ -168,6 +168,12 @@ For email delivery, set `DELIVERY_CHANNEL="email"` and the SMTP values.
 ## Roadmap
 See `docs/ROADMAP.md`.
 
+## Completed Work
+See `docs/COMPLETED.md`.
+
+## Architecture
+See `docs/ARCHITECTURE.md`.
+
 ## Refreshing Schoology
 If someone says "check again" or "I turned that in", the agent can run a fresh scrape and reconcile manual statuses.
 
