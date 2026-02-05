@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { chromium } from "playwright";
+import { getConfig } from "./config.js";
 
 let browser;
 try {
@@ -8,11 +9,13 @@ try {
   console.error("Failed to launch a headed browser.");
   console.error("If you are running inside Docker, run this command on your host instead:");
   console.error("  npm run login:interactive");
-  console.error("Then re-run the containers so they pick up data/storage.json.");
+    console.error("Then re-run the containers so they pick up the storage state.");
   console.error("Error:", err?.message || err);
   process.exit(1);
 }
 
+const config = getConfig();
+const storagePath = config.paths.storagePath;
 const context = await browser.newContext();
 const page = await context.newPage();
 page.setDefaultTimeout(30000);
@@ -26,8 +29,8 @@ process.stdin.setEncoding("utf8");
 process.stdin.once("data", async () => {
   try {
     await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
-    await context.storageState({ path: "data/storage.json" });
-    console.log("Saved storage state to data/storage.json");
+    await context.storageState({ path: storagePath });
+    console.log(`Saved storage state to ${storagePath}`);
   } catch (err) {
     console.error("Failed to save storage state:", err.message || err);
   } finally {
