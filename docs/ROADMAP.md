@@ -35,6 +35,11 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 3. Adopt a library-first approach for agent behavior (evaluate OpenAI Agents SDK, AgentSkills, LangGraph) before custom code.
 4. Institutionalize retros: after each incident or learning point, update AGENTS/TOOLS/SOUL and roadmap with the fix.
 
+## Stack Ranked Backlog (From Issues/Requests)
+1. P1 - Scrape/store upcoming assignments and auto-plan reminders (GitHub #4).
+2. P1 - Exclude or auto-ignore prior-quarter/practice/non-graded items from missing list (from bugs.log).
+3. P2 - Triage empty bug report created by auto-filer and close/replace with real details (GitHub #5).
+
 ## Phase 1
 Scope:
 - Log in to Schoology and reach grades page.
