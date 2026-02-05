@@ -37,6 +37,7 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 
 ## Next (Stack Ranked)
 1. P2 - Triage empty bug report created by auto-filer and close/replace with real details (GitHub #5).
+2. P2 - Improve tool capability awareness: expose tool constraints (ex: no recurring tasks yet) via MCP/skills or a tool-capabilities registry, and have the agent reference it before replying.
 
 ## Later
 - Convert action-oriented notes into reminders when appropriate (ask user to confirm).
