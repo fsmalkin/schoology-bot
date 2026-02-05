@@ -120,6 +120,7 @@ Steps:
 3) Add a new `.env.beta` with:
    - TELEGRAM_BOT_TOKEN (beta bot)
    - TELEGRAM_CHAT_IDS (beta chat/group)
+   - DATA_DIR (beta data folder, e.g. data/beta)
    - AGENT_DB_PATH (beta DB path)
    - STATE_PATH (beta state path)
 4) Add a `docker-compose.beta.yml` that points to `.env.beta`.

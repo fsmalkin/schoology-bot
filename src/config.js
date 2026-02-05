@@ -30,6 +30,8 @@ function listEnv(name) {
 
 const cwd = process.cwd();
 
+const dataDir = env("DATA_DIR", path.join(cwd, "data"));
+
 const config = {
   schoology: {
     loginUrl: env("SCHOLOGY_LOGIN_URL", "https://bcps.schoology.com/login"),
@@ -88,13 +90,13 @@ const config = {
     dump: boolEnv("DEBUG_DUMP", false),
   },
   paths: {
-    dataDir: path.join(cwd, "data"),
-    statePath: path.join(cwd, "data", "state.json"),
-    storagePath: path.join(cwd, "data", "storage.json"),
-    debugHtmlPath: path.join(cwd, "data", "debug.html"),
-    debugScreenshotPath: path.join(cwd, "data", "debug.png"),
-    agentDbPath: env("AGENT_DB_PATH", path.join(cwd, "data", "agent.db")),
-    bugLogPath: path.join(cwd, "data", "bugs.log"),
+    dataDir,
+    statePath: env("STATE_PATH", path.join(dataDir, "state.json")),
+    storagePath: env("STORAGE_PATH", path.join(dataDir, "storage.json")),
+    debugHtmlPath: env("DEBUG_HTML_PATH", path.join(dataDir, "debug.html")),
+    debugScreenshotPath: env("DEBUG_SCREENSHOT_PATH", path.join(dataDir, "debug.png")),
+    agentDbPath: env("AGENT_DB_PATH", path.join(dataDir, "agent.db")),
+    bugLogPath: env("BUG_LOG_PATH", path.join(dataDir, "bugs.log")),
   },
 };
 
