@@ -1053,7 +1053,25 @@ function formatUpdateSummary(results, db) {
 
     if (name === "refresh_schoology") {
       if (output?.ok) {
-        applied.push(`Refreshed Schoology. Missing: ${output.missingCount}, Resolved: ${output.resolvedCount}.`);
+        const actionable = Number(output.actionableCount || 0);
+        const pending = Number(output.pendingCount || 0);
+        const ignored = Number(output.ignoredCount || 0);
+        const parts = [];
+        if (actionable > 0) {
+          parts.push(`${actionable} still need action`);
+        } else {
+          parts.push("no items need action");
+        }
+        if (pending > 0) {
+          parts.push(`${pending} waiting on a grade`);
+        }
+        if (ignored > 0) {
+          parts.push(`${ignored} archived`);
+        }
+        applied.push(`Refresh complete. ${parts.join("; ")}.`);
+        if (Array.isArray(output.ignoredReasons) && output.ignoredReasons.length > 0) {
+          info.push(`Archived because: ${output.ignoredReasons.join(", ")}.`);
+        }
         if (output.clearedManualCount > 0) {
           info.push(`Cleared ${output.clearedManualCount} manual status(es).`);
         }
@@ -1258,14 +1276,30 @@ async function runTool(db, call) {
         const resolved = listResolvedWithManualStatus(db, since);
         const { cleared, kept } = applyManualStatusPolicy(resolved);
         const clearResult = clearManualStatuses(db, cleared.map((row) => row.key));
-        const missingCount = listAssignments(db, {
+        const bucketed = listAssignments(db, {
           status: "missing",
           includeIgnored: true,
           includePending: true,
-        }).length;
+          bucketed: true,
+          limit: 1000,
+        });
+        const actionableCount = bucketed?.buckets?.actionable?.length || 0;
+        const pendingCount = bucketed?.buckets?.pending?.length || 0;
+        const ignoredRows = bucketed?.buckets?.ignored || [];
+        const ignoredCount = ignoredRows.length;
+        const reasons = Array.from(
+          new Set(
+            ignoredRows
+              .map((row) => row.autoIgnoreReason)
+              .filter((value) => value && String(value).trim().length > 0)
+          )
+        ).slice(0, 3);
         return {
           ok: true,
-          missingCount,
+          actionableCount,
+          pendingCount,
+          ignoredCount,
+          ignoredReasons: reasons,
           resolvedCount: resolved.length,
           clearedManualCount: clearResult.cleared || 0,
           keptManual: kept,
