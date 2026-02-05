@@ -93,7 +93,7 @@ const config = {
   autoUpcoming: {
     enabled: boolEnv("AUTO_UPCOMING_ENABLED", true),
     days: numEnv("AUTO_UPCOMING_DAYS", 7),
-    remindHour: numEnv("AUTO_UPCOMING_REMIND_HOUR", 19),
+    remindHour: numEnv("AUTO_UPCOMING_REMIND_HOUR", 16),
     remindMinute: numEnv("AUTO_UPCOMING_REMIND_MINUTE", 0),
   },
   delivery: {

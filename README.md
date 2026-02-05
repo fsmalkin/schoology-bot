@@ -129,7 +129,7 @@ The scheduler can auto-plan reminders for upcoming assignments.
 Defaults (override via `.env`):
 - `AUTO_UPCOMING_ENABLED=true`
 - `AUTO_UPCOMING_DAYS=7`
-- `AUTO_UPCOMING_REMIND_HOUR=19` (7pm local)
+- `AUTO_UPCOMING_REMIND_HOUR=16` (4pm local)
 - `AUTO_UPCOMING_REMIND_MINUTE=0`
 
 The auto-planner only creates a reminder when:
