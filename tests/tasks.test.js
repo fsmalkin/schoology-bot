@@ -42,3 +42,14 @@ test("task reminders roll over", () => {
   assert.equal(after[0].remindAt, "2026-02-04T21:00:00Z");
   assert.equal(after[0].rollCount, 1);
 });
+
+test("createTask requires a valid reminder time", () => {
+  const db = newDb();
+  const missing = createTask(db, { title: "Bad time", remindAt: "" });
+  assert.equal(missing.ok, false);
+  assert.match(missing.error, /Reminder time is required/i);
+
+  const invalid = createTask(db, { title: "Bad time", remindAt: "tomorrow at 4pl" });
+  assert.equal(invalid.ok, false);
+  assert.match(invalid.error, /Reminder time is invalid/i);
+});

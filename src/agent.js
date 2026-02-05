@@ -49,6 +49,7 @@ function buildResponsePrompt() {
     "Inside message, use plain text with simple lists (use '-' for bullets, '1.' for numbering).",
     "Do not use HTML tags or Markdown code fences inside the message.",
     "Do not mention tool calls or function names.",
+    "If a reminder time is missing or invalid, ask for a specific time (example: 2026-02-05 4:00pm ET).",
     "Keep responses concise and action-oriented.",
   ].join(" ");
 }
@@ -983,6 +984,8 @@ function shouldStorePendingAction(toolName, output) {
   if (message.includes("assignment key or title is required")) return true;
   if (message.includes("multiple assignments match")) return true;
   if (message.includes("no matching assignments")) return true;
+  if (message.includes("reminder time is required")) return true;
+  if (message.includes("reminder time is invalid")) return true;
   return false;
 }
 

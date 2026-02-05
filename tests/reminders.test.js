@@ -55,3 +55,16 @@ test("dedupePendingReminders removes duplicates", () => {
   const reminders = listReminders(db, { key: "a1", status: "pending" });
   assert.equal(reminders.length, 1);
 });
+
+test("scheduleReminder requires a valid reminder time", () => {
+  const db = createDb(":memory:");
+  seedAssignment(db);
+
+  const missing = scheduleReminder(db, { key: "a1", remindAt: "" });
+  assert.equal(missing.ok, false);
+  assert.match(missing.error, /Reminder time is required/i);
+
+  const invalid = scheduleReminder(db, { key: "a1", remindAt: "tomorrow at 4pl" });
+  assert.equal(invalid.ok, false);
+  assert.match(invalid.error, /Reminder time is invalid/i);
+});

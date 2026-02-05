@@ -7,6 +7,22 @@ import { loadState } from "./storage.js";
 
 let dbInstance = null;
 
+function normalizeRemindAt(remindAt) {
+  const value = String(remindAt || "").trim();
+  if (!value) {
+    return { ok: false, error: "Reminder time is required." };
+  }
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) {
+    return {
+      ok: false,
+      error:
+        "Reminder time is invalid. Please use a specific date/time like 2026-02-05T16:00:00-05:00.",
+    };
+  }
+  return { ok: true, value };
+}
+
 function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });
@@ -604,6 +620,9 @@ export function listAssignmentNotes(db, { keys = [], limitPerAssignment = 3 } = 
 }
 
 export function scheduleReminder(db, { key, title, course, remindAt, message, replaceExisting = true }) {
+  const remindCheck = normalizeRemindAt(remindAt);
+  if (!remindCheck.ok) return { ok: false, error: remindCheck.error };
+  const remindTime = remindCheck.value;
   let targetKey = key || null;
   if (!targetKey && title) {
     const matches = findAssignments(db, { title, course });
@@ -641,7 +660,7 @@ export function scheduleReminder(db, { key, title, course, remindAt, message, re
             message = @message
         WHERE id = @id
       `
-      ).run({ remind_at: remindAt, message: message || "", id: keep.id });
+      ).run({ remind_at: remindTime, message: message || "", id: keep.id });
       if (rest.length > 0) {
         const ids = rest.map((row) => row.id);
         db.prepare(`DELETE FROM reminders WHERE id IN (${ids.map(() => "?").join(",")})`).run(ids);
@@ -669,7 +688,7 @@ export function scheduleReminder(db, { key, title, course, remindAt, message, re
       VALUES (@key, @remind_at, @message, @created_at)
     `
     )
-    .run({ key: targetKey, remind_at: remindAt, message: message || "", created_at: nowIso() });
+    .run({ key: targetKey, remind_at: remindTime, message: message || "", created_at: nowIso() });
 
   const assignment = db
     .prepare("SELECT course, title, due_date AS dueDate FROM assignments WHERE key = ?")
@@ -709,10 +728,10 @@ export function updateReminder(db, { id, remindAt, message }) {
   const fields = [];
   const params = { id: reminderId };
   if (remindAt !== undefined) {
-    const remindTime = String(remindAt || "").trim();
-    if (!remindTime) return { ok: false, error: "Reminder time is required." };
+    const remindCheck = normalizeRemindAt(remindAt);
+    if (!remindCheck.ok) return { ok: false, error: remindCheck.error };
     fields.push("remind_at = @remind_at");
-    params.remind_at = remindTime;
+    params.remind_at = remindCheck.value;
   }
   if (message !== undefined) {
     fields.push("message = @message");
@@ -829,10 +848,9 @@ export function createTask(db, { title, remindAt, message }) {
   if (!taskTitle) {
     return { ok: false, error: "Task title is required." };
   }
-  const remindTime = String(remindAt || "").trim();
-  if (!remindTime) {
-    return { ok: false, error: "Reminder time is required." };
-  }
+  const remindCheck = normalizeRemindAt(remindAt);
+  if (!remindCheck.ok) return { ok: false, error: remindCheck.error };
+  const remindTime = remindCheck.value;
 
   const result = db
     .prepare(
@@ -935,10 +953,10 @@ export function updateTask(db, { id, title, remindAt, message }) {
     params.title = taskTitle;
   }
   if (remindAt !== undefined) {
-    const remindTime = String(remindAt || "").trim();
-    if (!remindTime) return { ok: false, error: "Reminder time is required." };
+    const remindCheck = normalizeRemindAt(remindAt);
+    if (!remindCheck.ok) return { ok: false, error: remindCheck.error };
     fields.push("remind_at = @remind_at");
-    params.remind_at = remindTime;
+    params.remind_at = remindCheck.value;
   }
   if (message !== undefined) {
     fields.push("message = @message");
