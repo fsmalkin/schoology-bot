@@ -171,19 +171,10 @@ What is covered:
 - Task reminder scheduling and rollover.
 - Telegram formatting and batching.
 
-## Twilio SMS
-Required `.env` values for SMS:
-- `DELIVERY_CHANNEL="twilio"`
-- `TWILIO_ACCOUNT_SID`
-- `TWILIO_AUTH_TOKEN`
-- `TWILIO_FROM` (or `TWILIO_MESSAGING_SERVICE_SID`)
-- `TWILIO_TO` (comma-separated list of numbers, e.g. `+14155550123,+14155550124`)
-
-Twilio setup checklist:
-- Buy an SMS-capable Twilio number.
-- If your account is in trial mode, verify each recipient number in the Twilio Console.
-- Optional: create a Messaging Service and add your number (then set `TWILIO_MESSAGING_SERVICE_SID`).
-- Optional: enable SMS permissions for the countries you will message.
+## Twilio SMS (Experimental)
+Twilio delivery is not fully implemented or tested. Prefer Telegram for now.
+If you still want to try SMS, set `DELIVERY_CHANNEL="twilio"` and the Twilio env vars,
+but expect rough edges until this path is fully validated.
 
 For email delivery, set `DELIVERY_CHANNEL="email"` and the SMTP values.
 
