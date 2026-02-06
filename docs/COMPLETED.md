@@ -26,6 +26,7 @@ This document records completed milestones and major capability deliveries.
 - Refresh responses now summarize Actionable/Pending/Archived instead of raw missing counts.
 - Optional auto-update script for pulling a branch and rebuilding Docker.
 - Optional CI workflow for offline tests on PRs/pushes to main.
+- Tool capability awareness documented (capabilities/limits in TOOLS.md and prompt).
 
 ## Beta Program
 - Beta bot branch and separate env/data dir (`.env.beta`, `DATA_DIR=data/beta`).
