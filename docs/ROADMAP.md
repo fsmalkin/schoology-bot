@@ -30,8 +30,9 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 - Pending actions are stored per chat to complete multi-step confirmations.
 
 ## Now
-1. Tool capability awareness: expose tool constraints (ex: no recurring tasks yet) via MCP/skills or a tool-capabilities registry.
-2. Long-term memory + context compaction (summary-based) for agent chats.
+1. OpenClaw evaluation (beta branch): assess tool routing, memory/compaction, and IO adapters.
+2. Tool capability awareness: expose tool constraints (ex: no recurring tasks yet) via MCP/skills or a tool-capabilities registry.
+3. Long-term memory + context compaction (summary-based) for agent chats.
 
 ## Next (Stack Ranked)
 1. Define compaction policy (trigger, scope, summary format).
