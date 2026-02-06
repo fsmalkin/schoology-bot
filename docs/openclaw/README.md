@@ -15,19 +15,21 @@ Schoology bot code in the repo root for comparison and migration planning.
 - Update to latest upstream:
   `git submodule update --remote --merge vendor/openclaw`
 
-## Evaluation checklist (initial)
-1. Tool calling model: how OpenClaw routes tools vs. our structured planner.
-2. Memory + compaction: built-in memory options, storage model, and retrieval.
-3. Conversation UX: clarifications, disambiguation, and partial intent handling.
-4. Error handling: how it avoids tool-call loops and response spam.
-5. Test strategy: how to run offline + live tests with minimal cost.
+## Evaluation checklist (current use-cases only)
+1. Refresh Schoology and list missing assignments (actionable vs pending vs archived).
+2. Update manual status for a missing item (A/B/C/D/E style).
+3. Add notes to assignments and see them in the daily summary.
+4. Create reminders (standalone and assignment-linked), and deliver them on time.
+5. Daily summary (morning): concise, respects manual status, includes tasks/reminders.
+6. Telegram UX: formatting, no duplicate responses, no tool-call loops.
+7. Error handling: retries, backoff, and friendly failure text without spam.
 
 ## Migration approach (draft)
 1. Run OpenClaw locally using its default stack.
-2. Map our tools: Schoology refresh, list missing, update manual status, reminders.
-3. Implement a minimal adapter for Telegram IO (or use an OpenClaw adapter if available).
-4. Verify parity with our current bot behavior using fixtures.
-5. Decide: fully migrate, partially adopt (e.g., memory layer), or stay as-is.
+2. Map only the current tool set (refresh, list missing, update status, reminders, daily summary).
+3. Use our existing Telegram IO (or an OpenClaw adapter if available).
+4. Verify parity with the current bot behavior using fixtures + a live dummy simulation.
+5. Decide: fully migrate, partially adopt, or stay as-is.
 
 ## Notes
 - This is additive: no production files are replaced here.
