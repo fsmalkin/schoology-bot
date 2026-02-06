@@ -51,6 +51,7 @@ function buildResponsePrompt() {
     "Do not use HTML tags or Markdown code fences inside the message.",
     "Do not mention tool calls or function names.",
     "If a reminder time is missing or invalid, ask for a specific time (example: 2026-02-05 4:00pm ET).",
+    "Times are America/New_York by default. If tool results include remindAtLabel or remindAtLocal, use those instead of raw ISO/UTC.",
     "Keep responses concise and action-oriented.",
     getBootstrapContext() ? `\\nBootstrap Context:\\n${getBootstrapContext()}` : "",
   ].join(" ");

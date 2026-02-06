@@ -20,6 +20,7 @@ import {
 import { openBugReport, openFeatureRequest } from "./bugs.js";
 import { isIgnoredStatus, isPendingStatus } from "./statuses.js";
 import { runScrape } from "./tasks.js";
+import { formatDateTime, formatDateTimeLabel, formatIsoWithOffset } from "./time.js";
 
 export const TOOL_NAMES = [
   "list_assignments",
@@ -63,7 +64,45 @@ export function applyManualStatusPolicy(rows) {
   return { cleared, kept };
 }
 
+function addLocalReminderFields(item, timeZone) {
+  if (!item || !item.remindAt) {
+    return {
+      ...item,
+      remindAtUtc: item?.remindAt || null,
+      remindAtLocal: null,
+      remindAtLabel: null,
+      remindAtTz: timeZone,
+    };
+  }
+  const parsed = new Date(item.remindAt);
+  if (!Number.isFinite(parsed.getTime())) {
+    return {
+      ...item,
+      remindAtUtc: item?.remindAt || null,
+      remindAtLocal: null,
+      remindAtLabel: null,
+      remindAtTz: timeZone,
+    };
+  }
+  const localIso = formatIsoWithOffset(parsed, timeZone);
+  return {
+    ...item,
+    remindAtUtc: item.remindAt,
+    remindAt: localIso,
+    remindAtLocal: formatDateTime(parsed, timeZone),
+    remindAtLabel: formatDateTimeLabel(parsed, timeZone),
+    remindAtTz: timeZone,
+  };
+}
+
+function addLocalReminderFieldsToList(items, timeZone) {
+  if (!Array.isArray(items)) return [];
+  return items.map((item) => addLocalReminderFields(item, timeZone));
+}
+
 export async function runToolByName(db, toolName, args) {
+  const config = getConfig();
+  const timeZone = config?.schedule?.timezone || "America/New_York";
   switch (toolName) {
     case "list_assignments":
       return { ok: true, assignments: listAssignments(db, args) };
@@ -78,19 +117,58 @@ export async function runToolByName(db, toolName, args) {
     case "schedule_reminder":
       return scheduleReminder(db, args);
     case "list_assignment_reminders":
-      return { ok: true, reminders: listReminders(db, args) };
+      return {
+        ok: true,
+        timeZone,
+        reminders: addLocalReminderFieldsToList(listReminders(db, args), timeZone),
+      };
     case "update_assignment_reminder":
-      return updateReminder(db, args);
+      {
+        const result = updateReminder(db, args);
+        if (result?.ok && result.reminder) {
+          result.reminder = addLocalReminderFields(result.reminder, timeZone);
+        }
+        return result;
+      }
     case "delete_assignment_reminder":
       return deleteReminder(db, args);
     case "create_task":
-      return createTask(db, args);
+      {
+        const result = createTask(db, args);
+        if (result?.ok && result.remindAt) {
+          const enriched = addLocalReminderFields(
+            { remindAt: result.remindAt },
+            timeZone
+          );
+          return {
+            ...result,
+            remindAt: enriched.remindAt,
+            remindAtUtc: enriched.remindAtUtc,
+            remindAtLocal: enriched.remindAtLocal,
+            remindAtLabel: enriched.remindAtLabel,
+            remindAtTz: enriched.remindAtTz,
+          };
+        }
+        return result;
+      }
     case "list_tasks":
-      return { ok: true, tasks: listTasks(db, args) };
+      return { ok: true, timeZone, tasks: addLocalReminderFieldsToList(listTasks(db, args), timeZone) };
     case "update_task_status":
-      return updateTaskStatus(db, args);
+      {
+        const result = updateTaskStatus(db, args);
+        if (result?.ok && result.task) {
+          result.task = addLocalReminderFields(result.task, timeZone);
+        }
+        return result;
+      }
     case "update_task":
-      return updateTask(db, args);
+      {
+        const result = updateTask(db, args);
+        if (result?.ok && result.task) {
+          result.task = addLocalReminderFields(result.task, timeZone);
+        }
+        return result;
+      }
     case "delete_task":
       return deleteTask(db, args);
     case "refresh_schoology": {
@@ -133,9 +211,9 @@ export async function runToolByName(db, toolName, args) {
       }
     }
     case "open_bug_report":
-      return await openBugReport(getConfig(), args);
+      return await openBugReport(config, args);
     case "open_feature_request":
-      return await openFeatureRequest(getConfig(), args);
+      return await openFeatureRequest(config, args);
     default:
       return { ok: false, error: `Unknown tool: ${toolName}` };
   }

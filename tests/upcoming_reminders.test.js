@@ -30,4 +30,5 @@ test("autoPlanUpcomingReminders creates assignment task for upcoming due date", 
   const tasks = listTasks(db, { status: "pending" });
   assert.equal(tasks.length, 1);
   assert.ok(tasks[0].title.includes("Math"));
+  assert.equal(tasks[0].remindAt, "2026-02-06T00:00:00.000Z");
 });

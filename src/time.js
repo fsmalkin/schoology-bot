@@ -36,6 +36,32 @@ export function formatDateTime(date, timeZone) {
   return `${d} ${t}`;
 }
 
+export function formatIsoWithOffset(date, timeZone) {
+  const tz = withDefaultZone(timeZone);
+  const datePart = formatDateYmd(date, tz);
+  const timePart = formatTimeHm(date, tz);
+  const offsetMinutes = getTimeZoneOffset(date, tz) / 60000;
+  const sign = offsetMinutes <= 0 ? "-" : "+";
+  const abs = Math.abs(offsetMinutes);
+  const hours = String(Math.floor(abs / 60)).padStart(2, "0");
+  const minutes = String(Math.floor(abs % 60)).padStart(2, "0");
+  return `${datePart}T${timePart}:00${sign}${hours}:${minutes}`;
+}
+
+export function formatDateTimeLabel(date, timeZone) {
+  const tz = withDefaultZone(timeZone);
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZoneName: "short",
+  }).format(date);
+}
+
 function getTimeZoneOffset(date, timeZone) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,
@@ -65,6 +91,27 @@ function makeDateInZone({ year, month, day, hour, minute }, timeZone) {
   const date = new Date(utc);
   const offset = getTimeZoneOffset(date, tz);
   return new Date(utc - offset);
+}
+
+export function getLocalDateParts(date, timeZone) {
+  if (!date) return null;
+  const tz = withDefaultZone(timeZone);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  return {
+    year: Number(map.year),
+    month: Number(map.month),
+    day: Number(map.day),
+  };
+}
+
+export function makeDateInZoneParts({ year, month, day, hour, minute }, timeZone) {
+  return makeDateInZone({ year, month, day, hour, minute }, timeZone);
 }
 
 export function parseSchoologyDate(value, timeZone) {

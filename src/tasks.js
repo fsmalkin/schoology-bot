@@ -8,7 +8,14 @@ import {
 } from "./config.js";
 import { scrapeMissingAssignments } from "./schoology.js";
 import { buildSummary, loadState, saveState, updateStateWithScrape } from "./storage.js";
-import { formatDateYmd, formatDateTime, nowIso, parseSchoologyDate } from "./time.js";
+import {
+  formatDateYmd,
+  formatDateTime,
+  nowIso,
+  parseSchoologyDate,
+  getLocalDateParts,
+  makeDateInZoneParts,
+} from "./time.js";
 import {
   applyAutoIgnoreRules,
   createAssignmentTask,
@@ -150,6 +157,16 @@ function addDays(date, days) {
   return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
+function shiftYmd(parts, days) {
+  const base = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  base.setUTCDate(base.getUTCDate() + days);
+  return {
+    year: base.getUTCFullYear(),
+    month: base.getUTCMonth() + 1,
+    day: base.getUTCDate(),
+  };
+}
+
 function buildUpcomingSet(baseDate, timeZone, days = 7) {
   const set = new Set();
   for (let i = 1; i <= days; i += 1) {
@@ -216,13 +233,22 @@ export function autoPlanUpcomingReminders(db, config, nowOverride) {
 }
 
 function buildAutoReminderTime(dueDate, config) {
+  const tz = config.schedule.timezone;
   const remindHour = Number(config.autoUpcoming.remindHour ?? 19);
   const remindMinute = Number(config.autoUpcoming.remindMinute ?? 0);
-  const remindDate = new Date(dueDate.getTime());
-  remindDate.setDate(remindDate.getDate() - 1);
-  remindDate.setHours(remindHour, remindMinute, 0, 0);
+  const dueParts = getLocalDateParts(dueDate, tz);
+  if (!dueParts) return null;
+  let remindParts = shiftYmd(dueParts, -1);
+  let remindDate = makeDateInZoneParts(
+    { ...remindParts, hour: remindHour, minute: remindMinute },
+    tz
+  );
   if (remindDate > dueDate) {
-    remindDate.setDate(remindDate.getDate() - 1);
+    remindParts = shiftYmd(dueParts, -2);
+    remindDate = makeDateInZoneParts(
+      { ...remindParts, hour: remindHour, minute: remindMinute },
+      tz
+    );
   }
   return remindDate;
 }

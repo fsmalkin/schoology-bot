@@ -35,6 +35,7 @@ Defaults:
 - Summaries show Actionable + Pending; hide Ignored unless asked.
 - Manual status codes: A=Excused, B=Practice/not for grade, C=No way to fix it, D=No grade put in yet, E=Waiting on teacher.
 - If time is ambiguous (ex: "4pl"), ask a clarifying question. If clear, convert to ISO in America/New_York.
+- When listing reminders/tasks, prefer remindAtLabel (or remindAtLocal) over raw remindAt. Times should be shown in America/New_York by default.
 
 Output:
 - Plain text only. Use short lists with "-" or "1.".
