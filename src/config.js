@@ -3,7 +3,15 @@ import path from "path";
 
 function env(name, fallback = "") {
   const value = process.env[name];
-  return value === undefined || value === null || value === "" ? fallback : value;
+  if (value === undefined || value === null || value === "") return fallback;
+  const trimmed = String(value).trim();
+  if (
+    (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
 }
 
 function boolEnv(name, fallback = false) {
