@@ -296,7 +296,15 @@ export function migrateDb(db) {
 
 export function createDb(dbPath = ":memory:") {
   const db = new Database(dbPath);
-  db.pragma("journal_mode = WAL");
+  try {
+    db.pragma("journal_mode = WAL");
+  } catch (err) {
+    console.warn(
+      "WAL unavailable, falling back to DELETE mode:",
+      err?.message || err
+    );
+    db.pragma("journal_mode = DELETE");
+  }
   initDb(db);
   return db;
 }
