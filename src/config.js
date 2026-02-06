@@ -107,6 +107,11 @@ const config = {
   delivery: {
     channel: env("DELIVERY_CHANNEL", "auto"),
   },
+  liveChecks: {
+    enabled: boolEnv("LIVE_CHECK_ENABLED", false),
+    cron: env("LIVE_CHECK_CRON", "0 5 * * *"),
+    chatIds: listEnv("LIVE_CHECK_CHAT_IDS"),
+  },
   debug: {
     dump: boolEnv("DEBUG_DUMP", false),
   },
