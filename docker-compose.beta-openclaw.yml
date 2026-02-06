@@ -1,0 +1,66 @@
+services:
+  schoology:
+    build: .
+    env_file: .env.beta
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    init: true
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f \"node src/scheduler.js\" > /dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  schoology-tool-api:
+    build: .
+    env_file: .env.beta
+    command: ["node", "src/openclaw_tool_api.js"]
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    init: true
+    depends_on:
+      - schoology
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f \"node src/openclaw_tool_api.js\" > /dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  openclaw-gateway:
+    build:
+      context: vendor/openclaw
+      dockerfile: Dockerfile
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
+      OPENCLAW_GATEWAY_BIND: lan
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      SCHOLOGY_TOOL_API_URL: http://schoology-tool-api:3030/tools/run
+      SCHOLOGY_TOOL_API_KEY: ${SCHOLOGY_TOOL_API_KEY}
+    volumes:
+      - ./data/openclaw-beta:/home/node/.openclaw
+      - ./openclaw_workspace:/home/node/.openclaw/workspace
+    ports:
+      - "18789:18789"
+      - "18790:18790"
+    restart: unless-stopped
+    init: true
+    depends_on:
+      - schoology-tool-api
+    command:
+      ["node", "dist/index.js", "gateway", "--bind", "lan", "--port", "18789"]
