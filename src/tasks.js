@@ -145,7 +145,7 @@ export async function runSend() {
   saveState(config.paths.statePath, state);
 
   console.log("Summary sent.");
-  return { state, summary };
+  return { state, summary: dbSummary };
 }
 
 export async function runOnce() {
