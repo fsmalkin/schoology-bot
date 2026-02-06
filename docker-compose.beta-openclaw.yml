@@ -56,8 +56,8 @@ services:
       - ./data/openclaw-beta:/home/node/.openclaw
       - ./openclaw_workspace:/home/node/.openclaw/workspace
     ports:
-      - "18789:18789"
-      - "18790:18790"
+      - "18799:18789"
+      - "18800:18790"
     restart: unless-stopped
     init: true
     depends_on:
