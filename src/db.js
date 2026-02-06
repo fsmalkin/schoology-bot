@@ -93,6 +93,7 @@ function initDb(db) {
       status TEXT NOT NULL DEFAULT 'pending',
       kind TEXT NOT NULL DEFAULT 'personal',
       auto_cancel_on_resolve INTEGER NOT NULL DEFAULT 0,
+      auto_planned INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       completed_at TEXT,
       last_sent_at TEXT,
@@ -141,6 +142,7 @@ function ensureTaskColumns(db) {
   addColumn("assignment_key", "TEXT");
   addColumn("kind", "TEXT", "'personal'");
   addColumn("auto_cancel_on_resolve", "INTEGER", "0");
+  addColumn("auto_planned", "INTEGER", "0");
 }
 
 function ensureAssignmentAutoIgnoreColumns(db) {
@@ -183,8 +185,18 @@ function migrateRemindersToTasks(db) {
   const lookupAssignment = db.prepare("SELECT course, title FROM assignments WHERE key = ?");
   const insertTask = db.prepare(
     `
-    INSERT INTO tasks (assignment_key, title, message, remind_at, status, kind, auto_cancel_on_resolve, created_at)
-    VALUES (@assignment_key, @title, @message, @remind_at, 'pending', 'assignment', 1, @created_at)
+    INSERT INTO tasks (
+      assignment_key,
+      title,
+      message,
+      remind_at,
+      status,
+      kind,
+      auto_cancel_on_resolve,
+      auto_planned,
+      created_at
+    )
+    VALUES (@assignment_key, @title, @message, @remind_at, 'pending', 'assignment', 1, 0, @created_at)
   `
   );
 
@@ -247,6 +259,20 @@ function runMigrations(db) {
       name: "assignment-auto-ignore",
       apply: () => {
         ensureAssignmentAutoIgnoreColumns(db);
+      },
+    },
+    {
+      version: 4,
+      name: "task-auto-planned",
+      apply: () => {
+        ensureTaskColumns(db);
+        db.exec(`
+          UPDATE tasks
+          SET auto_planned = 1
+          WHERE auto_planned = 0
+            AND kind = 'assignment'
+            AND message LIKE 'Auto reminder for upcoming due date%'
+        `);
       },
     },
   ];
@@ -595,7 +621,7 @@ export function findPendingAssignmentTask(db, { key }) {
     .get({ key });
 }
 
-export function createAssignmentTask(db, { key, title, remindAt, message }) {
+export function createAssignmentTask(db, { key, title, remindAt, message, autoPlanned = false }) {
   if (!key) return { ok: false, error: "Assignment key is required." };
   const remindCheck = normalizeRemindAt(remindAt);
   if (!remindCheck.ok) return { ok: false, error: remindCheck.error };
@@ -604,8 +630,18 @@ export function createAssignmentTask(db, { key, title, remindAt, message }) {
   const result = db
     .prepare(
       `
-      INSERT INTO tasks (assignment_key, title, message, remind_at, status, kind, auto_cancel_on_resolve, created_at)
-      VALUES (@assignment_key, @title, @message, @remind_at, 'pending', 'assignment', 1, @created_at)
+      INSERT INTO tasks (
+        assignment_key,
+        title,
+        message,
+        remind_at,
+        status,
+        kind,
+        auto_cancel_on_resolve,
+        auto_planned,
+        created_at
+      )
+      VALUES (@assignment_key, @title, @message, @remind_at, 'pending', 'assignment', 1, @auto_planned, @created_at)
     `
     )
     .run({
@@ -613,6 +649,7 @@ export function createAssignmentTask(db, { key, title, remindAt, message }) {
       title: taskTitle,
       message: message ? String(message) : null,
       remind_at: remindTime,
+      auto_planned: autoPlanned ? 1 : 0,
       created_at: nowIso(),
     });
 

@@ -224,12 +224,61 @@ export function autoPlanUpcomingReminders(db, config, nowOverride) {
       title,
       remindAt: remindAt.toISOString(),
       message,
+      autoPlanned: true,
     });
     if (result.ok) created += 1;
   }
   if (created > 0) {
     console.log(`Auto-planned ${created} upcoming reminder(s).`);
   }
+}
+
+export function rescheduleAutoPlannedReminders(db, config, nowOverride) {
+  const now = nowOverride ? new Date(nowOverride) : new Date();
+  const tz = config.schedule.timezone;
+  const remindHour = Number(config.autoUpcoming.remindHour ?? 19);
+  const remindMinute = Number(config.autoUpcoming.remindMinute ?? 0);
+  const rows = db
+    .prepare(
+      `
+      SELECT id, assignment_key AS assignmentKey, remind_at AS remindAt
+      FROM tasks
+      WHERE status = 'pending' AND kind = 'assignment' AND auto_planned = 1
+    `
+    )
+    .all();
+
+  const lookupAssignment = db.prepare(
+    "SELECT due_date AS dueDate FROM assignments WHERE key = ?"
+  );
+
+  let updated = 0;
+  for (const row of rows) {
+    const assignment = lookupAssignment.get(row.assignmentKey);
+    if (!assignment || !assignment.dueDate) continue;
+    const due = parseSchoologyDate(assignment.dueDate, tz);
+    if (!due || due < now) continue;
+    let next = buildAutoReminderTime(due, config);
+    if (!next || next < now) {
+      const dueParts = getLocalDateParts(due, tz);
+      if (dueParts) {
+        const sameDay = makeDateInZoneParts(
+          { ...dueParts, hour: remindHour, minute: remindMinute },
+          tz
+        );
+        if (sameDay >= now && sameDay <= due) {
+          next = sameDay;
+        }
+      }
+    }
+    if (!next || next < now) continue;
+    const nextIso = next.toISOString();
+    if (nextIso === row.remindAt) continue;
+    updateTask(db, { id: row.id, remindAt: nextIso });
+    updated += 1;
+  }
+
+  return { ok: true, checked: rows.length, updated };
 }
 
 function buildAutoReminderTime(dueDate, config) {
