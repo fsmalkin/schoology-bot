@@ -27,6 +27,10 @@ Codex owns Docker operations for this repo. Do not ask the user to restart servi
 - For new agent behaviors, keep a brief "Decision + Outcome" note in docs (what was chosen, why, fallback).
 - SOP: auto-update is manual unless a scheduler is configured. Use `scripts/auto_update.ps1 -Branch main` to pull and rebuild, and consider adding a scheduled task later.
 
+## ExecPlans
+- For complex features or significant refactors, use an ExecPlan as defined in `PLANS.md` (repo root).
+- If an ExecPlan is required, keep it updated as a living document while you work.
+
 ## System documentation
 - Primary reference: `docs/SYSTEM.md`
 - Test coverage and gaps: `docs/TEST_COVERAGE.md`

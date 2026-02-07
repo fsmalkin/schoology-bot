@@ -1,6 +1,6 @@
 ---
 name: bug-filing
-description: Draft and file bug/feature requests in GitHub.
+description: Draft and file bug/feature requests in GitHub (no local tickets or tasks).
 metadata: {"openclaw":{"requires":{"env":["GITHUB_REPO","GITHUB_TOKEN"]}}}
 ---
 
