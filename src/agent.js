@@ -32,6 +32,7 @@ import { statusGuideText } from "./statuses.js";
 import { runToolByName, TOOL_NAMES } from "./tool_runner.js";
 import { isRepetitiveOutput, isToolingLoop, normalizeAscii, sanitizeRepeatedText } from "./text_utils.js";
 import { getBootstrapContext } from "./bootstrap.js";
+import { nowIso } from "./time.js";
 
 function buildResponsePrompt() {
   return [
@@ -50,7 +51,7 @@ function buildResponsePrompt() {
     "Inside message, use plain text with simple lists (use '-' for bullets, '1.' for numbering).",
     "Do not use HTML tags or Markdown code fences inside the message.",
     "Do not mention tool calls or function names.",
-    "If a reminder time is missing or invalid, ask for a specific time (example: 2026-02-05 4:00pm ET).",
+    "If a reminder time is slightly ambiguous, make a best-guess schedule and offer to adjust. Ask for clarification only when no reasonable guess is possible.",
     "Times are America/New_York by default. If tool results include remindAtLabel or remindAtLocal, use those instead of raw ISO/UTC.",
     "Keep responses concise and action-oriented.",
     getBootstrapContext() ? `\\nBootstrap Context:\\n${getBootstrapContext()}` : "",
@@ -957,6 +958,79 @@ async function decidePendingAction(client, config, pending, text, previousRespon
   }
 }
 
+function buildBugDraftSchema() {
+  return {
+    type: "object",
+    properties: {
+      title: { type: "string" },
+      body: { type: "string" },
+      labels: {
+        type: "array",
+        items: { type: "string" },
+      },
+    },
+    required: ["title", "body", "labels"],
+    additionalProperties: false,
+  };
+}
+
+function buildBugDraftInstructions(kind) {
+  const label = kind === "feature" ? "feature request" : "bug report";
+  return [
+    "Return JSON only. No extra text.",
+    `Draft a concise ${label}.`,
+    "Use conversation context if available.",
+    "Title: short, specific.",
+    "Body: include Summary, Steps, Expected, Actual.",
+    "Keep body under 12 lines.",
+  ].join(" ");
+}
+
+async function buildBugDraft(client, config, text, provided, kind, previousResponseId) {
+  const schema = buildBugDraftSchema();
+  const input = [
+    "User request:",
+    text,
+    "",
+    "Provided fields (if any):",
+    JSON.stringify(provided || {}, null, 2),
+  ].join("\n");
+
+  const response = await createResponseWithRetry(client, {
+    model: config.openai.model,
+    reasoning: { effort: "low" },
+    max_output_tokens: 400,
+    instructions: buildBugDraftInstructions(kind),
+    input,
+    text: {
+      format: {
+        type: "json_schema",
+        name: "bug_draft",
+        strict: true,
+        schema,
+      },
+    },
+    tool_choice: "none",
+    parallel_tool_calls: false,
+    previous_response_id: previousResponseId || undefined,
+  });
+
+  const raw = extractText(response);
+  let parsed = null;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    parsed = null;
+  }
+
+  const fallbackTitle = `${kind === "feature" ? "Feature request" : "Bug report"} ${nowIso()}`;
+  const draftTitle = String(parsed?.title || "").trim() || fallbackTitle;
+  const draftBody = String(parsed?.body || "").trim() || String(text || "").trim();
+  const labels = Array.isArray(parsed?.labels) ? parsed.labels : [];
+
+  return { title: draftTitle, body: draftBody, labels };
+}
+
 function mergePendingArgs(pendingArgs, newArgs) {
   const base = pendingArgs && typeof pendingArgs === "object" ? pendingArgs : {};
   const updates = newArgs && typeof newArgs === "object" ? newArgs : {};
@@ -1009,6 +1083,14 @@ function formatUpdateSummary(results, db) {
         if (output.deletedDuplicates) {
           info.push(`Removed ${output.deletedDuplicates} duplicate reminder(s).`);
         }
+        if (output.remindAtLabel) {
+          info.push(`Reminder time: ${output.remindAtLabel}.`);
+        }
+        if (output.assumption) {
+          info.push(
+            `I picked a best-guess time (${output.remindAtLabel || "see reminder time"}). Say "change to ..." if you want a different time.`
+          );
+        }
       } else if (output?.error) {
         needs.push(output.error);
       }
@@ -1018,6 +1100,14 @@ function formatUpdateSummary(results, db) {
     if (name === "update_assignment_reminder") {
       if (output?.ok) {
         applied.push(`Updated reminder #${output.reminder?.id}`);
+        if (output.reminder?.remindAtLabel) {
+          info.push(`Reminder time: ${output.reminder.remindAtLabel}.`);
+        }
+        if (output.assumption) {
+          info.push(
+            `I picked a best-guess time (${output.reminder?.remindAtLabel || "see reminder time"}). Say "change to ..." if you want a different time.`
+          );
+        }
       } else if (output?.error) {
         needs.push(output.error);
       }
@@ -1069,6 +1159,14 @@ function formatUpdateSummary(results, db) {
     if (name === "create_task") {
       if (output?.ok) {
         applied.push(`Created task #${output.id}: ${output.title}`);
+        if (output.remindAtLabel) {
+          info.push(`Reminder time: ${output.remindAtLabel}.`);
+        }
+        if (output.assumption) {
+          info.push(
+            `I picked a best-guess time (${output.remindAtLabel || "see reminder time"}). Say "change to ..." if you want a different time.`
+          );
+        }
       } else if (output?.error) {
         needs.push(output.error);
       }
@@ -1087,6 +1185,14 @@ function formatUpdateSummary(results, db) {
     if (name === "update_task") {
       if (output?.ok) {
         applied.push(`Updated task #${output.task?.id}: ${output.task?.title}`);
+        if (output.task?.remindAtLabel) {
+          info.push(`Reminder time: ${output.task.remindAtLabel}.`);
+        }
+        if (output.assumption) {
+          info.push(
+            `I picked a best-guess time (${output.task?.remindAtLabel || "see reminder time"}). Say "change to ..." if you want a different time.`
+          );
+        }
       } else if (output?.error) {
         needs.push(output.error);
       }
@@ -1275,6 +1381,28 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
     calls = [{ tool: plan.tool, args: plan.args || {} }];
   } else if (plan.action === "call_tools" && Array.isArray(plan.calls)) {
     calls = plan.calls;
+  }
+
+  const bugTools = new Set(["open_bug_report", "open_feature_request"]);
+  if (calls.some((call) => bugTools.has(call?.tool))) {
+    const updatedCalls = [];
+    for (const call of calls) {
+      if (!bugTools.has(call?.tool)) {
+        updatedCalls.push(call);
+        continue;
+      }
+      const kind = call.tool === "open_feature_request" ? "feature" : "bug";
+      const draft = await buildBugDraft(client, config, text, call.args, kind, previousResponseId);
+      updatedCalls.push({
+        tool: call.tool,
+        args: {
+          title: draft.title,
+          body: draft.body,
+          labels: draft.labels,
+        },
+      });
+    }
+    calls = updatedCalls;
   }
 
   const executed = [];
