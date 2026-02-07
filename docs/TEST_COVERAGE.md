@@ -16,6 +16,7 @@ Unit tests
 Integration tests
 - OpenAI live plan tests (tool planning and schema format).
 - Live API simulation using dummy data.
+- Reminder delivery flow (runReminders with mocked Telegram sender).
 
 Smoke tests
 - Docker smoke script: `scripts/smoke_docker.ps1` for build + health check.
@@ -34,7 +35,7 @@ Telegram end-to-end
 - Manual UAT required after changes to agent or formatting.
 
 Reminder delivery timing
-- No automated time-based tests for reminder scheduling in real time.
+- Automated test covers delivery + rollover with a fixed clock.
 - Cron scheduling is not validated under real clock drift.
 
 Bug filing to GitHub

@@ -31,6 +31,13 @@ Codex owns Docker operations for this repo. Do not ask the user to restart servi
 - Primary reference: `docs/SYSTEM.md`
 - Test coverage and gaps: `docs/TEST_COVERAGE.md`
 
+## Test coverage SOP (required for new functionality)
+- Add unit tests for core logic and edge cases.
+- Add integration tests for tool flows and agent routing when applicable.
+- Add or update smoke tests (Docker or CLI) when runtime behavior changes.
+- Add CLI coverage when a user-facing command or script changes.
+- Update `docs/TEST_COVERAGE.md` to record coverage and any remaining gaps.
+
 ## Rollback
 - Revert to previous image by rebuilding from last committed state:
   `git checkout .` then `docker compose up -d --build`

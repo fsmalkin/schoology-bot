@@ -334,12 +334,14 @@ function buildAutoReminderTime(dueDate, config) {
   return remindDate;
 }
 
-export async function runReminders() {
-  const config = getConfig();
+export async function runReminders(options = {}) {
+  const config = options.config || getConfig();
+  const senders = options.senders || {};
+  const nowOverride = options.nowOverride;
   if (!config.telegram.botToken || !config.telegram.chatIds || config.telegram.chatIds.length === 0) return;
 
   const db = getDb(config);
-  const now = nowIso();
+  const now = nowOverride || nowIso();
   const due = listDueTasks(db, now);
   if (due.length === 0) return;
 
@@ -350,7 +352,8 @@ export async function runReminders() {
     const text = `Reminder: ${task.title} (scheduled ${prettyTime}).${message}`;
     const html = renderTelegramHtml(text);
     try {
-      await sendTelegramMessage(config, html);
+      const sendRaw = senders.telegramRaw || sendTelegramMessage;
+      await sendRaw(config, html);
       const next = addDays(remindAt, 1).toISOString();
       markTaskReminderSent(db, { id: task.id, sentAt: now, nextRemindAt: next });
     } catch (err) {
