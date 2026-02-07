@@ -778,6 +778,12 @@ export function addAssignmentNote(db, { key, title, course, note }) {
   if (!targetKey) {
     return { ok: false, error: "Assignment key or title is required." };
   }
+  const existing = db
+    .prepare("SELECT key FROM assignments WHERE key = ?")
+    .get(targetKey);
+  if (!existing) {
+    return { ok: false, error: "Assignment not found." };
+  }
 
   const result = db
     .prepare(
@@ -838,6 +844,12 @@ export function scheduleReminder(db, { key, title, course, remindAt, message, re
 
   if (!targetKey) {
     return { ok: false, error: "Assignment key or title is required." };
+  }
+  const existing = db
+    .prepare("SELECT key FROM assignments WHERE key = ?")
+    .get(targetKey);
+  if (!existing) {
+    return { ok: false, error: "Assignment not found." };
   }
 
   if (replaceExisting) {

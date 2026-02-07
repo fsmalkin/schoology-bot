@@ -68,3 +68,10 @@ test("scheduleReminder requires a valid reminder time", () => {
   assert.equal(invalid.ok, false);
   assert.match(invalid.error, /Reminder time is invalid/i);
 });
+
+test("scheduleReminder rejects unknown assignment key", () => {
+  const db = createDb(":memory:");
+  const result = scheduleReminder(db, { key: "missing", remindAt: "2026-02-03T20:30:00Z" });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /Assignment not found/i);
+});
