@@ -1,3 +1,5 @@
+import * as chrono from "chrono-node";
+
 const DEFAULT_TIMEZONE = "America/New_York";
 
 function withDefaultZone(timeZone) {
@@ -62,6 +64,28 @@ export function formatDateTimeLabel(date, timeZone) {
   }).format(date);
 }
 
+export function getLocalDateTimeParts(date, timeZone) {
+  if (!date) return null;
+  const tz = withDefaultZone(timeZone);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  return {
+    year: Number(map.year),
+    month: Number(map.month),
+    day: Number(map.day),
+    hour: Number(map.hour),
+    minute: Number(map.minute),
+  };
+}
+
 function getTimeZoneOffset(date, timeZone) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,
@@ -114,6 +138,17 @@ export function makeDateInZoneParts({ year, month, day, hour, minute }, timeZone
   return makeDateInZone({ year, month, day, hour, minute }, timeZone);
 }
 
+export function shiftYmdParts(parts, days) {
+  if (!parts) return null;
+  const base = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  base.setUTCDate(base.getUTCDate() + days);
+  return {
+    year: base.getUTCFullYear(),
+    month: base.getUTCMonth() + 1,
+    day: base.getUTCDate(),
+  };
+}
+
 export function parseSchoologyDate(value, timeZone) {
   const text = String(value || "").trim();
   if (!text) return null;
@@ -131,4 +166,114 @@ export function parseSchoologyDate(value, timeZone) {
   if (ampm === "pm" && hour < 12) hour += 12;
   if (ampm === "am" && hour === 12) hour = 0;
   return makeDateInZone({ year, month, day, hour, minute }, timeZone);
+}
+
+function parseShorthandTime(raw) {
+  const cleaned = String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+  if (!cleaned) return null;
+
+  const match = cleaned.match(/^(\d{1,4})([ap]m?|[ap]l)?$/);
+  if (!match) return null;
+
+  const digits = match[1];
+  const suffix = match[2] || "";
+  let hour = 0;
+  let minute = 0;
+
+  if (digits.length <= 2) {
+    hour = Number(digits);
+    minute = 0;
+  } else if (digits.length === 3) {
+    hour = Number(digits.slice(0, 1));
+    minute = Number(digits.slice(1));
+  } else {
+    hour = Number(digits.slice(0, 2));
+    minute = Number(digits.slice(2));
+  }
+
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+
+  let meridiem = null;
+  if (suffix.startsWith("p")) meridiem = "pm";
+  if (suffix.startsWith("a")) meridiem = "am";
+  if (suffix === "pl") meridiem = "pm";
+  if (suffix === "al") meridiem = "am";
+
+  return { hour, minute, meridiem };
+}
+
+export function parseReminderTime(input, timeZone, now = new Date()) {
+  const text = String(input || "").trim();
+  if (!text) {
+    return { ok: false, error: "Reminder time is required." };
+  }
+
+  const numericOnly = /^\d{1,4}$/.test(text);
+  if (!numericOnly) {
+    const direct = new Date(text);
+    if (Number.isFinite(direct.getTime())) {
+      return { ok: true, date: direct, assumption: null };
+    }
+  }
+
+  const tz = withDefaultZone(timeZone);
+  const nowParts = getLocalDateTimeParts(now, tz);
+  const base = nowParts ? makeDateInZoneParts(nowParts, tz) : now;
+  const results = chrono.parse(text, base, { forwardDate: true });
+  if (results && results.length > 0) {
+    const start = results[0].start;
+    const date = start?.date();
+    if (date && Number.isFinite(date.getTime())) {
+      let assumption = null;
+      if (!start.isCertain("meridiem")) {
+        assumption = "Assumed PM when meridiem was not specified.";
+      }
+      return { ok: true, date, assumption };
+    }
+  }
+
+  const shorthand = parseShorthandTime(text);
+  if (shorthand && nowParts) {
+    const baseParts = { ...nowParts };
+    const dayParts = { year: baseParts.year, month: baseParts.month, day: baseParts.day };
+    const buildDate = (hour24) =>
+      makeDateInZoneParts({ ...dayParts, hour: hour24, minute: shorthand.minute }, tz);
+
+    const candidates = [];
+    if (shorthand.meridiem) {
+      let hour = shorthand.hour % 12;
+      if (shorthand.meridiem === "pm") hour += 12;
+      candidates.push({ date: buildDate(hour), note: `Assumed ${shorthand.meridiem.toUpperCase()}.` });
+    } else {
+      const am = buildDate(shorthand.hour % 12);
+      const pm = buildDate((shorthand.hour % 12) + 12);
+      candidates.push({ date: am, note: "Assumed AM." });
+      candidates.push({ date: pm, note: "Assumed PM." });
+    }
+
+    const nowDate = base;
+    const future = candidates.filter((c) => c.date >= nowDate);
+    let chosen = future.sort((a, b) => a.date - b.date)[0];
+    if (!chosen) {
+      const tomorrowParts = shiftYmdParts(dayParts, 1);
+      if (tomorrowParts) {
+        const hour = shorthand.meridiem === "pm" ? (shorthand.hour % 12) + 12 : shorthand.hour % 12;
+        const date = makeDateInZoneParts(
+          { ...tomorrowParts, hour, minute: shorthand.minute },
+          tz
+        );
+        chosen = { date, note: "Assumed next day." };
+      }
+    }
+
+    if (chosen && chosen.date && Number.isFinite(chosen.date.getTime())) {
+      return { ok: true, date: chosen.date, assumption: chosen.note };
+    }
+  }
+
+  return { ok: false, error: "Reminder time is invalid." };
 }

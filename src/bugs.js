@@ -13,6 +13,10 @@ function sanitizeLabels(labels) {
   return labels.map((label) => String(label || "").trim()).filter((label) => label.length > 0);
 }
 
+function hasBodyText(body) {
+  return String(body || "").trim().length > 0;
+}
+
 function deriveTitle(title, body, kind) {
   const trimmed = String(title || "").trim();
   if (trimmed.length > 0) return trimmed;
@@ -41,6 +45,9 @@ export function logBugToFile(config, { title, body, labels, kind = "bug" }) {
 }
 
 export async function createGithubIssue(config, { title, body, labels, kind = "bug" }) {
+  if (!hasBodyText(body)) {
+    return { ok: false, error: "Bug body is required." };
+  }
   const repo = config?.github?.repo;
   const token = config?.github?.token;
   if (!repo || !token) {
@@ -81,12 +88,18 @@ export async function createGithubIssue(config, { title, body, labels, kind = "b
 }
 
 export async function openBugReport(config, { title, body, labels }) {
+  if (!hasBodyText(body)) {
+    return { logged: false, issue: { ok: false, error: "Bug body is required." } };
+  }
   const logResult = logBugToFile(config, { title, body, labels, kind: "bug" });
   const issueResult = await createGithubIssue(config, { title, body, labels, kind: "bug" });
   return { logged: logResult.ok, logPath: logResult.logPath, issue: issueResult };
 }
 
 export async function openFeatureRequest(config, { title, body, labels }) {
+  if (!hasBodyText(body)) {
+    return { logged: false, issue: { ok: false, error: "Feature request body is required." } };
+  }
   const logResult = logBugToFile(config, { title, body, labels, kind: "feature" });
   const issueResult = await createGithubIssue(config, { title, body, labels, kind: "feature" });
   return { logged: logResult.ok, logPath: logResult.logPath, issue: issueResult };

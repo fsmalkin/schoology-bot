@@ -28,11 +28,13 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 - Daily summary is DB-backed (manual statuses honored) and agentic for Telegram.
 - Bug filing auto-generates a title when missing.
 - Pending actions are stored per chat to complete multi-step confirmations.
+- Bug filing uses a draft+validate+submit skill (no empty issues).
 
 ## Now
 1. OpenClaw evaluation (beta branch): assess tool routing, memory/compaction, and IO adapters.
 2. Tool capability awareness: expose tool constraints (ex: no recurring tasks yet) via MCP/skills or a tool-capabilities registry.
-3. Long-term memory + context compaction (summary-based) for agent chats.
+3. Skill router: load only relevant skills per request to reduce prompt bloat.
+4. Long-term memory + context compaction (summary-based) for agent chats.
 
 ## Next (Stack Ranked)
 1. Define compaction policy (trigger, scope, summary format).

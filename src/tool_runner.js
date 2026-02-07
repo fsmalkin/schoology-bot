@@ -20,7 +20,12 @@ import {
 import { openBugReport, openFeatureRequest } from "./bugs.js";
 import { isIgnoredStatus, isPendingStatus } from "./statuses.js";
 import { runScrape } from "./tasks.js";
-import { formatDateTime, formatDateTimeLabel, formatIsoWithOffset } from "./time.js";
+import {
+  formatDateTime,
+  formatDateTimeLabel,
+  formatIsoWithOffset,
+  parseReminderTime,
+} from "./time.js";
 
 export const TOOL_NAMES = [
   "list_assignments",
@@ -85,9 +90,10 @@ function addLocalReminderFields(item, timeZone) {
     };
   }
   const localIso = formatIsoWithOffset(parsed, timeZone);
+  const utcIso = parsed.toISOString().replace(".000Z", "Z");
   return {
     ...item,
-    remindAtUtc: item.remindAt,
+    remindAtUtc: utcIso,
     remindAt: localIso,
     remindAtLocal: formatDateTime(parsed, timeZone),
     remindAtLabel: formatDateTimeLabel(parsed, timeZone),
@@ -98,6 +104,22 @@ function addLocalReminderFields(item, timeZone) {
 function addLocalReminderFieldsToList(items, timeZone) {
   if (!Array.isArray(items)) return [];
   return items.map((item) => addLocalReminderFields(item, timeZone));
+}
+
+function normalizeReminderArgs(args, timeZone) {
+  const raw = args?.remindAt;
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return { args, assumption: null };
+  }
+  const parsed = parseReminderTime(raw, timeZone);
+  if (!parsed.ok || !parsed.date) {
+    return { args, assumption: null };
+  }
+  const iso = formatIsoWithOffset(parsed.date, timeZone);
+  return {
+    args: { ...args, remindAt: iso },
+    assumption: parsed.assumption || null,
+  };
 }
 
 export async function runToolByName(db, toolName, args) {
@@ -115,7 +137,25 @@ export async function runToolByName(db, toolName, args) {
     case "add_assignment_note":
       return addAssignmentNote(db, args);
     case "schedule_reminder":
-      return scheduleReminder(db, args);
+      {
+        const normalized = normalizeReminderArgs(args, timeZone);
+        const result = scheduleReminder(db, normalized.args);
+        if (result?.ok && normalized.args?.remindAt) {
+          const enriched = addLocalReminderFields(
+            { remindAt: normalized.args.remindAt },
+            timeZone
+          );
+          result.remindAt = enriched.remindAt;
+          result.remindAtUtc = enriched.remindAtUtc;
+          result.remindAtLocal = enriched.remindAtLocal;
+          result.remindAtLabel = enriched.remindAtLabel;
+          result.remindAtTz = enriched.remindAtTz;
+        }
+        if (normalized.assumption) {
+          result.assumption = normalized.assumption;
+        }
+        return result;
+      }
     case "list_assignment_reminders":
       return {
         ok: true,
@@ -124,9 +164,13 @@ export async function runToolByName(db, toolName, args) {
       };
     case "update_assignment_reminder":
       {
-        const result = updateReminder(db, args);
+        const normalized = normalizeReminderArgs(args, timeZone);
+        const result = updateReminder(db, normalized.args);
         if (result?.ok && result.reminder) {
           result.reminder = addLocalReminderFields(result.reminder, timeZone);
+        }
+        if (normalized.assumption) {
+          result.assumption = normalized.assumption;
         }
         return result;
       }
@@ -134,7 +178,8 @@ export async function runToolByName(db, toolName, args) {
       return deleteReminder(db, args);
     case "create_task":
       {
-        const result = createTask(db, args);
+        const normalized = normalizeReminderArgs(args, timeZone);
+        const result = createTask(db, normalized.args);
         if (result?.ok && result.remindAt) {
           const enriched = addLocalReminderFields(
             { remindAt: result.remindAt },
@@ -148,6 +193,9 @@ export async function runToolByName(db, toolName, args) {
             remindAtLabel: enriched.remindAtLabel,
             remindAtTz: enriched.remindAtTz,
           };
+        }
+        if (normalized.assumption) {
+          result.assumption = normalized.assumption;
         }
         return result;
       }
@@ -163,9 +211,13 @@ export async function runToolByName(db, toolName, args) {
       }
     case "update_task":
       {
-        const result = updateTask(db, args);
+        const normalized = normalizeReminderArgs(args, timeZone);
+        const result = updateTask(db, normalized.args);
         if (result?.ok && result.task) {
           result.task = addLocalReminderFields(result.task, timeZone);
+        }
+        if (normalized.assumption) {
+          result.assumption = normalized.assumption;
         }
         return result;
       }

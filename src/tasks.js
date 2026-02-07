@@ -95,17 +95,19 @@ export async function runScrape() {
   return { state, assignments };
 }
 
-export async function runSend() {
-  const config = getConfig();
+export async function runSend(options = {}) {
+  const config = options.config || getConfig();
+  const senders = options.senders || {};
+  const skipValidate = options.skipValidate === true;
   const channels = resolveDeliveryChannels(config);
   if (channels.includes("email")) {
-    validateEmailConfig();
+    if (!skipValidate) validateEmailConfig();
   }
   if (channels.includes("twilio")) {
-    validateTwilioConfig();
+    if (!skipValidate) validateTwilioConfig();
   }
   if (channels.includes("telegram")) {
-    validateTelegramConfig();
+    if (!skipValidate) validateTelegramConfig();
   }
 
   let state = loadState(config.paths.statePath);
@@ -123,7 +125,8 @@ export async function runSend() {
   const tasksForToday = reminders.today;
   for (const channel of channels) {
     if (channel === "twilio") {
-      await sendSummarySms(config, legacySummary, state, tasksForToday);
+      const sendSms = senders.sms || sendSummarySms;
+      await sendSms(config, legacySummary, state, tasksForToday);
     } else if (channel === "telegram") {
       if (config.openai.apiKey) {
         const text = await buildAgenticTelegramSummary({
@@ -132,12 +135,15 @@ export async function runSend() {
           state,
           reminders,
         });
-        await sendTelegramMessage(config, text);
+        const sendRaw = senders.telegramRaw || sendTelegramMessage;
+        await sendRaw(config, text);
       } else {
-        await sendSummaryTelegram(config, legacySummary, state, tasksForToday);
+        const sendTelegram = senders.telegram || sendSummaryTelegram;
+        await sendTelegram(config, legacySummary, state, tasksForToday);
       }
     } else if (channel === "email") {
-      await sendSummaryEmail(config, legacySummary, state, tasksForToday);
+      const sendEmail = senders.email || sendSummaryEmail;
+      await sendEmail(config, legacySummary, state, tasksForToday);
     }
   }
 
@@ -146,6 +152,32 @@ export async function runSend() {
 
   console.log("Summary sent.");
   return { state, summary: dbSummary };
+}
+
+export async function runLiveCheck(options = {}) {
+  const config = options.config || getConfig();
+  const senders = options.senders || {};
+  const skipValidate = options.skipValidate === true;
+
+  if (!skipValidate) {
+    validateTelegramConfig();
+  }
+
+  const chatIds =
+    config.liveChecks && config.liveChecks.chatIds && config.liveChecks.chatIds.length > 0
+      ? config.liveChecks.chatIds
+      : config.telegram.chatIds;
+
+  if (!chatIds || chatIds.length === 0) {
+    return { ok: false, error: "No Telegram chat IDs configured for live checks." };
+  }
+
+  const timestamp = formatDateTime(new Date(), config.schedule.timezone);
+  const text = `Live check ok (${timestamp}).`;
+  const sendRaw = senders.telegramRaw || sendTelegramMessage;
+  const liveConfig = { ...config, telegram: { ...config.telegram, chatIds } };
+  await sendRaw(liveConfig, text);
+  return { ok: true, sentTo: chatIds.length };
 }
 
 export async function runOnce() {
