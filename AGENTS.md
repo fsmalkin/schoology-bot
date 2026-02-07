@@ -24,8 +24,12 @@ Codex owns Docker operations for this repo. Do not ask the user to restart servi
   - AGENTS.md (process rules)
   - TOOLS.md / SOUL.md (agent behavior and constraints)
   - docs/ROADMAP.md (future work or guardrails)
-- For new agent behaviors, keep a brief “Decision + Outcome” note in docs (what was chosen, why, fallback).
+- For new agent behaviors, keep a brief "Decision + Outcome" note in docs (what was chosen, why, fallback).
 - SOP: auto-update is manual unless a scheduler is configured. Use `scripts/auto_update.ps1 -Branch main` to pull and rebuild, and consider adding a scheduled task later.
+
+## System documentation
+- Primary reference: `docs/SYSTEM.md`
+- Test coverage and gaps: `docs/TEST_COVERAGE.md`
 
 ## Rollback
 - Revert to previous image by rebuilding from last committed state:
