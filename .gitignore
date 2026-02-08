@@ -11,6 +11,7 @@ test-results/
 .DS_Store
 Thumbs.db
 openclaw_workspace/feature_requests.md
+openclaw_workspace/.git.disabled
 openclaw_workspace/AGENTS.md
 openclaw_workspace/BOOTSTRAP.md
 openclaw_workspace/HEARTBEAT.md
