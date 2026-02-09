@@ -43,6 +43,7 @@ function buildResponsePrompt() {
     "If tool results include errors, explain them briefly and ask for the missing detail.",
     "When talking about tasks or assignment reminders, use the term 'Reminders' and combine them unless the user asks for a specific type.",
     "If a note implies a follow-up action, ask if the user wants a reminder created.",
+    "If a pending action is confirmed, do not ask for confirmation again. Execute the queued update and report the result.",
     `Manual status codes: ${statusGuideText()}.`,
     "Default reporting buckets: Actionable, Pending, Ignored. Hide Ignored by default unless asked.",
     "When confirming status updates, include a short list of items waiting on teacher/grade (No grade put in yet, Waiting on teacher).",
@@ -924,7 +925,42 @@ function buildPendingDecisionInstructions() {
     "You decide whether the user message is confirming/providing details for the pending action.",
     "If the user wants to proceed, return action=proceed.",
     "If the user is cancelling or changing topics, return action=cancel.",
+    "Treat explicit confirmations like 'go', 'confirmed', or 'yes' as proceed.",
   ].join(" ");
+}
+
+function normalizeConfirmText(text) {
+  return String(text || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[.!?]+$/g, "");
+}
+
+function isExplicitConfirm(text) {
+  const value = normalizeConfirmText(text);
+  if (!value) return false;
+  if (value.length > 32) return false;
+  const confirms = new Set([
+    "go",
+    "confirmed",
+    "confirm",
+    "yes",
+    "y",
+    "ok",
+    "okay",
+    "do it",
+    "proceed",
+    "sounds good",
+    "please do",
+  ]);
+  return confirms.has(value);
+}
+
+function isExplicitCancel(text) {
+  const value = normalizeConfirmText(text);
+  if (!value) return false;
+  const cancels = new Set(["cancel", "never mind", "nevermind", "stop", "no"]);
+  return cancels.has(value);
 }
 
 async function decidePendingAction(client, config, pending, text, previousResponseId) {
@@ -1349,7 +1385,19 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
   let pendingDecision = null;
   if (pendingAction) {
     try {
-      pendingDecision = await decidePendingAction(client, config, pendingAction, text, previousResponseId);
+      if (isExplicitCancel(text)) {
+        pendingDecision = "cancel";
+      } else if (isExplicitConfirm(text)) {
+        pendingDecision = "proceed";
+      } else {
+        pendingDecision = await decidePendingAction(
+          client,
+          config,
+          pendingAction,
+          text,
+          previousResponseId
+        );
+      }
     } catch (err) {
       pendingDecision = "proceed";
     }

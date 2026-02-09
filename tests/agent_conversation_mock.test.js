@@ -147,6 +147,7 @@ test("agent conversation cases (mock)", async () => {
     closeDb,
     listAssignments,
     getPendingAction,
+    setPendingAction,
   } = await import("../src/db.js");
   const { getConfig } = await import("../src/config.js");
   const { runAgentMessage } = await import("../src/agent.js");
@@ -246,6 +247,28 @@ test("agent conversation cases (mock)", async () => {
   assert.match(reply5, /Updated/i);
   const pendingAfter = getPendingAction(getDb(getConfig()), chatId);
   assert.equal(pendingAfter, null);
+
+  const mockConfirm = createMockClient([
+    toolPlanResponse("r18", {
+      action: "call_tool",
+      tool: "schedule_reminder",
+      args: "{}",
+      calls: null,
+    }),
+    toolAugmentResponse("r19", []),
+    textResponse("r20", "Updates applied:\n1. Scheduled reminder for Algebra - Homework 1"),
+  ]);
+
+  setPendingAction(getDb(getConfig()), {
+    chatId,
+    tool: "schedule_reminder",
+    args: { key: "a1", remindAt: "2026-02-03T20:30:00Z", message: "Follow up" },
+  });
+
+  const reply6 = await runAgentMessage({ chatId, text: "Go", clientOverride: mockConfirm });
+  assert.match(reply6, /Scheduled reminder/i);
+  const pendingAfterConfirm = getPendingAction(getDb(getConfig()), chatId);
+  assert.equal(pendingAfterConfirm, null);
 
   closeDb();
   await cleanupDb();
