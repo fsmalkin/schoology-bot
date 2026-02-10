@@ -43,6 +43,7 @@ function buildResponsePrompt() {
     "If tool results include errors, explain them briefly and ask for the missing detail.",
     "When talking about tasks or assignment reminders, use the term 'Reminders' and combine them unless the user asks for a specific type.",
     "If a note implies a follow-up action, ask if the user wants a reminder created.",
+    "Manual statuses, assignment notes, and reminders are stored locally (not in Schoology) and can be updated immediately via tools.",
     "If a pending action is confirmed, do not ask for confirmation again. Execute the queued update and report the result.",
     `Manual status codes: ${statusGuideText()}.`,
     "Default reporting buckets: Actionable, Pending, Ignored. Hide Ignored by default unless asked.",
@@ -57,6 +58,31 @@ function buildResponsePrompt() {
     "Keep responses concise and action-oriented.",
     getBootstrapContext() ? `\\nBootstrap Context:\\n${getBootstrapContext()}` : "",
   ].join(" ");
+}
+
+function hasAssignmentSelector(args) {
+  if (!args || typeof args !== "object") return false;
+  const key = args.key ? String(args.key).trim() : "";
+  const title = args.title ? String(args.title).trim() : "";
+  // Course alone is not enough to target a single assignment; require key or title.
+  return Boolean(key || title);
+}
+
+function isInvalidPendingAction(pending) {
+  if (!pending || typeof pending !== "object") return true;
+  if (!pending.tool || typeof pending.tool !== "string") return true;
+  const args = pending.args && typeof pending.args === "object" ? pending.args : null;
+  if (!args) return true;
+
+  // If we stored a pending write without any assignment selector, the system will loop forever on "confirm/go".
+  const assignmentWriteTools = new Set([
+    "add_assignment_note",
+    "update_assignment_status",
+    "schedule_reminder",
+  ]);
+  if (assignmentWriteTools.has(pending.tool) && !hasAssignmentSelector(args)) return true;
+
+  return false;
 }
 
 
@@ -628,6 +654,8 @@ function buildToolPlanInstructions(allowedTools = TOOL_NAMES) {
     "Return JSON only. No extra text.",
     "Choose the single best tool (or multiple tools) to satisfy the user request.",
     "Always call tools for assignment/reminder/task data. Do not respond with the answer.",
+    "For write tools (notes/status/reminders/tasks), args must be the actual content to store (short and literal), not a user-facing explanation.",
+    "For assignment updates, include enough identification to target the assignment: at least title (and course if known), or key if provided.",
     "If exactly one tool is needed, use action=call_tool with tool + args.",
     "If multiple tools are needed, use action=call_tools with calls in order.",
     "Always set tool to the primary tool (for call_tools, use the first tool in calls).",
@@ -637,6 +665,9 @@ function buildToolPlanInstructions(allowedTools = TOOL_NAMES) {
     "User: refresh my assignments -> {\"action\":\"call_tool\",\"tool\":\"refresh_schoology\",\"args\":\"{}\",\"calls\":null}",
     "User: refresh and list missing -> {\"action\":\"call_tools\",\"tool\":null,\"args\":null,\"calls\":[{\"tool\":\"refresh_schoology\",\"args\":\"{}\"},{\"tool\":\"list_assignments\",\"args\":\"{\\\"status\\\":\\\"missing\\\",\\\"includePending\\\":true,\\\"includeIgnored\\\":false,\\\"bucketed\\\":true}\"}]}",
     "User: what are my missing assignments -> {\"action\":\"call_tool\",\"tool\":\"list_assignments\",\"args\":\"{\\\"status\\\":\\\"missing\\\",\\\"includePending\\\":true,\\\"includeIgnored\\\":false,\\\"bucketed\\\":true}\",\"calls\":null}",
+    "User: add note to Latin Quiz 1 -> {\"action\":\"call_tool\",\"tool\":\"add_assignment_note\",\"args\":\"{\\\"title\\\":\\\"Quiz 1\\\",\\\"course\\\":\\\"Latin\\\",\\\"note\\\":\\\"Submitted. Waiting for grade.\\\"}\",\"calls\":null}",
+    "User: mark Latin Quiz 1 as Waiting on teacher -> {\"action\":\"call_tool\",\"tool\":\"update_assignment_status\",\"args\":\"{\\\"title\\\":\\\"Quiz 1\\\",\\\"course\\\":\\\"Latin\\\",\\\"status\\\":\\\"E\\\"}\",\"calls\":null}",
+    "User: remind me Thu 7:15am to follow up on Algebra Homework 1 -> {\"action\":\"call_tool\",\"tool\":\"schedule_reminder\",\"args\":\"{\\\"title\\\":\\\"Homework 1\\\",\\\"course\\\":\\\"Algebra\\\",\\\"remindAt\\\":\\\"Thu 7:15am\\\",\\\"message\\\":\\\"Follow up with teacher\\\"}\",\"calls\":null}",
   ].join(" ");
 }
 
@@ -1382,8 +1413,13 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
 
   const previousResponseId = chatState.lastResponseId || undefined;
   let activePending = pendingAction;
+  if (activePending && isInvalidPendingAction(activePending)) {
+    // Prevent infinite "confirm/go" loops caused by malformed pending actions.
+    clearPendingAction(db, chatId);
+    activePending = null;
+  }
   let pendingDecision = null;
-  if (pendingAction) {
+  if (activePending) {
     try {
       if (isExplicitCancel(text)) {
         pendingDecision = "cancel";
@@ -1393,7 +1429,7 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
         pendingDecision = await decidePendingAction(
           client,
           config,
-          pendingAction,
+          activePending,
           text,
           previousResponseId
         );
