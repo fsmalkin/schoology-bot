@@ -13,5 +13,6 @@ Tool capabilities and limits:
 - Tasks: can be created, listed, updated, deleted; tasks roll over 24h automatically if still pending.
 - Assignment reminders: tied to a specific assignment; replaces existing pending reminder when requested.
 - Refresh Schoology: resyncs data and updates local state; cannot change Schoology grades or submissions.
+- Manual statuses + assignment notes: stored locally in our DB to help track what matters; they do not change anything in Schoology itself.
 - Auto-ignore: system can auto-archive old/practice items; manual statuses always take precedence.
 - Bug/feature filing: logs locally and can open GitHub issues if configured; no attachments.

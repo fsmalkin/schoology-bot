@@ -147,6 +147,7 @@ test("agent conversation cases (mock)", async () => {
     closeDb,
     listAssignments,
     getPendingAction,
+    setPendingAction,
   } = await import("../src/db.js");
   const { getConfig } = await import("../src/config.js");
   const { runAgentMessage } = await import("../src/agent.js");
@@ -246,6 +247,31 @@ test("agent conversation cases (mock)", async () => {
   assert.match(reply5, /Updated/i);
   const pendingAfter = getPendingAction(getDb(getConfig()), chatId);
   assert.equal(pendingAfter, null);
+
+  const mockInvalidPending = createMockClient([
+    toolGroupResponse("r18", "assignments"),
+    toolPlanResponse("r19", {
+      action: "call_tool",
+      tool: "list_assignments",
+      args: "{\"status\":\"missing\",\"bucketed\":true}",
+      calls: null,
+    }),
+    toolAugmentResponse("r20", []),
+    textResponse("r21", "Which assignment did you mean? Paste the assignment link or title and I'll do it."),
+  ]);
+
+  // Malformed pending action: missing key/title selector, which would otherwise loop on "Go".
+  setPendingAction(getDb(getConfig()), {
+    chatId,
+    tool: "add_assignment_note",
+    args: { key: null, title: null, course: null, note: "Submitted. Waiting for grade." },
+    note: "Assignment key or title is required.",
+  });
+
+  const reply6 = await runAgentMessage({ chatId, text: "Go", clientOverride: mockInvalidPending });
+  assert.match(reply6, /Which assignment/i);
+  const pendingAfterInvalid = getPendingAction(getDb(getConfig()), chatId);
+  assert.equal(pendingAfterInvalid, null);
 
   closeDb();
   await cleanupDb();
