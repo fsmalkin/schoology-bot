@@ -29,6 +29,86 @@ function ensureDir(dirPath) {
   }
 }
 
+function sleepSync(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) return;
+  try {
+    // Atomics.wait provides a simple synchronous sleep without busy looping.
+    const sab = new SharedArrayBuffer(4);
+    const int32 = new Int32Array(sab);
+    Atomics.wait(int32, 0, 0, ms);
+  } catch {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      // busy wait fallback (should be rare)
+    }
+  }
+}
+
+function maybeMigrateLegacyDb(dbPath, legacyDbPath) {
+  if (!dbPath || dbPath === ":memory:") return;
+  if (!legacyDbPath) return;
+
+  let resolvedDbPath = dbPath;
+  let resolvedLegacy = legacyDbPath;
+  try {
+    resolvedDbPath = path.resolve(dbPath);
+    resolvedLegacy = path.resolve(legacyDbPath);
+  } catch {
+    // leave as-is
+  }
+
+  if (resolvedDbPath === resolvedLegacy) return;
+  if (fs.existsSync(resolvedDbPath)) return;
+  if (!fs.existsSync(resolvedLegacy)) return;
+
+  ensureDir(path.dirname(resolvedDbPath));
+
+  const lockPath = `${resolvedDbPath}.migrate.lock`;
+  let lockFd = null;
+  try {
+    lockFd = fs.openSync(lockPath, "wx");
+  } catch (err) {
+    // Another process/container is migrating. Wait briefly for the target DB to appear.
+    if (err && err.code === "EEXIST") {
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        if (fs.existsSync(resolvedDbPath)) return;
+        sleepSync(100);
+      }
+    }
+    return;
+  }
+
+  try {
+    if (!fs.existsSync(resolvedDbPath)) {
+      const tmp = `${resolvedDbPath}.tmp`;
+      fs.copyFileSync(resolvedLegacy, tmp);
+      fs.renameSync(tmp, resolvedDbPath);
+    }
+
+    // If legacy had WAL/shm files, bring them too.
+    for (const suffix of ["-wal", "-shm"]) {
+      const legacySidecar = `${resolvedLegacy}${suffix}`;
+      const targetSidecar = `${resolvedDbPath}${suffix}`;
+      if (!fs.existsSync(legacySidecar) || fs.existsSync(targetSidecar)) continue;
+      const tmp = `${targetSidecar}.tmp`;
+      fs.copyFileSync(legacySidecar, tmp);
+      fs.renameSync(tmp, targetSidecar);
+    }
+  } finally {
+    try {
+      if (lockFd) fs.closeSync(lockFd);
+    } catch {
+      // ignore
+    }
+    try {
+      fs.unlinkSync(lockPath);
+    } catch {
+      // ignore
+    }
+  }
+}
+
 function ensureSchemaMigrations(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -313,6 +393,10 @@ export function getDb(config) {
   if (dbInstance) return dbInstance;
   const dbPath = config?.paths?.agentDbPath || path.join(process.cwd(), "data", "agent.db");
   ensureDir(path.dirname(dbPath));
+  const legacyDbPath = config?.paths?.dataDir
+    ? path.join(config.paths.dataDir, "agent.db")
+    : path.join(process.cwd(), "data", "agent.db");
+  maybeMigrateLegacyDb(dbPath, legacyDbPath);
   const db = createDb(dbPath);
   dbInstance = db;
   return dbInstance;

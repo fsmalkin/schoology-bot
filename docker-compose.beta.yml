@@ -7,8 +7,11 @@ services:
       - .env.beta
     command: npm run start
     restart: unless-stopped
+    environment:
+      - AGENT_DB_PATH=/app/db/agent.db
     volumes:
       - ./data:/app/data
+      - agent-db-beta:/app/db
 
   telegram-agent-beta:
     build:
@@ -18,5 +21,12 @@ services:
       - .env.beta
     command: npm run agent:telegram
     restart: unless-stopped
+    environment:
+      - AGENT_DB_PATH=/app/db/agent.db
     volumes:
       - ./data:/app/data
+      - agent-db-beta:/app/db
+
+volumes:
+  agent-db-beta:
+    name: schoology_agent_db_beta

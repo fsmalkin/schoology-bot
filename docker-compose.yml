@@ -2,8 +2,11 @@ services:
   schoology:
     build: .
     env_file: .env
+    environment:
+      - AGENT_DB_PATH=/app/db/agent.db
     volumes:
       - ./data:/app/data
+      - agent-db:/app/db
     restart: unless-stopped
     init: true
     healthcheck:
@@ -21,8 +24,11 @@ services:
     build: .
     env_file: .env
     command: ["npm", "run", "agent:telegram"]
+    environment:
+      - AGENT_DB_PATH=/app/db/agent.db
     volumes:
       - ./data:/app/data
+      - agent-db:/app/db
     restart: unless-stopped
     init: true
     depends_on:
@@ -38,3 +44,7 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
+
+volumes:
+  agent-db:
+    name: schoology_agent_db_prod
