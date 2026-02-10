@@ -49,9 +49,9 @@ function buildResponsePrompt() {
     "Default reporting buckets: Actionable, Pending, Ignored. Hide Ignored by default unless asked.",
     "When confirming status updates, include a short list of items waiting on teacher/grade (No grade put in yet, Waiting on teacher).",
     "If the user suggests improvements or feature ideas, ask if they want you to log a feature request.",
-    "Return a JSON object with a single key \"message\" containing your reply.",
-    "Inside message, use plain text with simple lists (use '-' for bullets, '1.' for numbering).",
-    "Do not use HTML tags or Markdown code fences inside the message.",
+    "Reply with plain text.",
+    "Use simple lists (use '-' for bullets, '1.' for numbering).",
+    "Do not use HTML tags or Markdown code fences.",
     "Do not mention tool calls or function names.",
     "If a reminder time is slightly ambiguous, make a best-guess schedule and offer to adjust. Ask for clarification only when no reasonable guess is possible.",
     "Times are America/New_York by default. If tool results include remindAtLabel or remindAtLocal, use those instead of raw ISO/UTC.",
@@ -477,6 +477,32 @@ function extractText(response) {
     .join("");
 }
 
+function extractFunctionCalls(response) {
+  const output = Array.isArray(response?.output) ? response.output : [];
+  return output
+    .filter((item) => item && item.type === "function_call")
+    .map((item) => ({
+      name: item?.name || null,
+      arguments: item?.arguments || null,
+      callId: item?.call_id || null,
+    }))
+    .filter((call) => Boolean(call.name));
+}
+
+function parseToolCallArgs(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return {};
+  const trimmed = value.trim();
+  if (!trimmed) return {};
+  try {
+    const parsed = JSON.parse(trimmed);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 function parseResponseMessage(raw) {
   if (!raw) return "";
   const trimmed = String(raw).trim();
@@ -663,11 +689,12 @@ function buildToolPlanInstructions(allowedTools = TOOL_NAMES) {
     `Allowed tools: ${allowedTools.join(", ")}.`,
     "Examples:",
     "User: refresh my assignments -> {\"action\":\"call_tool\",\"tool\":\"refresh_schoology\",\"args\":\"{}\",\"calls\":null}",
-    "User: refresh and list missing -> {\"action\":\"call_tools\",\"tool\":null,\"args\":null,\"calls\":[{\"tool\":\"refresh_schoology\",\"args\":\"{}\"},{\"tool\":\"list_assignments\",\"args\":\"{\\\"status\\\":\\\"missing\\\",\\\"includePending\\\":true,\\\"includeIgnored\\\":false,\\\"bucketed\\\":true}\"}]}",
+    "User: refresh and list missing -> {\"action\":\"call_tools\",\"tool\":\"refresh_schoology\",\"args\":\"{}\",\"calls\":[{\"tool\":\"refresh_schoology\",\"args\":\"{}\"},{\"tool\":\"list_assignments\",\"args\":\"{\\\"status\\\":\\\"missing\\\",\\\"includePending\\\":true,\\\"includeIgnored\\\":false,\\\"bucketed\\\":true}\"}]}",
     "User: what are my missing assignments -> {\"action\":\"call_tool\",\"tool\":\"list_assignments\",\"args\":\"{\\\"status\\\":\\\"missing\\\",\\\"includePending\\\":true,\\\"includeIgnored\\\":false,\\\"bucketed\\\":true}\",\"calls\":null}",
     "User: add note to Latin Quiz 1 -> {\"action\":\"call_tool\",\"tool\":\"add_assignment_note\",\"args\":\"{\\\"title\\\":\\\"Quiz 1\\\",\\\"course\\\":\\\"Latin\\\",\\\"note\\\":\\\"Submitted. Waiting for grade.\\\"}\",\"calls\":null}",
     "User: mark Latin Quiz 1 as Waiting on teacher -> {\"action\":\"call_tool\",\"tool\":\"update_assignment_status\",\"args\":\"{\\\"title\\\":\\\"Quiz 1\\\",\\\"course\\\":\\\"Latin\\\",\\\"status\\\":\\\"E\\\"}\",\"calls\":null}",
     "User: remind me Thu 7:15am to follow up on Algebra Homework 1 -> {\"action\":\"call_tool\",\"tool\":\"schedule_reminder\",\"args\":\"{\\\"title\\\":\\\"Homework 1\\\",\\\"course\\\":\\\"Algebra\\\",\\\"remindAt\\\":\\\"Thu 7:15am\\\",\\\"message\\\":\\\"Follow up with teacher\\\"}\",\"calls\":null}",
+    "User: add note + set status + schedule reminder -> {\"action\":\"call_tools\",\"tool\":\"add_assignment_note\",\"args\":\"{\\\"title\\\":\\\"January 30th-Tpc01C\\\",\\\"course\\\":\\\"Latin\\\",\\\"note\\\":\\\"Submitted. Waiting for grade.\\\"}\",\"calls\":[{\"tool\":\"add_assignment_note\",\"args\":\"{\\\"title\\\":\\\"January 30th-Tpc01C\\\",\\\"course\\\":\\\"Latin\\\",\\\"note\\\":\\\"Submitted. Waiting for grade.\\\"}\"},{\"tool\":\"update_assignment_status\",\"args\":\"{\\\"title\\\":\\\"January 30th-Tpc01C\\\",\\\"course\\\":\\\"Latin\\\",\\\"status\\\":\\\"E\\\"}\"},{\"tool\":\"schedule_reminder\",\"args\":\"{\\\"title\\\":\\\"U5 Compound Interest/Intervals\\\",\\\"course\\\":\\\"Algebra\\\",\\\"remindAt\\\":\\\"Thu 7:15am\\\",\\\"message\\\":\\\"Follow up on math make-up after school plan\\\"}\"}]}",
   ].join(" ");
 }
 
@@ -700,7 +727,9 @@ function buildToolAugmentInstructions() {
     "You are checking if the current tool plan fully satisfies the user request.",
     "If additional tools are needed, return them in add_calls in the order they should run AFTER the current plan.",
     "If no additional tools are needed, return an empty add_calls array.",
-    "Only add tools if the user explicitly asked for extra actions beyond the current plan.",
+    "If the user asked for any write actions (notes/status/reminders/tasks), you MUST add the corresponding write tool calls until the request is fully satisfied.",
+    "Do not stop at a read-only tool (like list_assignments) if the user clearly requested updates.",
+    "If you do not have an assignment key, use title (and course if available). The tools can match by title/course and will ask for clarification if ambiguous.",
     "For args, provide a JSON string like \"{}\" or \"{\\\"status\\\":\\\"missing\\\"}\".",
   ].join(" ");
 }
@@ -723,7 +752,6 @@ async function pickToolGroup(client, config, text, previousResponseId) {
     },
     tool_choice: "none",
     parallel_tool_calls: false,
-    previous_response_id: previousResponseId || undefined,
   });
 
   const raw = extractText(response);
@@ -742,7 +770,8 @@ async function pickToolPlan(client, config, text, previousResponseId, allowedToo
   const runPlan = async (instructions, name) => {
     const response = await createResponseWithRetry(client, {
       model: config.openai.model,
-      reasoning: { effort: "low" },
+      // Tool planning is where we most need good intent understanding. Use the configured effort.
+      reasoning: { effort: config.openai.reasoningEffort || "low" },
       max_output_tokens: 280,
       instructions,
       input: text,
@@ -756,7 +785,6 @@ async function pickToolPlan(client, config, text, previousResponseId, allowedToo
       },
       tool_choice: "none",
       parallel_tool_calls: false,
-      previous_response_id: previousResponseId || undefined,
     });
     const raw = extractText(response);
     try {
@@ -788,7 +816,8 @@ async function augmentToolPlan(client, config, text, plan, previousResponseId, a
   })}`;
   const response = await createResponseWithRetry(client, {
     model: config.openai.model,
-    reasoning: { effort: "low" },
+    // Keep the same effort as the planner to avoid missing write actions in multi-step requests.
+    reasoning: { effort: config.openai.reasoningEffort || "low" },
     max_output_tokens: 200,
     instructions: buildToolAugmentInstructions(),
     input,
@@ -802,7 +831,6 @@ async function augmentToolPlan(client, config, text, plan, previousResponseId, a
     },
     tool_choice: "none",
     parallel_tool_calls: false,
-    previous_response_id: previousResponseId || undefined,
   });
 
   const raw = extractText(response);
@@ -1446,151 +1474,110 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
   const planText = buildPlanInput(text, activePending, getBootstrapContext());
   const allowedToolsOverride =
     activePending && pendingDecision === "proceed" ? [activePending.tool] : null;
-  let plan;
-  try {
-    plan = await planAction(client, config, planText, previousResponseId, allowedToolsOverride);
-  } catch (err) {
-    if (previousResponseId && isInvalidPreviousResponse(err)) {
-      resetChatState(db, chatId);
-      plan = await planAction(client, config, planText, undefined, allowedToolsOverride);
-    } else if (previousResponseId && isRetryableError(err)) {
-      plan = await planAction(client, config, planText, undefined, allowedToolsOverride);
-    } else {
-      throw err;
-    }
-  }
+  const allowedToolNames =
+    Array.isArray(allowedToolsOverride) && allowedToolsOverride.length > 0
+      ? allowedToolsOverride
+      : TOOL_NAMES;
+  const tools = toolDefinitions().filter((tool) => allowedToolNames.includes(tool.name));
+  const forcedToolName =
+    Array.isArray(allowedToolsOverride) && allowedToolsOverride.length === 1
+      ? allowedToolsOverride[0]
+      : null;
+  const toolChoice = forcedToolName ? { type: "function", name: forcedToolName } : "auto";
 
-  let calls = [];
-  if (plan.action === "call_tool" && plan.tool) {
-    calls = [{ tool: plan.tool, args: plan.args || {} }];
-  } else if (plan.action === "call_tools" && Array.isArray(plan.calls)) {
-    calls = plan.calls;
-  }
-
-  const bugTools = new Set(["open_bug_report", "open_feature_request"]);
-  if (calls.some((call) => bugTools.has(call?.tool))) {
-    const updatedCalls = [];
-    for (const call of calls) {
-      if (!bugTools.has(call?.tool)) {
-        updatedCalls.push(call);
-        continue;
-      }
-      const kind = call.tool === "open_feature_request" ? "feature" : "bug";
-      const draft = await buildBugDraft(client, config, text, call.args, kind, previousResponseId);
-      updatedCalls.push({
-        tool: call.tool,
-        args: {
-          title: draft.title,
-          body: draft.body,
-          labels: draft.labels,
-        },
-      });
-    }
-    calls = updatedCalls;
-  }
+  const toolLoopInstructions = [
+    buildResponsePrompt(),
+    "Tools are available. Use tools to read/update the local DB.",
+    "Do not claim you cannot apply updates. Notes/statuses/reminders are local and always writable.",
+    "If a tool output indicates missing details or multiple matches, ask a clarifying question and stop calling tools until the user responds.",
+  ].join("\n");
 
   const executed = [];
-  for (const call of calls) {
-    const normalizedTool = normalizeToolName(call?.tool);
-    if (!call || !normalizedTool) {
-      executed.push({
-        call: { name: call?.tool || "unknown", arguments: call?.args || {} },
-        output: { ok: false, error: "Invalid or missing tool name." },
-      });
-      continue;
-    }
-    const pendingArgs =
-      activePending && activePending.tool === normalizedTool ? activePending.args : null;
-    const mergedArgs = mergePendingArgs(pendingArgs, call.args);
-    const normalizedArgs = normalizeToolArgs(normalizedTool, mergedArgs);
-    const output = await runToolByName(db, normalizedTool, normalizedArgs);
-    executed.push({ call: { name: normalizedTool, arguments: normalizedArgs }, output });
-  }
+  let response = null;
+  // Start fresh each user message; we still use previous_response_id inside the tool loop
+  // to attach function_call_output to the correct function_call response.
+  let loopPrev = undefined;
+  let nextInput = planText;
+  let finalText = "";
 
-  for (const item of executed) {
-    const name = item.call?.name;
-    const output = item.output || {};
-    if (activePending && name === activePending.tool && output?.ok === true) {
-      clearPendingAction(db, chatId);
-      continue;
-    }
-    if (shouldStorePendingAction(name, output)) {
-      const args = parseArguments(item.call?.arguments);
-      const matches = Array.isArray(output?.matches) ? output.matches : null;
-      setPendingAction(db, { chatId, tool: name, args, note: output?.error || "", matches });
-    }
-  }
-
-  const toolResults = executed.map((item) => ({
-    tool: item.call.name,
-    args: item.call.arguments,
-    output: item.output,
-  }));
-  let draftMessage = null;
-  if (hasWriteTool(executed)) {
-    const summaryDraft = formatUpdateSummary(executed, db);
-    if (summaryDraft) draftMessage = summaryDraft;
-  } else if (plan.action === "respond" || plan.action === "clarify") {
-    draftMessage = plan.message;
-  }
-  const finalInput = buildFinalInput(text, draftMessage, toolResults);
-
-  let response;
-  try {
+  for (let step = 0; step < 6; step += 1) {
     response = await createResponseWithRetry(client, {
       model: config.openai.model,
       reasoning: { effort: config.openai.reasoningEffort },
       max_output_tokens: config.openai.maxOutputTokens,
-      instructions: buildResponsePrompt(),
-      input: finalInput,
-      text: {
-        format: {
-          type: "json_object",
-        },
-      },
-      tool_choice: "none",
+      instructions: toolLoopInstructions,
+      input: nextInput,
+      tools,
+      tool_choice: toolChoice,
       parallel_tool_calls: false,
-      previous_response_id: previousResponseId,
+      previous_response_id: loopPrev || undefined,
     });
-  } catch (err) {
-    if (previousResponseId && isInvalidPreviousResponse(err)) {
-      resetChatState(db, chatId);
-      response = await createResponseWithRetry(client, {
-        model: config.openai.model,
-        reasoning: { effort: config.openai.reasoningEffort },
-        max_output_tokens: config.openai.maxOutputTokens,
-        instructions: buildResponsePrompt(),
-        input: finalInput,
-        text: {
-          format: {
-            type: "json_object",
-          },
-        },
-        tool_choice: "none",
-        parallel_tool_calls: false,
-      });
-    } else if (previousResponseId && isRetryableError(err)) {
-      response = await createResponseWithRetry(client, {
-        model: config.openai.model,
-        reasoning: { effort: config.openai.reasoningEffort },
-        max_output_tokens: config.openai.maxOutputTokens,
-        instructions: buildResponsePrompt(),
-        input: finalInput,
-        text: {
-          format: {
-            type: "json_object",
-          },
-        },
-        tool_choice: "none",
-        parallel_tool_calls: false,
-      });
-    } else {
-      throw err;
+
+    const functionCalls = extractFunctionCalls(response);
+    if (!functionCalls || functionCalls.length === 0) {
+      finalText = parseResponseMessage(extractText(response).trim());
+      break;
     }
+
+    const outputs = [];
+    for (const call of functionCalls) {
+      const normalizedTool = normalizeToolName(call?.name, allowedToolNames);
+      if (!normalizedTool) {
+        executed.push({
+          call: { name: call?.name || "unknown", arguments: {} },
+          output: { ok: false, error: "Invalid or missing tool name." },
+        });
+        continue;
+      }
+
+      let callArgs = parseToolCallArgs(call.arguments);
+      if (normalizedTool === "open_bug_report" || normalizedTool === "open_feature_request") {
+        const kind = normalizedTool === "open_feature_request" ? "feature" : "bug";
+        const draft = await buildBugDraft(client, config, text, callArgs, kind, loopPrev);
+        callArgs = { title: draft.title, body: draft.body, labels: draft.labels };
+      }
+
+      const pendingArgs =
+        activePending && activePending.tool === normalizedTool ? activePending.args : null;
+      const mergedArgs = mergePendingArgs(pendingArgs, callArgs);
+      const normalizedArgs = normalizeToolArgs(normalizedTool, mergedArgs);
+      const output = await runToolByName(db, normalizedTool, normalizedArgs);
+      executed.push({ call: { name: normalizedTool, arguments: normalizedArgs }, output });
+
+      if (call.callId) {
+        outputs.push({
+          type: "function_call_output",
+          call_id: call.callId,
+          output: JSON.stringify(output),
+        });
+      }
+
+      if (activePending && normalizedTool === activePending.tool && output?.ok === true) {
+        clearPendingAction(db, chatId);
+        activePending = null;
+      }
+
+      if (shouldStorePendingAction(normalizedTool, output)) {
+        const args = parseArguments(normalizedArgs);
+        const matches = Array.isArray(output?.matches) ? output.matches : null;
+        setPendingAction(db, {
+          chatId,
+          tool: normalizedTool,
+          args,
+          note: output?.error || "",
+          matches,
+        });
+        activePending = getPendingAction(db, chatId);
+      }
+    }
+
+    loopPrev = response?.id || loopPrev;
+    nextInput = outputs;
   }
 
-  const rawText = extractText(response).trim();
-  const finalText = parseResponseMessage(rawText);
+  if (!finalText) {
+    finalText = formatUpdateSummary(executed, db) || "Done.";
+  }
   const sanitized = sanitizeRepeatedText(finalText);
   const normalized = normalizeAscii(sanitized);
   updateChatState(db, chatId, response.id);
