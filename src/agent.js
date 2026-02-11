@@ -542,6 +542,16 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isInvalidPreviousResponseIdError(err) {
+  const message = String(err?.message || err || "").toLowerCase();
+  return (
+    message.includes("previous_response_id") ||
+    message.includes("previous response") ||
+    message.includes("no tool output found") ||
+    (message.includes("response_id") && message.includes("not found"))
+  );
+}
+
 function isRetryableError(err) {
   const status = Number(err?.status || err?.statusCode || 0);
   if (status === 429) return true;
@@ -561,6 +571,12 @@ async function createResponseWithRetry(client, payload, retries = 2, baseDelayMs
     try {
       return await client.responses.create(payload);
     } catch (err) {
+      if (payload?.previous_response_id && isInvalidPreviousResponseIdError(err)) {
+        const next = { ...payload };
+        delete next.previous_response_id;
+        payload = next;
+        continue;
+      }
       if (!isRetryableError(err) || attempt >= retries) {
         throw err;
       }
@@ -1418,16 +1434,6 @@ async function maybeCompact(client, config, chatId, chatState, responseId) {
   return responseId;
 }
 
-function isInvalidPreviousResponse(err) {
-  const message = String(err?.message || err || "").toLowerCase();
-  return (
-    message.includes("previous_response_id") ||
-    message.includes("response_id") ||
-    message.includes("not found") ||
-    message.includes("no tool output found")
-  );
-}
-
 export async function runAgentMessage({ chatId, text, clientOverride }) {
   const config = getConfig();
   validateOpenAIConfig();
@@ -1494,9 +1500,9 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
 
   const executed = [];
   let response = null;
-  // Start fresh each user message; we still use previous_response_id inside the tool loop
-  // to attach function_call_output to the correct function_call response.
-  let loopPrev = undefined;
+  // Carry conversation state across turns so the model can resolve references like "that one" or "Step 1".
+  // We still update loopPrev inside the tool loop so function_call_output attaches to the correct response.
+  let loopPrev = previousResponseId || undefined;
   let nextInput = planText;
   let finalText = "";
 

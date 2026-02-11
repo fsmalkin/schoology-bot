@@ -200,6 +200,7 @@ test("agent conversation cases (mock)", async () => {
   assert.match(reply2, /Updates applied/i);
   assert.match(reply2, /Follow-up needed/i);
   assert.doesNotMatch(reply2, /Updating now/i);
+  assert.equal(mockUpdate.calls[0].previous_response_id, "r1");
 
   const dbLive = getDb(getConfig());
   const allRows = listAssignments(dbLive, {
