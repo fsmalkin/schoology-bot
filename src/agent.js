@@ -1239,6 +1239,7 @@ function formatUpdateSummary(results, db) {
         const actionable = Number(output.actionableCount || 0);
         const pending = Number(output.pendingCount || 0);
         const ignored = Number(output.ignoredCount || 0);
+        const submittedArchived = Number(output.submittedArchivedCount || 0);
         const parts = [];
         if (actionable > 0) {
           parts.push(`${actionable} still need action`);
@@ -1252,6 +1253,9 @@ function formatUpdateSummary(results, db) {
           parts.push(`${ignored} archived`);
         }
         applied.push(`Refresh complete. ${parts.join("; ")}.`);
+        if (submittedArchived > 0) {
+          info.push(`Archived ${submittedArchived} submitted item(s) that are still awaiting grading.`);
+        }
         if (Array.isArray(output.ignoredReasons) && output.ignoredReasons.length > 0) {
           info.push(`Archived because: ${output.ignoredReasons.join(", ")}.`);
         }

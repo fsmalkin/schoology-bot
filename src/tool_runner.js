@@ -241,6 +241,14 @@ export async function runToolByName(db, toolName, args) {
         const pendingCount = bucketed?.buckets?.pending?.length || 0;
         const ignoredRows = bucketed?.buckets?.ignored || [];
         const ignoredCount = ignoredRows.length;
+        const submittedArchivedCount = ignoredRows.filter((row) => {
+          const text = `${row.effectiveStatus || ""} ${row.status || ""} ${row.rawText || ""}`.toLowerCase();
+          return (
+            text.includes("submitted, awaiting grade") ||
+            text.includes("submission that has not been graded") ||
+            text.includes("assignment submitted")
+          );
+        }).length;
         const reasons = Array.from(
           new Set(
             ignoredRows
@@ -253,6 +261,7 @@ export async function runToolByName(db, toolName, args) {
           actionableCount,
           pendingCount,
           ignoredCount,
+          submittedArchivedCount,
           ignoredReasons: reasons,
           resolvedCount: resolved.length,
           clearedManualCount: clearResult.cleared || 0,

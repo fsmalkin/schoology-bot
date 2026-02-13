@@ -34,9 +34,10 @@ The system is a local-first automation that:
 3. Auto-ignore rules suppress prior-quarter/practice items (configurable).
 4. Auto-planner creates reminders for upcoming assignments (configurable, default 4pm day before).
 5. Summary builder reads DB (manual statuses honored).
-6. Refresh replies summarize Actionable/Pending/Archived counts (not raw missing).
-7. Telegram delivery formats summary with HTML-safe output.
-8. Agent chat uses a structured planner to choose a tool and executes it.
+6. Submitted-but-ungraded rows are auto-archived so they do not appear as active missing work.
+7. Refresh replies summarize Actionable/Pending/Archived counts (not raw missing).
+8. Telegram delivery formats summary with HTML-safe output.
+9. Agent chat uses a structured planner to choose a tool and executes it.
 
 ## Deployment
 - Local dev: `npm run start` and `npm run agent:telegram`.
@@ -56,5 +57,5 @@ The system is a local-first automation that:
 
 ## Future Enhancements
 - Context compaction and long-term chat memory.
-- Upcoming assignments ingestion + auto-reminder planning.
-- Auto-ignore prior-quarter or non-graded items.
+- Skill-capability registry and router to reduce tool confusion.
+- Assignment detail-page scrape fallback for stronger submission/grade signals.

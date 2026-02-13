@@ -17,7 +17,8 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
    - Playwright login -> grades page -> parse missing assignments.
    - Updates state.json and syncs into SQLite.
 2) Summary send
-   - Builds DB-backed summary (actionable + pending; ignored hidden).
+   - Builds DB-backed summary (actionable + pending; archived hidden by default).
+   - Submitted-but-ungraded Schoology rows are auto-archived.
    - Sends via Telegram (agentic if OpenAI key is set).
 3) Reminders
    - Pending tasks due now trigger Telegram reminders.

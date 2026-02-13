@@ -112,7 +112,7 @@ Tips:
 - The agent runs as a single instance; a lock file prevents duplicate responses.
 - Incoming messages are batched briefly (about 1 second) so fast sequences become one request.
 - If a batch exceeds the limit, the oldest messages are dropped to keep the newest context.
-- The agent shows a typing indicator and sends a "Working on it..." message after 8 seconds if needed.
+- The agent shows a typing indicator and sends a "Working on it..." message after 10 seconds if needed.
 - Bootstrap context files are loaded if present: `AGENTS.md`, `TOOLS.md`, `SOUL.md`, and any markdown files in `skills/`.
 
 ## Skills (Local)
@@ -173,6 +173,7 @@ These are the default manual status codes the agent understands:
 The agent also accepts custom status text when you specify it explicitly.
 
 By default, **Ignored** statuses (A/B/C) are hidden from the missing list unless you ask to show them.
+Schoology items that are submitted but still ungraded are also archived/ignored by default.
 
 ## Tests (Offline)
 Run unit and offline E2E tests without hitting Schoology:
@@ -214,4 +215,5 @@ Policy for manual statuses on resolved items:
 
 Refresh response behavior:
 - The agent reports Actionable / Pending / Archived counts (not raw missing).
+- Submitted-but-ungraded Schoology items are included in Archived by default.
 - Archived items are still stored and can be shown on request (ex: "show ignored").

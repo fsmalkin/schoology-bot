@@ -32,21 +32,29 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 - Schoology "submitted but not graded" indicators are auto-archived (Ignored) in summaries/lists by default.
 
 ## Now
-1. OpenClaw evaluation (beta branch): assess tool routing, memory/compaction, and IO adapters.
-2. Tool capability awareness: expose tool constraints (ex: no recurring tasks yet) via MCP/skills or a tool-capabilities registry.
-3. Skill router: load only relevant skills per request to reduce prompt bloat.
-4. Long-term memory + context compaction (summary-based) for agent chats.
+1. Stabilize production UX after submitted-item archiving:
+   - Verify refresh and daily summary language is clear (Actionable vs Pending vs Archived).
+   - Confirm submitted/ungraded items stay out of "needs action" by default.
+2. Tool capability awareness:
+   - Add a capability registry so the agent knows exactly what each tool can/cannot do.
+   - Reduce "I cannot do that" confusion for reminders/ticketing.
+3. Skill router:
+   - Load only relevant skills per request to reduce prompt bloat and improve tool selection.
+4. Long-term memory + context compaction:
+   - Add rolling chat summaries (DB-backed) and bounded replay windows.
+5. Submission signal hardening:
+   - Add assignment detail-page fallback parsing for submitted timestamp/status when list view is ambiguous.
 
 ## Next (Stack Ranked)
-1. Define compaction policy (trigger, scope, summary format).
-2. Choose a library baseline for agent behavior (Agents SDK vs AgentSkills vs LangGraph).
-3. Decide if/when to add a scheduled auto-update task (Windows Task Scheduler).
+1. Choose library baseline for agent orchestration (keep current Responses flow vs adopt Agents SDK/AgentSkills).
+2. Define compaction policy (trigger, scope, summary format, rollback path).
+3. Add recurring reminder support (with clear edit/delete UX).
+4. Decide if/when to add scheduled auto-update task (Windows Task Scheduler).
+5. Define OpenClaw upstream sync SOP (what to pull, how to validate, when to promote).
 
 ## Later
 - Convert action-oriented notes into reminders when appropriate (ask user to confirm).
 - Unified single Task model (Option B).
-- Long-term memory summary stored in DB (per chat), injected into prompts.
-- Context compaction triggers (turn count and/or token budget) with safe summaries.
 - Phase 4 (Cost Monitoring): daily cost summary message.
 - Phase 5 (Local Web UI): local admin UI for status/notes/reminders.
 
