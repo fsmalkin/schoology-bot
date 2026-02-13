@@ -29,6 +29,7 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 - Bug filing auto-generates a title when missing.
 - Pending actions are stored per chat to complete multi-step confirmations.
 - Bug filing uses a draft+validate+submit skill (no empty issues).
+- Schoology "submitted but not graded" indicators are treated as Pending (waiting on teacher) in summaries/lists.
 
 ## Now
 1. OpenClaw evaluation (beta branch): assess tool routing, memory/compaction, and IO adapters.

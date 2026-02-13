@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
-import { getManualStatusCategory, normalizeManualStatus, isIgnoredStatus, isPendingStatus } from "./statuses.js";
+import { getManualStatusCategory, normalizeManualStatus } from "./statuses.js";
 import { nowIso, parseSchoologyDate } from "./time.js";
 import { loadState } from "./storage.js";
 
@@ -527,6 +527,15 @@ export function ensureDbSeeded(db, statePath) {
   syncAssignmentsFromState(db, state);
 }
 
+function isSubmittedPending(row) {
+  const text = `${row.status || ""} ${row.rawText || ""}`.toLowerCase();
+  return (
+    text.includes("submitted, awaiting grade") ||
+    text.includes("submission that has not been graded") ||
+    text.includes("assignment submitted")
+  );
+}
+
 export function listAssignments(db, options = {}) {
   const status = (options.status || "missing").toLowerCase();
   const course = options.course ? String(options.course).toLowerCase() : null;
@@ -559,6 +568,7 @@ export function listAssignments(db, options = {}) {
         title,
         due_date AS dueDate,
         status,
+        raw_text AS rawText,
         manual_status AS manualStatus,
         auto_ignored AS autoIgnored,
         auto_ignore_reason AS autoIgnoreReason,
@@ -581,20 +591,26 @@ export function listAssignments(db, options = {}) {
 
   const mapped = rows.map((row) => {
     const manualStatus = row.manualStatus || "";
-    const statusCategory = getManualStatusCategory(manualStatus);
+    const manualCategory = getManualStatusCategory(manualStatus);
     const autoIgnored = row.autoIgnored === 1;
+    const inferredPending = !manualStatus && row.isMissing === 1 && isSubmittedPending(row);
+    const statusCategory = autoIgnored
+      ? "ignored"
+      : inferredPending
+      ? "pending"
+      : manualCategory;
     return {
       ...row,
       isMissing: row.isMissing === 1,
       autoIgnored,
-      effectiveStatus: manualStatus || row.status || "",
-      statusCategory: autoIgnored ? "ignored" : statusCategory,
+      effectiveStatus: manualStatus || (inferredPending ? "Submitted, awaiting grade" : row.status || ""),
+      statusCategory,
     };
   });
 
   const filtered = mapped.filter((row) => {
-    if (!includeIgnored && (isIgnoredStatus(row.manualStatus) || row.autoIgnored)) return false;
-    if (!includePending && isPendingStatus(row.manualStatus)) return false;
+    if (!includeIgnored && row.statusCategory === "ignored") return false;
+    if (!includePending && row.statusCategory === "pending") return false;
     return true;
   });
 

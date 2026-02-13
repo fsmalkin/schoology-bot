@@ -370,9 +370,17 @@ async function extractAssignments(page) {
           continue;
         }
 
-        const submissionText = normalize(
-          gradeColumn?.querySelector(".dropbox-icon-inline-image-wrapper .visually-hidden")?.textContent || ""
+        const submissionHiddenText = normalize(
+          gradeColumn?.querySelector(
+            ".dropbox-icon-inline-image-wrapper .visually-hidden, .has-dropbox-icon.grade-pending-icon .visually-hidden"
+          )?.textContent || ""
         );
+        const hasGradePendingIcon =
+          Boolean(gradeColumn?.querySelector(".has-dropbox-icon.grade-pending-icon")) ||
+          /submission that has not been graded|assignment submitted/i.test(submissionHiddenText);
+        const submissionText = hasGradePendingIcon
+          ? "Submitted, awaiting grade"
+          : submissionHiddenText;
         const statusHints = [commentText, exceptionText, submissionText, gradeColumnText]
           .filter(Boolean)
           .join(" ");
@@ -381,7 +389,7 @@ async function extractAssignments(page) {
           course,
           title,
           dueDate,
-          status: commentText || exceptionText || "Missing",
+          status: submissionText || commentText || exceptionText || "Missing",
           score: gradeText,
           url,
           rawText: normalize(row.textContent || ""),

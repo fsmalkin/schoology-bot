@@ -80,3 +80,22 @@ test("listAssignments hides ignored by default", () => {
   assert.equal(list.length, 1);
   assert.equal(list[0].key, "a2");
 });
+
+test("listAssignments infers pending when submission is awaiting grade", () => {
+  const db = createDb();
+  seedDb(db);
+  db.prepare("UPDATE assignments SET status = ?, raw_text = ? WHERE key = ?").run(
+    "Missing",
+    "This student has made a submission that has not been graded.",
+    "a2"
+  );
+
+  const withPending = listAssignments(db, { status: "missing", includePending: true });
+  const row = withPending.find((item) => item.key === "a2");
+  assert.ok(row);
+  assert.equal(row.statusCategory, "pending");
+  assert.equal(row.effectiveStatus, "Submitted, awaiting grade");
+
+  const withoutPending = listAssignments(db, { status: "missing", includePending: false });
+  assert.equal(withoutPending.some((item) => item.key === "a2"), false);
+});
