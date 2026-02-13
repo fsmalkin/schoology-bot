@@ -527,7 +527,7 @@ export function ensureDbSeeded(db, statePath) {
   syncAssignmentsFromState(db, state);
 }
 
-function isSubmittedPending(row) {
+function isSubmittedUngraded(row) {
   const text = `${row.status || ""} ${row.rawText || ""}`.toLowerCase();
   return (
     text.includes("submitted, awaiting grade") ||
@@ -593,17 +593,18 @@ export function listAssignments(db, options = {}) {
     const manualStatus = row.manualStatus || "";
     const manualCategory = getManualStatusCategory(manualStatus);
     const autoIgnored = row.autoIgnored === 1;
-    const inferredPending = !manualStatus && row.isMissing === 1 && isSubmittedPending(row);
+    const inferredSubmittedUngraded = row.isMissing === 1 && isSubmittedUngraded(row);
     const statusCategory = autoIgnored
       ? "ignored"
-      : inferredPending
-      ? "pending"
+      : inferredSubmittedUngraded
+      ? "ignored"
       : manualCategory;
     return {
       ...row,
       isMissing: row.isMissing === 1,
       autoIgnored,
-      effectiveStatus: manualStatus || (inferredPending ? "Submitted, awaiting grade" : row.status || ""),
+      effectiveStatus:
+        manualStatus || (inferredSubmittedUngraded ? "Submitted, awaiting grade" : row.status || ""),
       statusCategory,
     };
   });

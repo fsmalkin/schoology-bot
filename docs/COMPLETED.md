@@ -24,7 +24,7 @@ This document records completed milestones and major capability deliveries.
 - Auto-ignore prior-quarter/practice items (configurable keywords and age cutoff).
 - Auto-plan reminders for upcoming assignments (configurable window and reminder time).
 - Refresh responses now summarize Actionable/Pending/Archived instead of raw missing counts.
-- Submission-aware pending detection: Schoology "submitted but not graded" indicators now classify as Pending (waiting on grade) instead of Actionable.
+- Submission-aware ignore detection: Schoology "submitted but not graded" indicators now classify as Archived/Ignored by default (hidden from Actionable/Pending).
 - Optional auto-update script for pulling a branch and rebuilding Docker.
 - Optional CI workflow for offline tests on PRs/pushes to main.
 - Tool capability awareness documented (capabilities/limits in TOOLS.md and prompt).
