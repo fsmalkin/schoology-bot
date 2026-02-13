@@ -199,6 +199,9 @@ For email delivery, set `DELIVERY_CHANNEL="email"` and the SMTP values.
 ## Roadmap
 See `docs/ROADMAP.md`.
 
+## Backlog
+See `docs/BACKLOG.md`.
+
 ## Completed Work
 See `docs/COMPLETED.md`.
 

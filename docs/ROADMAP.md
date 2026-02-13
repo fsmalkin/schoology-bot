@@ -31,34 +31,24 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 - Bug filing uses a draft+validate+submit skill (no empty issues).
 - Schoology "submitted but not graded" indicators are auto-archived (Ignored) in summaries/lists by default.
 
-## Now
-1. Stabilize production UX after submitted-item archiving:
-   - Verify refresh and daily summary language is clear (Actionable vs Pending vs Archived).
-   - Confirm submitted/ungraded items stay out of "needs action" by default.
-2. Tool capability awareness:
-   - Add a capability registry so the agent knows exactly what each tool can/cannot do.
-   - Reduce "I cannot do that" confusion for reminders/ticketing.
-3. Skill router:
-   - Load only relevant skills per request to reduce prompt bloat and improve tool selection.
-4. Long-term memory + context compaction:
-   - Add rolling chat summaries (DB-backed) and bounded replay windows.
-5. Submission signal hardening:
-   - Add assignment detail-page fallback parsing for submitted timestamp/status when list view is ambiguous.
+## Active Queue (P1)
+1. Capability registry + planner guardrails for tool limits (#13).
+2. DB-backed context compaction and long-thread memory (#14).
+3. Detail-page fallback for ambiguous submission status (#15).
+4. Auto-cancel assignment reminders when assignment becomes inactive/resolved (#10).
 
-## Next (Stack Ranked)
-1. Choose library baseline for agent orchestration (keep current Responses flow vs adopt Agents SDK/AgentSkills).
-2. Define compaction policy (trigger, scope, summary format, rollback path).
-3. Add recurring reminder support (with clear edit/delete UX).
-4. Decide if/when to add scheduled auto-update task (Windows Task Scheduler).
-5. Define OpenClaw upstream sync SOP (what to pull, how to validate, when to promote).
+## Ready Next (P2)
+1. Recurring reminder support (create/edit/delete UX + tests).
+2. OpenClaw upstream sync SOP (what to pull, how to validate, when to promote).
+3. Scheduled auto-update task decision (Windows Task Scheduler).
+4. Agents SDK evaluation versus current direct Responses architecture.
 
-## Later
-- Convert action-oriented notes into reminders when appropriate (ask user to confirm).
-- Unified single Task model (Option B).
-- Phase 4 (Cost Monitoring): daily cost summary message.
-- Phase 5 (Local Web UI): local admin UI for status/notes/reminders.
+## Later (P3)
+1. Convert action-oriented notes into reminders with user confirmation.
+2. Unified single Task model (Option B).
+3. Daily cost summary.
+4. Local admin UI for status/notes/reminders.
 
-## Open Items
-- Optional: Twilio/SMS path (not fully tested).
-- Optional: SMTP email delivery.
-- Decide whether to use Agents SDK or direct Responses API.
+## Tracking
+- Backlog source of truth: `docs/BACKLOG.md`.
+- Completed work log: `docs/COMPLETED.md`.
