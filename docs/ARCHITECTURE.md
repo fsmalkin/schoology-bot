@@ -1,60 +1,62 @@
 # Architecture
 
 ## Overview
-The system is a local-first automation that:
-1) Logs into Schoology and scrapes grades.
-2) Stores assignment history and manual metadata in SQLite.
-3) Sends daily summaries and reminders via Telegram.
-4) Exposes an agentic chat interface for updates and questions.
+The repo currently supports two runtime paths:
+1. **Production stack**: native scheduler + Telegram agent.
+2. **Beta OpenClaw stack**: OpenClaw gateway over the same Schoology data/tools.
 
-## Components
-- `schoology` service (scheduler)
-  - Scrape Schoology at 6:00 AM ET.
-  - Send daily summary at 7:00 AM ET.
-  - Deliver task reminders on a schedule (default every minute).
-- `telegram-agent` service
-  - Receives chat messages.
-  - Uses GPT-5.2 for structured tool planning.
-  - Executes tool actions in code (not model tool calls) for reliability.
+Both paths share the same Schoology scraper, SQLite schema, and tool runner.
 
-## Data Stores
-- `data/agent.db` (SQLite)
-  - `assignments`: normalized assignment records.
-  - `assignment_notes`: user notes.
-  - `tasks`: reminders and personal tasks.
-  - `reminders`: legacy reminders (migrated into tasks).
-  - `chat_state`: per-chat state and turn counters.
-  - `pending_actions`: multi-step confirmation state.
-- `data/state.json`: scrape state and legacy assignment history.
-- `data/storage.json`: Playwright session storage for login reuse.
+## Core Components
+- `schoology` / `schoology-beta-openclaw`
+  - Runs scheduler jobs (scrape, daily summary, reminder delivery).
+- `telegram-agent` (prod)
+  - Native Telegram bot agent (`src/telegram_agent.js`).
+- `schoology-tool-api-beta`
+  - HTTP bridge exposing internal tools at `/tools/run` for OpenClaw.
+- `openclaw-gateway-beta`
+  - OpenClaw message runtime using `openclaw_workspace/openclaw.beta.json5`.
 
-## Data Flow
-1. Scheduler triggers scrape -> Playwright logs in -> grades page parsed.
-2. Assignments are normalized and stored in SQLite; state.json also updated.
-3. Auto-ignore rules suppress prior-quarter/practice items (configurable).
-4. Auto-planner creates reminders for upcoming assignments (configurable, default 4pm day before).
-5. Summary builder reads DB (manual statuses honored).
-6. Refresh replies summarize Actionable/Pending/Archived counts (not raw missing).
-7. Telegram delivery formats summary with HTML-safe output.
-8. Agent chat uses a structured planner to choose a tool and executes it.
+## Data and State
+- SQLite: `data/agent.db` (prod) and `data/beta/agent.db` or mounted DB volume in beta stack.
+- Scrape state: `data/state.json` (prod), `data/beta/state.json` (beta).
+- Playwright session: `data/storage.json` (prod), `data/beta/storage.json` (beta).
+- Bug log fallback: `data/bugs.log` (prod), `data/beta/bugs.log` (beta).
+
+## OpenClaw Beta Workspace
+Path: `openclaw_workspace/`
+
+Key files:
+- `AGENTS.md`, `SOUL.md`, `USER.md`, `TOOLS.md`, `HEARTBEAT.md` (Schoology-specific context)
+- `skills/schoology/SKILL.md`
+- `skills/bug-filing/SKILL.md`
+- `tools/schoology_api.js`
+
+Design intent:
+- Schoology-only behavior
+- No generic bootstrap/onboarding flow
+- No context sharing with other OpenClaw agents
+
+## Tool Flow
+1. User message arrives (Telegram/OpenClaw).
+2. Agent decides action.
+3. Skill executes `node .../schoology_api.js '{"tool":...,"args":...}'`.
+4. Tool API calls `runToolByName` in app code.
+5. Response is formatted for Telegram/plain text.
 
 ## Deployment
-- Local dev: `npm run start` and `npm run agent:telegram`.
-- Docker: `docker compose up -d --build` (two services).
-- Optional auto-update: `scripts/auto_update.ps1` to pull a branch and rebuild Docker (no CI/CD by default).
-- CI (optional): GitHub Actions runs `npm test` on PRs/pushes to main with live tests disabled.
+- Prod: `docker compose up -d --build`
+- OpenClaw beta: `docker compose -f docker-compose.beta-openclaw.yml --env-file .env.beta up -d --build`
 
-## Beta/Prod Separation
-- Beta uses `.env.beta` with `DATA_DIR=data/beta`.
-- Separate Docker Compose stack for beta.
-- Promotion merges beta changes into main and rebuilds prod.
+## Beta CLI Helpers
+Cross-shell env runner:
+- `node scripts/with_env.js .env.beta <command...>`
 
-## Reliability
-- Single agent instance enforced via lock file.
-- Message batching to avoid duplicate responses.
-- Health checks and restart policies in Docker.
+Used by:
+- `npm run login:interactive:beta`
+- `npm run telegram:updates:beta`
 
-## Future Enhancements
-- Context compaction and long-term chat memory.
-- Upcoming assignments ingestion + auto-reminder planning.
-- Auto-ignore prior-quarter or non-graded items.
+## Reliability Notes
+- Keep only one consumer per bot token.
+- Use health checks + restart policies.
+- Treat login/session expiry as operational state; re-auth updates storage JSON.

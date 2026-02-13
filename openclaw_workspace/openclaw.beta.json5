@@ -1,0 +1,85 @@
+{
+  "agents": {
+    "defaults": {
+      "skipBootstrap": true,
+      "model": {
+        "primary": "openai/gpt-5.2"
+      },
+      "workspace": "/home/node/.openclaw/workspace",
+      "userTimezone": "America/New_York",
+      "thinkingDefault": "high",
+      "typingIntervalSeconds": 5,
+      "maxConcurrent": 2,
+      "subagents": {
+        "maxConcurrent": 8
+      }
+    }
+  },
+  "messages": {
+    "queue": {
+      "mode": "collect",
+      "debounceMs": 1000,
+      "cap": 20,
+      "drop": "summarize"
+    },
+    "ackReactionScope": "group-mentions"
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto"
+  },
+  "session": {
+    "scope": "per-sender",
+    "dmScope": "per-channel-peer",
+    "reset": {
+      "mode": "daily",
+      "atHour": 4,
+      "idleMinutes": 1440
+    }
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "configWrites": false,
+      "dmPolicy": "disabled",
+      "replyToMode": "first",
+      "groups": {
+        "*": {
+          "requireMention": false,
+          "skills": [
+            "schoology-tools",
+            "bug-filing"
+          ]
+        }
+      },
+      "groupPolicy": "allowlist",
+      "historyLimit": 50,
+      "textChunkLimit": 3500,
+      "chunkMode": "newline",
+      "streamMode": "partial"
+    }
+  },
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "bind": "lan",
+    "auth": {
+      "mode": "token",
+      "token": "schoology-beta-local-token"
+    }
+  },
+  "skills": {
+    "allowBundled": []
+  },
+  "plugins": {
+    "entries": {
+      "telegram": {
+        "enabled": true
+      }
+    }
+  },
+  "meta": {
+    "lastTouchedVersion": "2026.2.4",
+    "lastTouchedAt": "2026-02-12T00:51:41.462Z"
+  }
+}

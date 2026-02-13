@@ -1,9 +1,19 @@
+name: schoology-beta-openclaw
+
 services:
-  schoology:
+  schoology-beta-openclaw:
     build: .
-    env_file: .env.beta
+    env_file:
+      - .env.beta
+    command: npm run start
+    environment:
+      - AGENT_DB_PATH=/app/db/agent.db
+      - STATE_PATH=/app/data/beta/state.json
+      - STORAGE_PATH=/app/data/beta/storage.json
+      - BUG_LOG_PATH=/app/data/beta/bugs.log
     volumes:
       - ./data:/app/data
+      - agent-db-beta-openclaw:/app/db
     restart: unless-stopped
     init: true
     healthcheck:
@@ -12,46 +22,46 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
 
-  schoology-tool-api:
+  schoology-tool-api-beta:
     build: .
-    env_file: .env.beta
+    env_file:
+      - .env.beta
     command: ["node", "src/openclaw_tool_api.js"]
+    environment:
+      - AGENT_DB_PATH=/app/db/agent.db
+      - STATE_PATH=/app/data/beta/state.json
+      - STORAGE_PATH=/app/data/beta/storage.json
+      - BUG_LOG_PATH=/app/data/beta/bugs.log
+      - SCHOOLOGY_TOOL_API_PORT=3030
     volumes:
       - ./data:/app/data
+      - agent-db-beta-openclaw:/app/db
     restart: unless-stopped
     init: true
     depends_on:
-      - schoology
+      - schoology-beta-openclaw
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f \"node src/openclaw_tool_api.js\" > /dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
 
-  openclaw-gateway:
+  openclaw-gateway-beta:
     build:
       context: vendor/openclaw
       dockerfile: Dockerfile
+    env_file:
+      - .env.beta
     environment:
-      HOME: /home/node
-      TERM: xterm-256color
-      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
-      OPENCLAW_GATEWAY_BIND: lan
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      SCHOLOGY_TOOL_API_URL: http://schoology-tool-api:3030/tools/run
-      SCHOLOGY_TOOL_API_KEY: ${SCHOLOGY_TOOL_API_KEY}
+      - HOME=/home/node
+      - TERM=xterm-256color
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-schoology-beta-local-token}
+      - OPENCLAW_CONFIG_PATH=/home/node/.openclaw/workspace/openclaw.beta.json5
+      - OPENCLAW_GATEWAY_BIND=lan
+      - SCHOLOGY_TOOL_API_URL=http://schoology-tool-api-beta:3030/tools/run
+      - SCHOLOGY_TOOL_API_KEY=${SCHOLOGY_TOOL_API_KEY:-}
     volumes:
       - ./data/openclaw-beta:/home/node/.openclaw
       - ./openclaw_workspace:/home/node/.openclaw/workspace
@@ -61,6 +71,10 @@ services:
     restart: unless-stopped
     init: true
     depends_on:
-      - schoology-tool-api
+      - schoology-tool-api-beta
     command:
-      ["node", "dist/index.js", "gateway", "--bind", "lan", "--port", "18789"]
+      ["node", "dist/index.js", "gateway", "--allow-unconfigured", "--bind", "lan", "--port", "18789"]
+
+volumes:
+  agent-db-beta-openclaw:
+    name: schoology_agent_db_beta_openclaw

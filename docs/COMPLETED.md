@@ -1,7 +1,5 @@
 # Completed Work
 
-This document records completed milestones and major capability deliveries.
-
 ## Core Delivery
 - Local Schoology scrape and daily summary flow (6:00 AM ET scrape, 7:00 AM ET summary).
 - Telegram delivery and agentic chat for summaries and updates.
@@ -9,33 +7,33 @@ This document records completed milestones and major capability deliveries.
 
 ## Reliability and UX
 - DB-backed daily summary (manual statuses honored).
-- Agentic Telegram summary and on-demand summary commands.
-- Pending-action handoff for confirmations (multi-turn updates).
-- Bug filing auto-title + pre-submit validation to prevent blank-title failures.
-- Notes included in daily summary.
-- Reminders/tasks included in daily summary (Today/Upcoming/Overdue for Telegram).
-- "Reminders" as the user-facing term for tasks/reminders.
-- Resilient tool routing with group classification and fallback tool selection.
-- Telegram formatting sanitizer (HTML + plain fallback) to avoid raw tags/entities.
-- "Working on it" message cleanup after replies.
-- Output normalization to ASCII for consistent Telegram rendering.
-- Response drafting uses tool results when updates occur.
-- Bootstrap context loader (AGENTS/TOOLS/SOUL/skills) to mirror Clawdbot-style workspace context.
-- Auto-ignore prior-quarter/practice items (configurable keywords and age cutoff).
-- Auto-plan reminders for upcoming assignments (configurable window and reminder time).
-- Refresh responses now summarize Actionable/Pending/Archived instead of raw missing counts.
-- Optional auto-update script for pulling a branch and rebuilding Docker.
-- Optional CI workflow for offline tests on PRs/pushes to main.
-- Tool capability awareness documented (capabilities/limits in TOOLS.md and prompt).
+- Pending-action handoff for multi-step confirmations.
+- Bug filing title validation and non-empty submission flow.
+- Notes + reminders/tasks included in daily summary output.
+- Telegram formatting sanitizer and repeated-text suppression.
+- Response normalization for consistent Telegram rendering.
+- Auto-ignore prior-quarter/practice items (configurable).
+- Auto-plan reminders for upcoming assignments (configurable).
+- Refresh responses summarize Actionable/Pending/Archived.
 
-## Beta Program
-- Beta bot branch and separate env/data dir (`.env.beta`, `DATA_DIR=data/beta`).
-- Beta Docker Compose stack for safe testing.
-- Promotion workflow from beta to production (merge + rebuild prod, stop beta).
+## Beta and OpenClaw
+- Separate beta env/data isolation (`.env.beta`, `DATA_DIR=data/beta`).
+- OpenClaw beta stack wired in Docker (`docker-compose.beta-openclaw.yml`).
+- Schoology Tool API bridge (`src/openclaw_tool_api.js`) for OpenClaw skill calls.
+- Schoology-specific OpenClaw workspace files (`AGENTS.md`, `SOUL.md`, `USER.md`, `TOOLS.md`, `HEARTBEAT.md`).
+- Added OpenClaw `bug-filing` skill and updated `schoology-tools` skill guidance.
+- Removed generic bootstrap/identity files from Schoology OpenClaw workspace.
+- Added `skipBootstrap: true` in beta OpenClaw config.
+- Added cross-shell env wrapper `scripts/with_env.js` and updated beta npm scripts.
 
 ## Tests
-- Offline unit and E2E tests using fixtures (no live Schoology dependency).
-- Reminder CRUD and rollover tests.
+- Unit + integration + live API simulation test suite (`npm test`) passing.
+- OpenClaw beta CLI smoke tests for:
+  - capability prompt
+  - missing assignment listing
+  - optimistic ambiguous-time reminder scheduling
+  - reminder deletion
+  - bug/feature issue filing via skill
 
 ## Known Closed Issues (GitHub)
 - #1 Agent fails on multi-line status message (OpenAI 500) - Closed.

@@ -1,36 +1,36 @@
 # OpenClaw Evaluation (beta branch)
 
-This branch is repurposed for evaluating OpenClaw (clawdbot) as a potential new agent runtime.
-We vendor the upstream repo as a git submodule at `vendor/openclaw` and keep our current
-Schoology bot code in the repo root for comparison and migration planning.
+This branch is used to evaluate OpenClaw as an alternate runtime while preserving
+Schoology-specific behavior and data model.
 
-## Why this branch exists
-- Keep production stable on `main`.
-- Test OpenClaw features and conventions without disturbing the current app.
-- Build a clear migration plan and decide whether to adopt or stay with the current stack.
+## Current wiring
+- Upstream OpenClaw source: `vendor/openclaw` (git submodule)
+- Schoology OpenClaw workspace: `openclaw_workspace/`
+- Beta compose stack: `docker-compose.beta-openclaw.yml`
+  - `openclaw-gateway-beta`
+  - `schoology-tool-api-beta`
+  - `schoology-beta-openclaw`
 
-## How to pull the OpenClaw code
-- Initialize submodules after clone:
+## Workspace policy
+- Schoology-only context files (`AGENTS.md`, `SOUL.md`, `USER.md`, `TOOLS.md`, `HEARTBEAT.md`).
+- Skills:
+  - `schoology-tools`
+  - `bug-filing`
+- Generic bootstrap/identity flows are removed for this workspace.
+
+## Pull/update upstream OpenClaw
+- Init submodules after clone:
   `git submodule update --init --recursive`
-- Update to latest upstream:
+- Pull latest OpenClaw:
   `git submodule update --remote --merge vendor/openclaw`
 
-## Evaluation checklist (current use-cases only)
-1. Refresh Schoology and list missing assignments (actionable vs pending vs archived).
-2. Update manual status for a missing item (A/B/C/D/E style).
-3. Add notes to assignments and see them in the daily summary.
-4. Create reminders (standalone and assignment-linked), and deliver them on time.
-5. Daily summary (morning): concise, respects manual status, includes tasks/reminders.
-6. Telegram UX: formatting, no duplicate responses, no tool-call loops.
-7. Error handling: retries, backoff, and friendly failure text without spam.
-
-## Migration approach (draft)
-1. Run OpenClaw locally using its default stack.
-2. Map only the current tool set (refresh, list missing, update status, reminders, daily summary).
-3. Use our existing Telegram IO (or an OpenClaw adapter if available).
-4. Verify parity with the current bot behavior using fixtures + a live dummy simulation.
-5. Decide: fully migrate, partially adopt, or stay as-is.
+## Evaluation focus
+1. Refresh/list/update assignment workflows
+2. Notes/reminders/task workflows
+3. Bug/feature filing behavior
+4. Telegram quality (formatting, duplication, stability)
+5. Context continuity over multi-turn conversations
 
 ## Notes
-- This is additive: no production files are replaced here.
-- We will track open questions in `docs/openclaw/OPEN_QUESTIONS.md`.
+- Production remains on `main` stack until explicit promotion.
+- Keep beta token/session isolated from prod.
