@@ -32,10 +32,9 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 - Schoology "submitted but not graded" indicators are auto-archived (Ignored) in summaries/lists by default.
 
 ## Active Queue (P1)
-1. Capability registry + planner guardrails for tool limits (#13).
-2. DB-backed context compaction and long-thread memory (#14).
-3. Detail-page fallback for ambiguous submission status (#15).
-4. Auto-cancel assignment reminders when assignment becomes inactive/resolved (#10).
+1. DB-backed context compaction and long-thread memory (#14).
+2. Detail-page fallback for ambiguous submission status (#15).
+3. Auto-cancel assignment reminders when assignment becomes inactive/resolved (#10).
 
 ## Ready Next (P2)
 1. Recurring reminder support (create/edit/delete UX + tests).

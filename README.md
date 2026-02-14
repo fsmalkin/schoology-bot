@@ -101,6 +101,7 @@ Optional:
 - `GITHUB_LABELS="bug,agent"` to apply default labels when opening issues.
 - `DATA_DIR="data"` to override the base data folder (useful for beta).
 - `OPENAI_MAX_OUTPUT_TOKENS` to increase response length if replies are getting cut off.
+- `OPENAI_CAPABILITY_GUARD=true` to enable/disable the capability gate for unsupported requests.
 
 Note: If you use a group chat, Telegram bot privacy must be disabled (BotFather -> /setprivacy) or you must mention the bot for it to receive messages.
 

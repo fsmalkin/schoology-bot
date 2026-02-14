@@ -12,6 +12,8 @@ Unit tests
 - Reminder rollovers.
 - Bug filing guardrails (no empty body).
 - Telegram formatting sanitization.
+- Capability registry rendering and runtime limits.
+- Capability guard behavior (unsupported request blocked with fallback; supported request proceeds to tools).
 
 Integration tests
 - OpenAI live plan tests (tool planning and schema format).

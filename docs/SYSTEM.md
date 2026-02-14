@@ -24,6 +24,7 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
    - Pending tasks due now trigger Telegram reminders.
    - Reminders roll over by 24h if not completed.
 4) Agent chat
+   - Capability gate checks for unsupported requests and proposes nearest supported fallback.
    - Planner selects tools, executes, then composes final message.
    - Pending actions stored per chat for multi-step confirmations.
 

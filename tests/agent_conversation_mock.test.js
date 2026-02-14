@@ -134,6 +134,7 @@ test("agent conversation cases (mock)", async () => {
   process.env.OPENAI_MODEL = "gpt-5.2";
   process.env.OPENAI_MAX_OUTPUT_TOKENS = "200";
   process.env.OPENAI_COMPACT_AFTER_TURNS = "0";
+  process.env.OPENAI_CAPABILITY_GUARD = "0";
   process.env.AGENT_DB_PATH = dbPath;
 
   const {

@@ -90,6 +90,7 @@ const config = {
     reasoningEffort: env("OPENAI_REASONING_EFFORT", "high"),
     maxOutputTokens: numEnv("OPENAI_MAX_OUTPUT_TOKENS", 2000),
     compactAfterTurns: numEnv("OPENAI_COMPACT_AFTER_TURNS", 20),
+    capabilityGuard: boolEnv("OPENAI_CAPABILITY_GUARD", true),
   },
   autoIgnore: {
     enabled: boolEnv("AUTO_IGNORE_ENABLED", true),

@@ -29,6 +29,7 @@ This document records completed milestones and major capability deliveries.
 - Optional auto-update script for pulling a branch and rebuilding Docker.
 - Optional CI workflow for offline tests on PRs/pushes to main.
 - Tool capability awareness documented (capabilities/limits in TOOLS.md and prompt).
+- Capability registry + guardrails implemented in planner and runtime gate (Issue #13).
 
 ## Beta Program
 - Beta bot branch and separate env/data dir (`.env.beta`, `DATA_DIR=data/beta`).

@@ -33,8 +33,13 @@ import { runToolByName, TOOL_NAMES } from "./tool_runner.js";
 import { isRepetitiveOutput, isToolingLoop, normalizeAscii, sanitizeRepeatedText } from "./text_utils.js";
 import { getBootstrapContext } from "./bootstrap.js";
 import { nowIso } from "./time.js";
+import {
+  buildCapabilitySummary,
+  capabilityListForPrompt,
+} from "./capabilities.js";
 
-function buildResponsePrompt() {
+function buildResponsePrompt(config, allowedTools = TOOL_NAMES) {
+  const capabilitySummary = buildCapabilitySummary({ allowedTools, config });
   return [
     "You are a Schoology assistant.",
     "Use the provided tool results as the source of truth.",
@@ -56,6 +61,7 @@ function buildResponsePrompt() {
     "If a reminder time is slightly ambiguous, make a best-guess schedule and offer to adjust. Ask for clarification only when no reasonable guess is possible.",
     "Times are America/New_York by default. If tool results include remindAtLabel or remindAtLocal, use those instead of raw ISO/UTC.",
     "Keep responses concise and action-oriented.",
+    `\nCapability summary:\n${capabilitySummary}`,
     getBootstrapContext() ? `\\nBootstrap Context:\\n${getBootstrapContext()}` : "",
   ].join(" ");
 }
@@ -680,7 +686,8 @@ function buildToolPlanSchema(allowedTools = TOOL_NAMES) {
   };
 }
 
-function buildToolGroupInstructions() {
+function buildToolGroupInstructions(config) {
+  const capabilitySummary = buildCapabilitySummary({ config });
   return [
     "Return JSON only. No extra text.",
     "Pick group=assignments for Schoology, assignments, grades, missing work, reminders, notes, status updates, refresh/sync.",
@@ -688,10 +695,12 @@ function buildToolGroupInstructions() {
     "Pick group=bugs for requests to file bugs or feature requests.",
     "Pick group=none only for greetings, thanks, or small talk.",
     "If unsure, choose group=assignments.",
+    `\nCapability summary:\n${capabilitySummary}`,
   ].join(" ");
 }
 
-function buildToolPlanInstructions(allowedTools = TOOL_NAMES) {
+function buildToolPlanInstructions(allowedTools = TOOL_NAMES, config = null) {
+  const capabilitySummary = buildCapabilitySummary({ allowedTools, config });
   return [
     "Return JSON only. No extra text.",
     "Choose the single best tool (or multiple tools) to satisfy the user request.",
@@ -711,6 +720,7 @@ function buildToolPlanInstructions(allowedTools = TOOL_NAMES) {
     "User: mark Latin Quiz 1 as Waiting on teacher -> {\"action\":\"call_tool\",\"tool\":\"update_assignment_status\",\"args\":\"{\\\"title\\\":\\\"Quiz 1\\\",\\\"course\\\":\\\"Latin\\\",\\\"status\\\":\\\"E\\\"}\",\"calls\":null}",
     "User: remind me Thu 7:15am to follow up on Algebra Homework 1 -> {\"action\":\"call_tool\",\"tool\":\"schedule_reminder\",\"args\":\"{\\\"title\\\":\\\"Homework 1\\\",\\\"course\\\":\\\"Algebra\\\",\\\"remindAt\\\":\\\"Thu 7:15am\\\",\\\"message\\\":\\\"Follow up with teacher\\\"}\",\"calls\":null}",
     "User: add note + set status + schedule reminder -> {\"action\":\"call_tools\",\"tool\":\"add_assignment_note\",\"args\":\"{\\\"title\\\":\\\"January 30th-Tpc01C\\\",\\\"course\\\":\\\"Latin\\\",\\\"note\\\":\\\"Submitted. Waiting for grade.\\\"}\",\"calls\":[{\"tool\":\"add_assignment_note\",\"args\":\"{\\\"title\\\":\\\"January 30th-Tpc01C\\\",\\\"course\\\":\\\"Latin\\\",\\\"note\\\":\\\"Submitted. Waiting for grade.\\\"}\"},{\"tool\":\"update_assignment_status\",\"args\":\"{\\\"title\\\":\\\"January 30th-Tpc01C\\\",\\\"course\\\":\\\"Latin\\\",\\\"status\\\":\\\"E\\\"}\"},{\"tool\":\"schedule_reminder\",\"args\":\"{\\\"title\\\":\\\"U5 Compound Interest/Intervals\\\",\\\"course\\\":\\\"Algebra\\\",\\\"remindAt\\\":\\\"Thu 7:15am\\\",\\\"message\\\":\\\"Follow up on math make-up after school plan\\\"}\"}]}",
+    `\nCapability summary:\n${capabilitySummary}`,
   ].join(" ");
 }
 
@@ -756,7 +766,7 @@ async function pickToolGroup(client, config, text, previousResponseId) {
     model: config.openai.model,
     reasoning: { effort: "low" },
     max_output_tokens: 120,
-    instructions: buildToolGroupInstructions(),
+    instructions: buildToolGroupInstructions(config),
     input: text,
     text: {
       format: {
@@ -811,12 +821,12 @@ async function pickToolPlan(client, config, text, previousResponseId, allowedToo
     }
   };
 
-  const first = await runPlan(buildToolPlanInstructions(allowedTools), "tool_plan");
+  const first = await runPlan(buildToolPlanInstructions(allowedTools, config), "tool_plan");
   const isValidFirst =
     first.tool && (first.action === "call_tool" || (first.action === "call_tools" && first.calls));
   if (isValidFirst) return first;
 
-  const retryInstructions = `${buildToolPlanInstructions(allowedTools)} Tool must be one of: ${allowedTools.join(
+  const retryInstructions = `${buildToolPlanInstructions(allowedTools, config)} Tool must be one of: ${allowedTools.join(
     ", "
   )}. Tool cannot be null.`;
   return await runPlan(retryInstructions, "tool_plan_retry");
@@ -878,6 +888,22 @@ async function augmentToolPlan(client, config, text, plan, previousResponseId, a
 export async function planAction(client, config, text, previousResponseId, allowedToolsOverride = null) {
   if (Array.isArray(allowedToolsOverride) && allowedToolsOverride.length > 0) {
     const allowedTools = allowedToolsOverride;
+    const guard = await assessCapabilityGuard(
+      client,
+      config,
+      text,
+      previousResponseId,
+      allowedTools
+    );
+    if (guard.decision === "unsupported") {
+      return {
+        action: "respond",
+        tool: null,
+        args: null,
+        calls: null,
+        message: guard.message || "That action is not supported yet. I can do the closest supported option.",
+      };
+    }
     const plan = await pickToolPlan(client, config, text, previousResponseId, allowedTools);
     const augmented = await augmentToolPlan(client, config, text, plan, previousResponseId, allowedTools);
     const fallbackTool = allowedTools[0] || "list_assignments";
@@ -899,6 +925,22 @@ export async function planAction(client, config, text, previousResponseId, allow
     return { action: "respond", tool: null, args: null, calls: null, message: null };
   }
   const allowedTools = TOOL_GROUPS[group] || TOOL_NAMES;
+  const guard = await assessCapabilityGuard(
+    client,
+    config,
+    text,
+    previousResponseId,
+    allowedTools
+  );
+  if (guard.decision === "unsupported") {
+    return {
+      action: "respond",
+      tool: null,
+      args: null,
+      calls: null,
+      message: guard.message || "That action is not supported yet. I can do the closest supported option.",
+    };
+  }
   const plan = await pickToolPlan(client, config, text, previousResponseId, allowedTools);
   const augmented = await augmentToolPlan(client, config, text, plan, previousResponseId, allowedTools);
   const fallbackTool =
@@ -980,6 +1022,86 @@ function buildPlanInput(text, pending, bootstrap) {
     "User message:",
     text,
   ].join("\\n");
+}
+
+function buildCapabilityGuardSchema() {
+  return {
+    type: "object",
+    properties: {
+      decision: { type: "string", enum: ["proceed", "unsupported"] },
+      reason: { type: "string" },
+      message: { type: "string" },
+    },
+    required: ["decision", "reason", "message"],
+    additionalProperties: false,
+  };
+}
+
+function buildCapabilityGuardInstructions(capabilitySummary) {
+  return [
+    "Return JSON only. No extra text.",
+    "Capability gate: decide if the user request requires unsupported functionality.",
+    "Use decision=unsupported only when the user clearly asked for something unavailable.",
+    "If unsure or the request can be done with available tools, use decision=proceed.",
+    "If decision=unsupported, message must explain the limit and the nearest supported fallback in 1-2 sentences.",
+    "If decision=proceed, set message to an empty string.",
+    `Capabilities:\n${capabilitySummary}`,
+  ].join(" ");
+}
+
+async function assessCapabilityGuard(
+  client,
+  config,
+  text,
+  previousResponseId,
+  allowedTools = TOOL_NAMES
+) {
+  if (!config?.openai?.capabilityGuard) {
+    return { decision: "proceed", reason: "disabled", message: "", responseId: previousResponseId || null };
+  }
+  const schema = buildCapabilityGuardSchema();
+  const capabilitySummary = buildCapabilitySummary({ allowedTools, config });
+  const capabilityPayload = capabilityListForPrompt({ allowedTools, config });
+  const input = [
+    "User message:",
+    text,
+    "",
+    "Capability payload (JSON):",
+    JSON.stringify(capabilityPayload, null, 2),
+  ].join("\n");
+
+  const response = await createResponseWithRetry(client, {
+    model: config.openai.model,
+    reasoning: { effort: "low" },
+    max_output_tokens: 180,
+    instructions: buildCapabilityGuardInstructions(capabilitySummary),
+    input,
+    text: {
+      format: {
+        type: "json_schema",
+        name: "capability_gate",
+        strict: true,
+        schema,
+      },
+    },
+    tool_choice: "none",
+    parallel_tool_calls: false,
+    previous_response_id: previousResponseId || undefined,
+  });
+
+  const raw = extractText(response).trim();
+  try {
+    const parsed = JSON.parse(raw);
+    const decision = parsed?.decision === "unsupported" ? "unsupported" : "proceed";
+    return {
+      decision,
+      reason: String(parsed?.reason || "").trim(),
+      message: String(parsed?.message || "").trim(),
+      responseId: response?.id || null,
+    };
+  } catch (err) {
+    return { decision: "proceed", reason: "parse-failed", message: "", responseId: response?.id || null };
+  }
 }
 
 function buildPendingDecisionSchema() {
@@ -1494,9 +1616,35 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
       ? allowedToolsOverride[0]
       : null;
   const toolChoice = forcedToolName ? { type: "function", name: forcedToolName } : "auto";
+  let guardResponseId = null;
+  if (!activePending) {
+    try {
+      const guard = await assessCapabilityGuard(
+        client,
+        config,
+        text,
+        previousResponseId,
+        allowedToolNames
+      );
+      guardResponseId = guard.responseId || null;
+      if (guard.decision === "unsupported") {
+        const blockedMessage = normalizeAscii(
+          guard.message ||
+            "That action is not supported yet. I can do the closest supported alternative."
+        );
+        const blockedResponseId = guardResponseId || previousResponseId || chatState.lastResponseId || "";
+        if (blockedResponseId) {
+          updateChatState(db, chatId, blockedResponseId);
+        }
+        return blockedMessage;
+      }
+    } catch (err) {
+      guardResponseId = null;
+    }
+  }
 
   const toolLoopInstructions = [
-    buildResponsePrompt(),
+    buildResponsePrompt(config, allowedToolNames),
     "Tools are available. Use tools to read/update the local DB.",
     "Do not claim you cannot apply updates. Notes/statuses/reminders are local and always writable.",
     "If a tool output indicates missing details or multiple matches, ask a clarifying question and stop calling tools until the user responds.",
@@ -1506,7 +1654,7 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
   let response = null;
   // Carry conversation state across turns so the model can resolve references like "that one" or "Step 1".
   // We still update loopPrev inside the tool loop so function_call_output attaches to the correct response.
-  let loopPrev = previousResponseId || undefined;
+  let loopPrev = guardResponseId || previousResponseId || undefined;
   let nextInput = planText;
   let finalText = "";
 
@@ -1590,11 +1738,22 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
   }
   const sanitized = sanitizeRepeatedText(finalText);
   const normalized = normalizeAscii(sanitized);
-  updateChatState(db, chatId, response.id);
+  const responseIdToStore = response?.id || guardResponseId || previousResponseId || "";
+  if (responseIdToStore) {
+    updateChatState(db, chatId, responseIdToStore);
+  }
 
-  const compactedId = await maybeCompact(client, config, chatId, getChatState(db, chatId), response.id);
-  if (compactedId !== response.id) {
-    updateChatCompaction(db, chatId, compactedId);
+  if (responseIdToStore) {
+    const compactedId = await maybeCompact(
+      client,
+      config,
+      chatId,
+      getChatState(db, chatId),
+      responseIdToStore
+    );
+    if (compactedId !== responseIdToStore) {
+      updateChatCompaction(db, chatId, compactedId);
+    }
   }
 
   if (!normalized || isRepetitiveOutput(finalText) || isToolingLoop(finalText)) {

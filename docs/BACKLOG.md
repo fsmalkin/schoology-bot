@@ -3,16 +3,13 @@
 This file tracks active and proposed work items with GitHub issue linkage.
 
 ## P1 (Current)
-1. #13 Capability registry + planner guardrails for tool limits
-   - Status: Open
-   - Outcome target: Planner chooses only supported tools/actions and gives clean fallbacks.
-2. #14 DB-backed context compaction and long-thread memory
+1. #14 DB-backed context compaction and long-thread memory
    - Status: Open
    - Outcome target: Long chats retain critical context with bounded token use.
-3. #15 Detail-page fallback for ambiguous submission status
+2. #15 Detail-page fallback for ambiguous submission status
    - Status: Open
    - Outcome target: Submission state classification remains accurate when list view is ambiguous.
-4. #10 Auto-cancel reminders for inactive/resolved assignments
+3. #10 Auto-cancel reminders for inactive/resolved assignments
    - Status: Open
    - Outcome target: Assignment-linked reminders do not fire after item becomes inactive.
 
@@ -35,3 +32,4 @@ This file tracks active and proposed work items with GitHub issue linkage.
 2. #9 Renamed for clarity: empty/low-context bug filing issue.
 3. #11 Closed: beta skill smoke check for empty issue handling.
 4. #12 Closed: weekend daily schedule update enhancement.
+5. #13 Completed in code: capability registry + planner/agent guardrails.
