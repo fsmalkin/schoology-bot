@@ -3,6 +3,20 @@
 ## Goal
 Build a local automation that logs into Schoology daily, finds missing assignments for Mayari, and sends a morning summary. Design it so it can be moved to a server later with minimal changes.
 
+## Top Priority (P0): Cloud Runtime Migration
+Objective: move runtime off laptop to an always-on, low-cost cloud host while preserving current Docker architecture.
+
+Decision gates:
+1. Pick hosting option (cost + reliability + operational effort).
+2. Define backup/restore SOP for `data/` (SQLite + storage/session state).
+3. Cut over prod with rollback path (old host still runnable for 48h).
+
+Execution slices:
+1. Provision host and baseline hardening (SSH keys, firewall, fail2ban, auto-security updates).
+2. Deploy Docker Compose stack with persistent volume and health checks.
+3. Add unattended restart/update SOP and backup schedule.
+4. Run 7am summary + reminder smoke checks for 3 consecutive days.
+
 ## Current Decisions
 - Login uses Mayari username and password directly.
 - MFA is not expected.
@@ -35,6 +49,7 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 1. DB-backed context compaction and long-thread memory (#14).
 2. Detail-page fallback for ambiguous submission status (#15).
 3. Auto-cancel assignment reminders when assignment becomes inactive/resolved (#10).
+4. Finalize OpenClaw upstream sync SOP (what to pull, how to validate, when to promote).
 
 ## Ready Next (P2)
 1. Recurring reminder support (create/edit/delete UX + tests).
@@ -51,3 +66,8 @@ Build a local automation that logs into Schoology daily, finds missing assignmen
 ## Tracking
 - Backlog source of truth: `docs/BACKLOG.md`.
 - Completed work log: `docs/COMPLETED.md`.
+
+## Branch Governance
+- `main` is the canonical planning source of truth (`docs/ROADMAP.md` + `docs/BACKLOG.md`).
+- Feature branches may carry temporary planning edits during execution, but must reconcile to `main` before promotion.
+- Beta/OpenClaw branch notes that are branch-specific should live under `docs/openclaw/`.

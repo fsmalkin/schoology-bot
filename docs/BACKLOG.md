@@ -2,6 +2,12 @@
 
 This file tracks active and proposed work items with GitHub issue linkage.
 
+## P0 (Top Priority)
+1. Cloud runtime migration off laptop (always-on + low-cost)
+   - Status: Planning
+   - Outcome target: Production bot runs 24/7 in cloud with persistent data, backups, and rollback plan.
+   - Decision needed: provider choice from cloud options shortlist.
+
 ## P1 (Current)
 1. #14 DB-backed context compaction and long-thread memory
    - Status: Open
@@ -33,3 +39,7 @@ This file tracks active and proposed work items with GitHub issue linkage.
 3. #11 Closed: beta skill smoke check for empty issue handling.
 4. #12 Closed: weekend daily schedule update enhancement.
 5. #13 Completed in code: capability registry + planner/agent guardrails.
+
+## Planning Governance
+- Canonical backlog lives on `main`.
+- Branch-specific backlog items (e.g., OpenClaw beta experiments) should be kept in branch docs and merged only after validation.
