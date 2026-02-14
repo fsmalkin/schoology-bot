@@ -27,6 +27,18 @@ Codex owns Docker operations for this repo. Do not ask the user to restart servi
 - For new agent behaviors, keep a brief "Decision + Outcome" note in docs (what was chosen, why, fallback).
 - SOP: auto-update is manual unless a scheduler is configured. Use `scripts/auto_update.ps1 -Branch main` to pull and rebuild, and consider adding a scheduled task later.
 
+## Planning Doc Drift Guardrails
+- Canonical planning docs live on `main`:
+  - `docs/ROADMAP.md`
+  - `docs/BACKLOG.md`
+  - `docs/SYSTEM.md`
+  - `docs/TEST_COVERAGE.md`
+- Branch-specific experiment notes must live under `docs/openclaw/` (or other branch-scoped docs), not by rewriting canonical planning docs.
+- Before opening PRs or promoting beta/prod, reconcile planning docs against `main`:
+  - `git diff --name-status main..HEAD -- docs/ROADMAP.md docs/BACKLOG.md docs/SYSTEM.md docs/TEST_COVERAGE.md`
+- If branch edits are temporary, discard them before merge.
+- If branch edits are improvements, port them intentionally to `main` first, then re-sync the branch.
+
 ## ExecPlans
 - For complex features or significant refactors, use an ExecPlan as defined in `PLANS.md` (repo root).
 - If an ExecPlan is required, keep it updated as a living document while you work.
