@@ -1,36 +1,73 @@
 # Roadmap
 
 ## Goal
-Run a reliable Schoology assistant that refreshes assignments, keeps actionable status clean, and delivers clear daily/reminder updates via Telegram. Keep deployment local-first and server-ready.
+Build a local automation that logs into Schoology daily, finds missing assignments for Mayari, and sends a morning summary. Design it so it can be moved to a server later with minimal changes.
+
+## Top Priority (P0): Cloud Runtime Migration
+Objective: move runtime off laptop to an always-on, low-cost cloud host while preserving current Docker architecture.
+
+Decision gates:
+1. Pick hosting option (cost + reliability + operational effort).
+2. Define backup/restore SOP for `data/` (SQLite + storage/session state).
+3. Cut over prod with rollback path (old host still runnable for 48h).
+
+Execution slices:
+1. Provision host and baseline hardening (SSH keys, firewall, fail2ban, auto-security updates).
+2. Deploy Docker Compose stack with persistent volume and health checks.
+3. Add unattended restart/update SOP and backup schedule.
+4. Run 7am summary + reminder smoke checks for 3 consecutive days.
 
 ## Current Decisions
-- Runtime model: GPT-5.2.
-- Primary delivery channel: Telegram.
-- Timezone default: America/New_York.
-- Daily jobs: scrape 6:00 AM ET, summary 7:00 AM ET, reminders every minute.
-- Assignment status model is fixed (A/B/C/D/E) with freeform notes.
-- Actionable vs Pending vs Ignored/Archived presentation is the default UX.
-- Prod runs existing app stack (`schoology` + `telegram-agent`) in Docker.
-- Beta OpenClaw stack runs separately (`schoology-beta-openclaw`, `schoology-tool-api-beta`, `openclaw-gateway-beta`).
-- OpenClaw beta workspace is Schoology-specific (no generic bootstrap identity flow).
-- Beta helper scripts now use cross-shell env injection (`scripts/with_env.js`) instead of shell-specific `set ... &&`.
+- Login uses Mayari username and password directly.
+- MFA is not expected.
+- Headless browser only.
+- Credentials and config live in `.env`.
+- Scrape runs at 6:00 AM ET, summary sent at 7:00 AM ET.
+- Reminder scheduler runs every minute to deliver task reminders.
+- Daily summary delivery via Telegram.
+- Telegram agent runs as a single instance to avoid duplicate responses.
+- Incoming Telegram messages are batched briefly and the oldest dropped if too long.
+- Agent tool routing uses a multi-step structured-output planner (tool group -> tool picker -> augment).
+- Tool execution is handled by app code (not model tool-calling).
+- Availability target: run via Docker with restart policy + health check; update with `docker compose up -d --build`.
+- Docker support included for easy server migration.
+- If using Twilio later, use Auth Token for now; plan to switch to API Key for server move.
+- Session-based login: use one-time interactive login locally; improve automated auth when moving to server.
+- Add Telegram alert when re-authentication is required.
+- Daily summary lists only unresolved items (Missing, Incomplete, Not completed/submitted, Absent).
+- Agent model choice: GPT-5.2 (not mini or pro).
+- Maintain offline unit + E2E tests using fixtures (no live Schoology needed).
+- Daily summary includes tasks scheduled for today.
+- Tasks roll over by 24 hours if not completed.
+- Daily summary is DB-backed (manual statuses honored) and agentic for Telegram.
+- Bug filing auto-generates a title when missing.
+- Pending actions are stored per chat to complete multi-step confirmations.
+- Bug filing uses a draft+validate+submit skill (no empty issues).
+- Schoology "submitted but not graded" indicators are auto-archived (Ignored) in summaries/lists by default.
 
-## Now (Stack Ranked)
-1. Beta OpenClaw UAT on Telegram (tool flows + conversation quality + stability).
-2. Re-auth reliability: ensure beta/prod login session refresh path is consistent and documented.
-3. OpenClaw upstream sync policy: define cadence, validation gate, and promotion criteria.
+## Active Queue (P1)
+1. DB-backed context compaction and long-thread memory (#14).
+2. Detail-page fallback for ambiguous submission status (#15).
+3. Auto-cancel assignment reminders when assignment becomes inactive/resolved (#10).
+4. Finalize OpenClaw upstream sync SOP (what to pull, how to validate, when to promote).
 
-## Next
-1. Add lightweight context handoff summary per chat (reduce repeated clarification loops).
-2. Implement skill-router roadmap item (load only relevant skills per request).
-3. Add recurring reminder capability (or explicit non-support UX) with clear tool capability messaging.
+## Ready Next (P2)
+1. Recurring reminder support (create/edit/delete UX + tests).
+2. OpenClaw upstream sync SOP (what to pull, how to validate, when to promote).
+3. Scheduled auto-update task decision (Windows Task Scheduler).
+4. Agents SDK evaluation versus current direct Responses architecture.
 
-## Later
-- Long-term memory compaction/summarization policy for long chats.
-- Cost telemetry message (daily spend + cumulative spend).
-- Optional local web admin UI for assignments/notes/reminders.
+## Later (P3)
+1. Convert action-oriented notes into reminders with user confirmation.
+2. Unified single Task model (Option B).
+3. Daily cost summary.
+4. Local admin UI for status/notes/reminders.
 
-## Operational SOP
-- Auto-update remains manual unless scheduler is added.
-- Update command: `scripts/auto_update.ps1 -Branch main`.
-- After updates: rebuild Docker and run smoke checks before promotion.
+## Tracking
+- Backlog source of truth: `docs/BACKLOG.md`.
+- Completed work log: `docs/COMPLETED.md`.
+
+## Branch Governance
+- `main` is the canonical planning source of truth (`docs/ROADMAP.md` + `docs/BACKLOG.md`).
+- Feature branches may carry temporary planning edits during execution, but must reconcile to `main` before promotion.
+- Beta/OpenClaw branch notes that are branch-specific should live under `docs/openclaw/`.
