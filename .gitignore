@@ -10,3 +10,14 @@ test-results/
 *.log
 .DS_Store
 Thumbs.db
+openclaw_workspace/feature_requests.md
+openclaw_workspace/.git.disabled
+openclaw_workspace/AGENTS.md
+openclaw_workspace/BOOTSTRAP.md
+openclaw_workspace/HEARTBEAT.md
+openclaw_workspace/IDENTITY.md
+openclaw_workspace/SOUL.md
+openclaw_workspace/TOOLS.md
+openclaw_workspace/USER.md
+openclaw_workspace/memory/
+openclaw_workspace/*.json5
