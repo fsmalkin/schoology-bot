@@ -10,11 +10,13 @@ Codex owns Docker operations for this repo. Do not ask the user to restart servi
   `docker compose logs --tail 200 telegram-agent`
 - Tail scheduler logs:
   `docker compose logs --tail 200 schoology`
+- Tail dashboard logs:
+  `docker compose logs --tail 200 dashboard`
 - Stop services:
   `docker compose down`
 
 ## Agent usage
-- Prefer running the app via Docker Compose services (`schoology`, `telegram-agent`).
+- Prefer running the app via Docker Compose services (`schoology`, `telegram-agent`, `dashboard`).
 - When investigating issues, check Docker logs first, then `data/agent.log` if needed.
 - If chat state/tool-call errors occur, restart services in Docker and re-test.
 

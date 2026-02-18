@@ -113,6 +113,12 @@ const config = {
     cron: env("LIVE_CHECK_CRON", "0 5 * * *"),
     chatIds: listEnv("LIVE_CHECK_CHAT_IDS"),
   },
+  dashboard: {
+    port: numEnv("DASHBOARD_PORT", 8787),
+  },
+  runtime: {
+    stack: env("RUNTIME_STACK", "legacy").toLowerCase(),
+  },
   debug: {
     dump: boolEnv("DEBUG_DUMP", false),
   },

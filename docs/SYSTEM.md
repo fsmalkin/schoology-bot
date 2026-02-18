@@ -7,9 +7,16 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
   - Runs cron jobs for scrape, summary send, and reminders.
 - telegram-agent
   - Handles chat messages, tool routing, and responses.
+- dashboard
+  - Local health UI + JSON status endpoint for operations visibility.
 - schoology-tool-api (optional, OpenClaw beta)
   - Exposes tools for OpenClaw gateway.
 - openclaw-gateway (optional, OpenClaw beta)
+  - Handles Telegram chat and cron scheduler in one runtime.
+- openclaw-cron-sync (optional, OpenClaw beta)
+  - Reconciles managed cron jobs on startup (scrape, summary, due reminders).
+- openclaw-gateway-monitor (optional, OpenClaw beta)
+  - Writes gateway heartbeat for dashboard visibility.
   - UI and tool router for OpenClaw evaluations.
 
 ## Core flows
@@ -27,6 +34,9 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
    - Capability gate checks for unsupported requests and proposes nearest supported fallback.
    - Planner selects tools, executes, then composes final message.
    - Pending actions stored per chat for multi-step confirmations.
+5) Dashboard
+   - Reads state.json, SQLite, and heartbeat files.
+   - Shows service freshness + assignment/task health at a glance.
 
 ## Data and logs
 - data/state.json
@@ -37,6 +47,8 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
   - Local bug/feature drafts (JSON lines).
 - data/agent.log
   - Telegram agent log (chat activity).
+- data/health/*.heartbeat.json
+  - Service heartbeat files for scheduler/agent/dashboard.
 
 ## Configuration (env)
 Key settings:
@@ -53,17 +65,37 @@ Key settings:
 - One-off scrape: `npm run scrape`
 - One-off summary: `npm run send`
 - Telegram agent: `npm run agent:telegram`
+- Dashboard: `npm run dashboard`
 - Interactive login: `npm run login:interactive`
 - Tests: `npm test`
 
 ## Docker
+Image strategy:
+- Default stack reuses one shared image tag (`schoology-app:latest`) across scheduler, telegram-agent, and dashboard.
+- Legacy beta stack reuses one shared image tag (`schoology-beta-app:latest`) across scheduler and telegram-agent.
+- OpenClaw beta stack reuses one shared image tag (`schoology-beta-openclaw-unified:latest`) across gateway/tool-api/cron/monitor/dashboard.
+- OpenClaw beta dashboard is profile-gated (`dashboard`) and off by default.
+- Legacy beta should run on demand under a separate project name (`schoology-beta`) to avoid overlap with prod.
+
 Default:
 - `docker compose up -d --build`
 - `docker compose logs --tail 200 telegram-agent`
 - `docker compose logs --tail 200 schoology`
+- `docker compose logs --tail 200 dashboard`
+
+Beta (Legacy Telegram):
+- `docker compose --env-file .env.beta -f docker-compose.beta.yml -p schoology-beta up -d --build`
+- `docker compose --env-file .env.beta -f docker-compose.beta.yml -p schoology-beta logs --tail 200 schoology-beta`
+- `docker compose --env-file .env.beta -f docker-compose.beta.yml -p schoology-beta logs --tail 200 telegram-agent-beta`
+- `docker compose --env-file .env.beta -f docker-compose.beta.yml -p schoology-beta down`
 
 Beta (OpenClaw):
-- `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p schoology-beta-openclaw up -d --build`
+- `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta up -d --build`
+- `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta logs --tail 200 openclaw-cron-sync`
+- `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta logs --tail 200 openclaw-gateway`
+- `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta logs --tail 200 schoology-tool-api`
+- `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta --profile dashboard up -d dashboard`
+- `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta logs --tail 200 dashboard` (when profile enabled)
 
 ## Known constraints
 - No recurring reminders (one-time only).

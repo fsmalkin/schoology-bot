@@ -1,0 +1,52 @@
+FROM node:22-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl build-essential ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install Bun for OpenClaw build scripts.
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:${PATH}"
+RUN corepack enable
+
+# Build OpenClaw runtime.
+WORKDIR /app/openclaw
+COPY vendor/openclaw/package.json vendor/openclaw/pnpm-lock.yaml vendor/openclaw/pnpm-workspace.yaml vendor/openclaw/.npmrc ./
+COPY vendor/openclaw/ui/package.json ./ui/package.json
+COPY vendor/openclaw/patches ./patches
+COPY vendor/openclaw/scripts ./scripts
+RUN pnpm config set fetch-retries 5 \
+  && pnpm config set fetch-retry-mintimeout 10000 \
+  && pnpm config set fetch-retry-maxtimeout 120000
+RUN bash -lc 'for i in 1 2 3 4 5; do pnpm install --frozen-lockfile && exit 0; echo "pnpm install failed (attempt ${i}/5), retrying..."; sleep 15; done; exit 1'
+COPY vendor/openclaw/. .
+RUN OPENCLAW_A2UI_SKIP_MISSING=1 pnpm build
+ENV OPENCLAW_PREFER_PNPM=1
+RUN pnpm ui:build
+
+# Install Schoology runtime dependencies and sources.
+WORKDIR /app/schoology
+COPY package.json package-lock.json* ./
+RUN npm config set fetch-retries 5 \
+  && npm config set fetch-retry-factor 2 \
+  && npm config set fetch-retry-mintimeout 10000 \
+  && npm config set fetch-retry-maxtimeout 120000 \
+  && bash -lc 'for i in 1 2 3 4 5; do npm install --omit=dev && exit 0; echo "npm install failed (attempt ${i}/5), retrying..."; sleep 15; done; exit 1'
+COPY src ./src
+COPY scripts ./scripts
+COPY openclaw_workspace ./openclaw_workspace
+COPY docs ./docs
+COPY AGENTS.md TOOLS.md SOUL.md README.md .env.beta.example ./
+
+# Install Chromium + deps for Playwright scraping.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN npx playwright install --with-deps chromium
+
+RUN mkdir -p /home/node/.openclaw /app/schoology/data \
+  && chown -R node:node /app /home/node /ms-playwright
+
+ENV NODE_ENV=production
+USER node
+
+# Default command keeps OpenClaw gateway behavior.
+WORKDIR /app/openclaw
+CMD ["node", "dist/index.js", "gateway", "--allow-unconfigured"]

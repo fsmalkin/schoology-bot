@@ -1,31 +1,45 @@
+x-schoology-beta-image: &schoology-beta-image
+  image: schoology-beta-app:latest
+
+x-schoology-beta-build: &schoology-beta-build
+  build:
+    context: .
+    dockerfile: Dockerfile
+
 services:
   schoology-beta:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    <<: [*schoology-beta-image, *schoology-beta-build]
     env_file:
       - .env.beta
-    command: npm run start
+    command: ["node", "src/scheduler.js"]
     restart: unless-stopped
     environment:
       - AGENT_DB_PATH=/app/db/agent.db
+      - NODE_OPTIONS=--max-old-space-size=160
     volumes:
       - ./data:/app/data
       - agent-db-beta:/app/db
+    mem_limit: 256m
+    memswap_limit: 1024m
+    mem_reservation: 128m
+    mem_swappiness: 100
 
   telegram-agent-beta:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    <<: *schoology-beta-image
     env_file:
       - .env.beta
-    command: npm run agent:telegram
+    command: ["node", "src/telegram_agent.js"]
     restart: unless-stopped
     environment:
       - AGENT_DB_PATH=/app/db/agent.db
+      - NODE_OPTIONS=--max-old-space-size=160
     volumes:
       - ./data:/app/data
       - agent-db-beta:/app/db
+    mem_limit: 256m
+    memswap_limit: 1024m
+    mem_reservation: 128m
+    mem_swappiness: 100
 
 volumes:
   agent-db-beta:

@@ -8,6 +8,9 @@ Unit tests
 - DB schema migrations and CRUD for tasks/reminders/notes.
 - Status normalization and auto-ignore rules.
 - Summary builder (actionable vs pending).
+- Readable message formatter (Do Now/Soon/Waiting routing, status wording, links, caps).
+- Refresh login-failure messaging when `SCHOLOGY_IDP` is already configured (avoids redundant provider prompts).
+- Dashboard health/data builders (heartbeat + snapshot shaping).
 - Time parsing and timezone formatting (local labels, shorthand).
 - Reminder rollovers.
 - Bug filing guardrails (no empty body).
@@ -19,6 +22,7 @@ Integration tests
 - OpenAI live plan tests (tool planning and schema format).
 - Live API simulation using dummy data.
 - Reminder delivery flow (runReminders with mocked Telegram sender).
+- Dashboard HTTP integration (page + `/api/health` endpoint).
 
 Smoke tests
 - Docker smoke script: `scripts/smoke_docker.ps1` for build + health check.
@@ -45,8 +49,9 @@ Bug filing to GitHub
 - Relies on unit guards + manual verification.
 
 OpenClaw stack
+- Tool API cron-facing flows covered by unit tests (`tests/tool_runner_openclaw_cron.test.js`).
 - No automated tests for OpenClaw gateway UI.
-- Tool API health is checked via docker smoke only.
+- Cron bootstrap behavior (`scripts/openclaw_cron_sync.mjs`) is validated via docker runtime logs, not unit tests.
 
 Performance and reliability
 - No load or soak tests.

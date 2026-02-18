@@ -7,7 +7,7 @@ import {
   validateTwilioConfig,
 } from "./config.js";
 import { scrapeMissingAssignments } from "./schoology.js";
-import { buildSummary, loadState, saveState, updateStateWithScrape } from "./storage.js";
+import { loadState, saveState, updateStateWithScrape } from "./storage.js";
 import {
   formatDateYmd,
   formatDateTime,
@@ -31,12 +31,12 @@ import {
   updateTask,
   updateTaskStatus,
 } from "./db.js";
-import { buildDbSummary, buildLegacySummary } from "./summary.js";
-import { buildAgenticTelegramSummary } from "./summary_agent.js";
+import { buildDbSummary } from "./summary.js";
+import { buildOptionalSummaryNotes } from "./summary_agent.js";
+import { buildReadableDailySummary, buildReadableReminderMessage } from "./readable_messages.js";
 import { sendSummaryEmail } from "./email.js";
 import { sendSummarySms } from "./sms.js";
 import { sendSummaryTelegram, sendTelegramMessage } from "./telegram.js";
-import { renderTelegramHtml } from "./telegram_format.js";
 
 function isLoginFailure(error) {
   const message = String(error?.message || error || "").toLowerCase();
@@ -95,6 +95,46 @@ export async function runScrape() {
   return { state, assignments };
 }
 
+export async function buildDailySummaryText(options = {}) {
+  const config = options.config || getConfig();
+  const db = options.dbOverride || getDb(config);
+  const includeOptionalNotes = options.includeOptionalNotes !== false;
+  const allowScrapeFallback = options.allowScrapeFallback !== false;
+  const now = options.now || new Date();
+
+  let state = options.stateOverride || loadState(config.paths.statePath);
+  if (!options.stateOverride && allowScrapeFallback && !state.lastScrapeAt) {
+    await runScrape();
+    state = loadState(config.paths.statePath);
+  }
+
+  const dbSummary = buildDbSummary(db, { includePending: true, includeIgnored: false, includeNotes: true });
+  const today = formatDateYmd(now, config.schedule.timezone);
+  const allPendingTasks = listTasks(db, { status: "pending" });
+  const reminders = groupReminders(allPendingTasks, config.schedule.timezone, today);
+  const coreSummaryText = buildReadableDailySummary({
+    summary: dbSummary,
+    reminders,
+    state,
+    timeZone: config.schedule.timezone,
+    now,
+  });
+
+  let optionalNotes = "";
+  if (includeOptionalNotes) {
+    optionalNotes =
+      (await buildOptionalSummaryNotes({
+        config,
+        summary: dbSummary,
+        state,
+        reminders,
+      })) || "";
+  }
+  const summaryText = optionalNotes ? `${coreSummaryText}\n\n${optionalNotes}` : coreSummaryText;
+
+  return { state, summary: dbSummary, reminders, summaryText, optionalNotes };
+}
+
 export async function runSend(options = {}) {
   const config = options.config || getConfig();
   const senders = options.senders || {};
@@ -109,41 +149,22 @@ export async function runSend(options = {}) {
   if (channels.includes("telegram")) {
     if (!skipValidate) validateTelegramConfig();
   }
+  const { state, summary: dbSummary, summaryText } = await buildDailySummaryText({
+    config,
+    includeOptionalNotes: true,
+    allowScrapeFallback: true,
+  });
 
-  let state = loadState(config.paths.statePath);
-  if (!state.lastScrapeAt) {
-    await runScrape();
-    state = loadState(config.paths.statePath);
-  }
-
-  const db = getDb(config);
-  const dbSummary = buildDbSummary(db, { includePending: true, includeIgnored: false, includeNotes: true });
-  const legacySummary = buildLegacySummary(dbSummary);
-  const today = formatDateYmd(new Date(), config.schedule.timezone);
-  const allPendingTasks = listTasks(db, { status: "pending" });
-  const reminders = groupReminders(allPendingTasks, config.schedule.timezone, today);
-  const tasksForToday = reminders.today;
   for (const channel of channels) {
     if (channel === "twilio") {
       const sendSms = senders.sms || sendSummarySms;
-      await sendSms(config, legacySummary, state, tasksForToday);
+      await sendSms(config, summaryText);
     } else if (channel === "telegram") {
-      if (config.openai.apiKey) {
-        const text = await buildAgenticTelegramSummary({
-          config,
-          summary: dbSummary,
-          state,
-          reminders,
-        });
-        const sendRaw = senders.telegramRaw || sendTelegramMessage;
-        await sendRaw(config, text);
-      } else {
-        const sendTelegram = senders.telegram || sendSummaryTelegram;
-        await sendTelegram(config, legacySummary, state, tasksForToday);
-      }
+      const sendTelegram = senders.telegram || sendSummaryTelegram;
+      await sendTelegram(config, summaryText);
     } else if (channel === "email") {
       const sendEmail = senders.email || sendSummaryEmail;
-      await sendEmail(config, legacySummary, state, tasksForToday);
+      await sendEmail(config, summaryText);
     }
   }
 
@@ -338,28 +359,38 @@ export async function runReminders(options = {}) {
   const config = options.config || getConfig();
   const senders = options.senders || {};
   const nowOverride = options.nowOverride;
-  if (!config.telegram.botToken || !config.telegram.chatIds || config.telegram.chatIds.length === 0) return;
+  const sendRaw = senders.telegramRaw || senders.telegram || sendTelegramMessage;
+  const hasCustomSender = Boolean(senders.telegramRaw || senders.telegram);
+  if (
+    !hasCustomSender &&
+    (!config.telegram.botToken || !config.telegram.chatIds || config.telegram.chatIds.length === 0)
+  ) {
+    return { ok: false, skipped: true, reason: "telegram_not_configured" };
+  }
 
-  const db = getDb(config);
+  const db = options.dbOverride || getDb(config);
   const now = nowOverride || nowIso();
   const due = listDueTasks(db, now);
-  if (due.length === 0) return;
+  if (due.length === 0) return { ok: true, sent: 0, messages: [] };
 
+  const messages = [];
   for (const task of due) {
     const remindAt = task.remindAt ? new Date(task.remindAt) : new Date();
-    const prettyTime = formatDateTime(remindAt, config.schedule.timezone);
-    const message = task.message ? `\n${task.message}` : "";
-    const text = `Reminder: ${task.title} (scheduled ${prettyTime}).${message}`;
-    const html = renderTelegramHtml(text);
+    const text = buildReadableReminderMessage({
+      task,
+      timeZone: config.schedule.timezone,
+      now: new Date(now),
+    });
     try {
-      const sendRaw = senders.telegramRaw || sendTelegramMessage;
-      await sendRaw(config, html);
+      await sendRaw(config, text);
+      messages.push(text);
       const next = addDays(remindAt, 1).toISOString();
       markTaskReminderSent(db, { id: task.id, sentAt: now, nextRemindAt: next });
     } catch (err) {
       console.error("Failed to send reminder:", err?.message || err);
     }
   }
+  return { ok: true, sent: messages.length, messages };
 }
 
 export const taskApi = {

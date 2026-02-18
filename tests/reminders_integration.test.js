@@ -39,12 +39,14 @@ test("runReminders sends due tasks and rolls over", async () => {
     db.close();
 
     let sent = 0;
+    let messageText = "";
     await runReminders({
       config,
       nowOverride: "2026-02-06T22:00:00Z",
       senders: {
-        telegramRaw: async () => {
+        telegramRaw: async (_cfg, text) => {
           sent += 1;
+          messageText = text;
         },
       },
     });
@@ -54,6 +56,8 @@ test("runReminders sends due tasks and rolls over", async () => {
     db2.close();
 
     assert.equal(sent, 1);
+    assert.match(messageText, /^Do Now/m);
+    assert.match(messageText, /\|/);
     assert.equal(tasks.length, 1);
     assert.equal(tasks[0].rollCount, 1);
     assert.equal(tasks[0].remindAt, "2026-02-07T21:00:00.000Z");

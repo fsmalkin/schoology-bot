@@ -32,6 +32,8 @@ Supported tools:
 - update_task_status (id, status)
 - update_task (id, title, remindAt ISO, message)
 - delete_task (id)
+- build_daily_summary (returns summaryText + counts; no direct channel send)
+- drain_due_reminders (returns due reminder messages and advances rollover state)
 
 Defaults:
 - Summaries show Actionable + Pending; hide Ignored unless asked.
@@ -39,6 +41,8 @@ Defaults:
 - If time is ambiguous (ex: "4pl"), ask a clarifying question. If clear, convert to ISO in America/New_York.
 - When listing reminders/tasks, prefer remindAtLabel (or remindAtLocal) over raw remindAt. Times should be shown in America/New_York by default.
 - Ticket requests must be routed to the bug-filing skill. Do not log tasks or local notes.
+- For scheduled cron summary delivery, call build_daily_summary and output summaryText only.
+- For scheduled cron reminder delivery, call drain_due_reminders; if count is 0, reply exactly HEARTBEAT_OK.
 
 Output:
 - Plain text only. Use short lists with "-" or "1.".

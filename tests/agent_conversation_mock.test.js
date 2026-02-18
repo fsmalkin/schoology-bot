@@ -198,8 +198,8 @@ test("agent conversation cases (mock)", async () => {
   ]);
 
   const reply2 = await runAgentMessage({ chatId, text: "1 C, 2 B, 3 D, 4 E", clientOverride: mockUpdate });
-  assert.match(reply2, /Updates applied/i);
-  assert.match(reply2, /Follow-up needed/i);
+  assert.match(reply2, /Do Now/i);
+  assert.match(reply2, /Waiting/i);
   assert.doesNotMatch(reply2, /Updating now/i);
   assert.equal(mockUpdate.calls[0].previous_response_id, "r1");
 
@@ -261,7 +261,7 @@ test("agent conversation cases (mock)", async () => {
   });
 
   const reply6 = await runAgentMessage({ chatId, text: "Go", clientOverride: mockConfirm });
-  assert.match(reply6, /Scheduled reminder/i);
+  assert.match(reply6, /Saved reminder/i);
   const pendingAfterConfirm = getPendingAction(getDb(getConfig()), chatId);
   assert.equal(pendingAfterConfirm, null);
 

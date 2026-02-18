@@ -34,3 +34,14 @@ Schoology bot code in the repo root for comparison and migration planning.
 ## Notes
 - This is additive: no production files are replaced here.
 - We will track open questions in `docs/openclaw/OPEN_QUESTIONS.md`.
+
+## Decision + Outcome (2026-02-16)
+- Decision: use OpenClaw gateway as the beta runtime owner for Telegram and cron scheduling, while keeping `schoology-tool-api` as a sidecar for deterministic Schoology/task tools.
+- Why: minimizes migration risk by reusing proven domain logic and DB schema while validating one-gateway operations.
+- Fallback: keep legacy `schoology + telegram-agent` stack for production until beta parity is confirmed.
+- Decision: consolidate beta OpenClaw Docker builds to a shared image tag to reduce duplicated image builds and operational sprawl.
+- Why: keeps one runtime artifact for gateway/tool-api/cron/dashboard while preserving separate service commands and healthchecks.
+- Decision: standardize the OpenClaw beta compose project name to `openclaw-beta`.
+- Why: avoids split runtimes from mixed `-p` names and keeps container/log commands deterministic.
+- Decision: when `SCHOLOGY_IDP` is configured, treat provider as fixed and avoid asking users to pick sign-in provider on refresh failures.
+- Why: reduces chat loops and routes troubleshooting toward credentials/session issues instead of redundant provider prompts.

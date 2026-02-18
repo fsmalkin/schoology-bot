@@ -75,17 +75,22 @@ test("runSend updates lastSummarySentAt on success", async () => {
   const config = makeConfig(tempDir);
   seedState(config.paths.statePath);
   let calls = 0;
+  let sentText = "";
   try {
     await runSend({
       config,
       skipValidate: true,
       senders: {
-        telegram: async () => {
+        telegram: async (_cfg, text) => {
           calls += 1;
+          sentText = text;
         },
       },
     });
     assert.equal(calls, 1);
+    assert.match(sentText, /Schoology Summary \|/i);
+    assert.match(sentText, /Nothing to do right now\./i);
+    assert.doesNotMatch(sentText, /Schoology missing summary/i);
     const nextState = loadState(config.paths.statePath);
     assert.ok(nextState.lastSummarySentAt);
   } finally {

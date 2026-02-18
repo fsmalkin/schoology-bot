@@ -6,7 +6,6 @@ import {
   ensureDbSeeded,
   getChatState,
   getDb,
-  listAssignments,
   listTasks,
   createTask,
   updateTaskStatus,
@@ -37,15 +36,22 @@ import {
   buildCapabilitySummary,
   capabilityListForPrompt,
 } from "./capabilities.js";
+import { buildReadableToolResponse } from "./readable_messages.js";
 
 function buildResponsePrompt(config, allowedTools = TOOL_NAMES) {
   const capabilitySummary = buildCapabilitySummary({ allowedTools, config });
+  const configuredIdp = String(config?.schoology?.idp || "").trim().toLowerCase();
+  const idpInstruction =
+    configuredIdp && configuredIdp !== "auto"
+      ? `Schoology sign-in is already configured as "${configuredIdp}". Do not ask the user to choose a sign-in provider unless they explicitly ask to change it.`
+      : "If Schoology login fails and sign-in provider is unknown, ask whether the provider is Microsoft, Google, or Other.";
   return [
     "You are a Schoology assistant.",
     "Use the provided tool results as the source of truth.",
     "Respect tool capabilities listed in Bootstrap Context; if something is unsupported (ex: recurring reminders), say so and offer the closest supported alternative.",
     "Never claim updates unless tool results confirm success.",
     "If tool results include errors, explain them briefly and ask for the missing detail.",
+    idpInstruction,
     "When talking about tasks or assignment reminders, use the term 'Reminders' and combine them unless the user asks for a specific type.",
     "If a note implies a follow-up action, ask if the user wants a reminder created.",
     "Manual statuses, assignment notes, and reminders are stored locally (not in Schoology) and can be updated immediately via tools.",
@@ -1281,252 +1287,16 @@ function shouldStorePendingAction(toolName, output) {
   return false;
 }
 
-function formatAssignmentLabel(assignment) {
-  if (!assignment) return "Unknown assignment";
-  const course = assignment.course ? `${assignment.course}` : "Unknown course";
-  const title = assignment.title ? `${assignment.title}` : "Untitled";
-  return `${course} - ${title}`;
-}
-
 function formatUpdateSummary(results, db) {
-  const applied = [];
-  const needs = [];
-  const info = [];
-
-  for (const item of results) {
-    const name = item.call?.name;
-    const output = item.output || {};
-    const args = parseArguments(item.call?.arguments);
-
-    if (name === "open_bug_report" || name === "open_feature_request") {
-      if (output?.issue?.ok) {
-        info.push(`Created issue: ${output.issue.url}`);
-      } else if (output?.logged) {
-        info.push(`Logged locally: ${output.logPath || "data/bugs.log"}`);
-      } else if (output?.issue?.error) {
-        needs.push(`Could not file issue: ${output.issue.error}`);
-      }
-      continue;
-    }
-
-    if (name === "schedule_reminder") {
-      if (output?.ok) {
-        const verb = output.replaced ? "Updated reminder for" : "Scheduled reminder for";
-        applied.push(`${verb} ${formatAssignmentLabel(output.assignment) || output.key}`);
-        if (output.deletedDuplicates) {
-          info.push(`Removed ${output.deletedDuplicates} duplicate reminder(s).`);
-        }
-        if (output.remindAtLabel) {
-          info.push(`Reminder time: ${output.remindAtLabel}.`);
-        }
-        if (output.assumption) {
-          info.push(
-            `I picked a best-guess time (${output.remindAtLabel || "see reminder time"}). Say "change to ..." if you want a different time.`
-          );
-        }
-      } else if (output?.error) {
-        needs.push(output.error);
-      }
-      continue;
-    }
-
-    if (name === "update_assignment_reminder") {
-      if (output?.ok) {
-        applied.push(`Updated reminder #${output.reminder?.id}`);
-        if (output.reminder?.remindAtLabel) {
-          info.push(`Reminder time: ${output.reminder.remindAtLabel}.`);
-        }
-        if (output.assumption) {
-          info.push(
-            `I picked a best-guess time (${output.reminder?.remindAtLabel || "see reminder time"}). Say "change to ..." if you want a different time.`
-          );
-        }
-      } else if (output?.error) {
-        needs.push(output.error);
-      }
-      continue;
-    }
-
-    if (name === "delete_assignment_reminder") {
-      if (output?.ok) {
-        applied.push(`Deleted reminder #${output.id}`);
-      } else if (output?.error) {
-        needs.push(output.error);
-      }
-      continue;
-    }
-
-    if (name === "refresh_schoology") {
-      if (output?.ok) {
-        const actionable = Number(output.actionableCount || 0);
-        const pending = Number(output.pendingCount || 0);
-        const ignored = Number(output.ignoredCount || 0);
-        const submittedArchived = Number(output.submittedArchivedCount || 0);
-        const parts = [];
-        if (actionable > 0) {
-          parts.push(`${actionable} still need action`);
-        } else {
-          parts.push("no items need action");
-        }
-        if (pending > 0) {
-          parts.push(`${pending} waiting on a grade`);
-        }
-        if (ignored > 0) {
-          parts.push(`${ignored} archived`);
-        }
-        applied.push(`Refresh complete. ${parts.join("; ")}.`);
-        if (submittedArchived > 0) {
-          info.push(`Archived ${submittedArchived} submitted item(s) that are still awaiting grading.`);
-        }
-        if (Array.isArray(output.ignoredReasons) && output.ignoredReasons.length > 0) {
-          info.push(`Archived because: ${output.ignoredReasons.join(", ")}.`);
-        }
-        if (output.clearedManualCount > 0) {
-          info.push(`Cleared ${output.clearedManualCount} manual status(es).`);
-        }
-        if (output.keptManual?.length) {
-          info.push(`Kept ${output.keptManual.length} manual status(es) that may still be relevant.`);
-        }
-      } else if (output?.error) {
-        needs.push(output.error);
-      }
-      continue;
-    }
-
-    if (name === "create_task") {
-      if (output?.ok) {
-        applied.push(`Created task #${output.id}: ${output.title}`);
-        if (output.remindAtLabel) {
-          info.push(`Reminder time: ${output.remindAtLabel}.`);
-        }
-        if (output.assumption) {
-          info.push(
-            `I picked a best-guess time (${output.remindAtLabel || "see reminder time"}). Say "change to ..." if you want a different time.`
-          );
-        }
-      } else if (output?.error) {
-        needs.push(output.error);
-      }
-      continue;
-    }
-
-    if (name === "update_task_status") {
-      if (output?.ok) {
-        applied.push(`Task #${output.task?.id} -> ${output.task?.status}`);
-      } else if (output?.error) {
-        needs.push(output.error);
-      }
-      continue;
-    }
-
-    if (name === "update_task") {
-      if (output?.ok) {
-        applied.push(`Updated task #${output.task?.id}: ${output.task?.title}`);
-        if (output.task?.remindAtLabel) {
-          info.push(`Reminder time: ${output.task.remindAtLabel}.`);
-        }
-        if (output.assumption) {
-          info.push(
-            `I picked a best-guess time (${output.task?.remindAtLabel || "see reminder time"}). Say "change to ..." if you want a different time.`
-          );
-        }
-      } else if (output?.error) {
-        needs.push(output.error);
-      }
-      continue;
-    }
-
-    if (name === "delete_task") {
-      if (output?.ok) {
-        applied.push(`Deleted task #${output.id}`);
-      } else if (output?.error) {
-        needs.push(output.error);
-      }
-      continue;
-    }
-
-    if (name === "add_assignment_note") {
-      if (output?.ok) {
-        applied.push(`Added note to ${formatAssignmentLabel(output.assignment) || output.key}`);
-      } else if (output?.error) {
-        needs.push(output.error);
-      }
-      continue;
-    }
-
-    if (name === "update_assignment_status") {
-      if (output?.ok) {
-        applied.push(`${formatAssignmentLabel(output.assignment)} -> ${output.status}`);
-      } else if (output?.matches?.length) {
-        needs.push(`Multiple matches for "${args.title || "assignment"}".`);
-      } else if (output?.error) {
-        needs.push(output.error);
-      }
-      continue;
-    }
-
-    if (name === "bulk_update_assignment_statuses") {
-      const resultsList = output?.results || [];
-      for (const entry of resultsList) {
-        const res = entry.result;
-        if (res?.ok) {
-          applied.push(`${formatAssignmentLabel(res.assignment)} -> ${res.status}`);
-        } else if (res?.matches?.length) {
-          needs.push(`Multiple matches for "${entry.input?.title || "assignment"}".`);
-        } else if (res?.error) {
-          needs.push(res.error);
-        }
-      }
-      continue;
-    }
-
-    if (name === "apply_numbered_statuses") {
-      const resultsList = output?.results || [];
-      for (const entry of resultsList) {
-        const res = entry.result;
-        if (res?.ok) {
-          applied.push(`${formatAssignmentLabel(res.assignment || entry.assignment)} -> ${res.status}`);
-        } else if (res?.error) {
-          needs.push(res.error);
-        }
-      }
-      continue;
-    }
-  }
-
-  const lines = [];
-  if (applied.length > 0) {
-    lines.push("Updates applied:");
-    applied.forEach((line, idx) => lines.push(`${idx + 1}. ${line}`));
-  }
-
-  if (needs.length > 0) {
-    if (lines.length > 0) lines.push("");
-    lines.push("Needs clarification:");
-    needs.forEach((line, idx) => lines.push(`${idx + 1}. ${line}`));
-  }
-
-  if (info.length > 0) {
-    if (lines.length > 0) lines.push("");
-    lines.push("Info:");
-    info.forEach((line, idx) => lines.push(`${idx + 1}. ${line}`));
-  }
-
-  if (db) {
-    const pending = listAssignments(db, { status: "missing", includeIgnored: true, includePending: true })
-      .filter((row) => row.statusCategory === "pending");
-    if (pending.length > 0) {
-      if (lines.length > 0) lines.push("");
-      lines.push("Follow-up needed (waiting on teacher/grade):");
-      pending.forEach((row, idx) => {
-        const status = row.manualStatus || row.status || "Pending";
-        const due = row.dueDate ? ` (Due ${row.dueDate})` : "";
-        lines.push(`${idx + 1}. ${row.course} - ${row.title}${due} - ${status}`);
-      });
-    }
-  }
-
-  return lines.join("\n").trim();
+  const config = getConfig();
+  const timeZone = config?.schedule?.timezone || "America/New_York";
+  return buildReadableToolResponse({
+    executed: results,
+    db,
+    timeZone,
+    now: new Date(),
+    schoologyIdp: config?.schoology?.idp || "auto",
+  });
 }
 
 function hasToolErrors(results = []) {

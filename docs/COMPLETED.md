@@ -3,6 +3,7 @@
 This document records completed milestones and major capability deliveries.
 
 ## Core Delivery
+- Runtime migrated from laptop to local server (Docker Compose with persistent data/health checks).
 - Local Schoology scrape and daily summary flow (6:00 AM ET scrape, 7:00 AM ET summary).
 - Telegram delivery and agentic chat for summaries and updates.
 - Persistent storage for assignments, notes, manual statuses, reminders, tasks, and chat state.
@@ -34,11 +35,15 @@ This document records completed milestones and major capability deliveries.
 ## Beta Program
 - Beta bot branch and separate env/data dir (`.env.beta`, `DATA_DIR=data/beta`).
 - Beta Docker Compose stack for safe testing.
+- OpenClaw beta one-gateway stack consolidated to one shared image (`schoology-beta-openclaw-unified:latest`).
+- OpenClaw beta project naming standardized to `openclaw-beta` for stable compose operations.
+- Login failure messaging now respects configured `SCHOLOGY_IDP` to avoid repeated provider-selection prompts.
 - Promotion workflow from beta to production (merge + rebuild prod, stop beta).
 
 ## Tests
 - Offline unit and E2E tests using fixtures (no live Schoology dependency).
 - Reminder CRUD and rollover tests.
+- Local health dashboard service (UI + `/api/health`) with scheduler/agent heartbeat integration.
 
 ## Known Closed Issues (GitHub)
 - #1 Agent fails on multi-line status message (OpenAI 500) - Closed.

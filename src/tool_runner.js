@@ -19,7 +19,7 @@ import {
 } from "./db.js";
 import { openBugReport, openFeatureRequest } from "./bugs.js";
 import { isIgnoredStatus, isPendingStatus } from "./statuses.js";
-import { runScrape } from "./tasks.js";
+import { buildDailySummaryText, runReminders, runScrape } from "./tasks.js";
 import {
   formatDateTime,
   formatDateTimeLabel,
@@ -38,6 +38,8 @@ export const TOOL_NAMES = [
   "update_assignment_reminder",
   "delete_assignment_reminder",
   "refresh_schoology",
+  "build_daily_summary",
+  "drain_due_reminders",
   "create_task",
   "list_tasks",
   "update_task_status",
@@ -266,6 +268,59 @@ export async function runToolByName(db, toolName, args) {
           resolvedCount: resolved.length,
           clearedManualCount: clearResult.cleared || 0,
           keptManual: kept,
+        };
+      } catch (err) {
+        return { ok: false, error: err?.message || String(err) };
+      }
+    }
+    case "build_daily_summary": {
+      try {
+        const stateOverride =
+          args?.state && typeof args.state === "object" && !Array.isArray(args.state)
+            ? args.state
+            : undefined;
+        const built = await buildDailySummaryText({
+          config,
+          dbOverride: db,
+          stateOverride,
+          includeOptionalNotes: false,
+          allowScrapeFallback: false,
+          now: args?.now ? new Date(String(args.now)) : undefined,
+        });
+        return {
+          ok: true,
+          summaryText: built.summaryText,
+          actionableCount: built.summary?.actionable?.length || 0,
+          pendingCount: built.summary?.pending?.length || 0,
+          reminderTodayCount: built.reminders?.today?.length || 0,
+          reminderOverdueCount: built.reminders?.overdue?.length || 0,
+          reminderUpcomingCount: built.reminders?.upcoming?.length || 0,
+          lastScrapeAt: built.state?.lastScrapeAt || null,
+          generatedAt: new Date().toISOString(),
+        };
+      } catch (err) {
+        return { ok: false, error: err?.message || String(err) };
+      }
+    }
+    case "drain_due_reminders": {
+      try {
+        const captured = [];
+        const result = await runReminders({
+          config,
+          dbOverride: db,
+          nowOverride: args?.now ? String(args.now) : undefined,
+          senders: {
+            telegramRaw: async (_cfg, text) => {
+              captured.push(String(text || ""));
+            },
+          },
+        });
+        return {
+          ok: true,
+          count: captured.length,
+          messages: captured,
+          now: args?.now || null,
+          result: result || null,
         };
       } catch (err) {
         return { ok: false, error: err?.message || String(err) };

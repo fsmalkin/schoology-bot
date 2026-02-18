@@ -2,20 +2,17 @@
 
 This file tracks active and proposed work items with GitHub issue linkage.
 
-## P0 (Top Priority)
-1. Cloud runtime migration off laptop (always-on + low-cost)
-   - Status: Planning
-   - Outcome target: Production bot runs 24/7 in cloud with persistent data, backups, and rollback plan.
-   - Decision needed: provider choice from cloud options shortlist.
-
 ## P1 (Current)
-1. #14 DB-backed context compaction and long-thread memory
+1. OpenClaw beta UAT and production promotion readiness
+   - Status: In progress
+   - Outcome target: Confirm parity for refresh/chat/reminders and complete a low-risk production cutover checklist.
+2. #14 DB-backed context compaction and long-thread memory
    - Status: Open
    - Outcome target: Long chats retain critical context with bounded token use.
-2. #15 Detail-page fallback for ambiguous submission status
+3. #15 Detail-page fallback for ambiguous submission status
    - Status: Open
    - Outcome target: Submission state classification remains accurate when list view is ambiguous.
-3. #10 Auto-cancel reminders for inactive/resolved assignments
+4. #10 Auto-cancel reminders for inactive/resolved assignments
    - Status: Open
    - Outcome target: Assignment-linked reminders do not fire after item becomes inactive.
 
@@ -43,3 +40,8 @@ This file tracks active and proposed work items with GitHub issue linkage.
 ## Planning Governance
 - Canonical backlog lives on `main`.
 - Branch-specific backlog items (e.g., OpenClaw beta experiments) should be kept in branch docs and merged only after validation.
+
+## Recently Completed
+1. Local server migration off laptop runtime
+   - Status: Completed (2026-02-18)
+   - Outcome: Production runtime now runs on local server Docker with persistent data and health checks.
