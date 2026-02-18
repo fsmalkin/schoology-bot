@@ -22,7 +22,7 @@
     "test:agent": "node tests/agent_conversation.js"
   },
   "dependencies": {
-    "better-sqlite3": "^11.5.0",
+    "better-sqlite3": "^12.6.2",
     "chrono-node": "^2.9.0",
     "dotenv": "^16.4.5",
     "node-cron": "^3.0.3",
