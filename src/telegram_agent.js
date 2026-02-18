@@ -5,6 +5,7 @@ import { getConfig, validateOpenAIConfig, validateTelegramConfig } from "./confi
 import { runAgentMessage } from "./agent.js";
 import { renderTelegramHtml, renderTelegramPlain } from "./telegram_format.js";
 import { batchMessages } from "./telegram_queue.js";
+import { writeServiceHeartbeat } from "./health.js";
 
 const config = getConfig();
 validateTelegramConfig();
@@ -27,6 +28,32 @@ const BATCH_DELAY_MS = 1200;
 const MAX_BATCH_CHARS = 3500;
 const TYPING_INTERVAL_MS = 4000;
 const WORKING_MESSAGE_DELAY_MS = 10000;
+const runtime = {
+  startedAt: new Date().toISOString(),
+  lastMessageAt: null,
+  lastReplyAt: null,
+  lastErrorAt: null,
+  lastError: null,
+  restartAttempts: 0,
+};
+
+function updateHeartbeat(extra = {}) {
+  try {
+    const queuedMessages = Array.from(queueByChat.values()).reduce((sum, items) => {
+      return sum + (Array.isArray(items) ? items.length : 0);
+    }, 0);
+    writeServiceHeartbeat(config, "telegram-agent", {
+      status: "running",
+      allowedChats: allowedChats.size,
+      queuedMessages,
+      processingChats: processingByChat.size,
+      ...runtime,
+      ...extra,
+    });
+  } catch (err) {
+    // heartbeat failures should not stop the agent
+  }
+}
 
 async function sendFormattedMessage(chatId, text, options = {}) {
   const formatted = renderTelegramHtml(text);
@@ -112,6 +139,8 @@ function appendLog(line) {
 
 appendLog("Telegram agent started.");
 acquireLock();
+updateHeartbeat();
+setInterval(() => updateHeartbeat(), 30000);
 
 const MAX_BACKOFF_MS = 60000;
 let restartAttempts = 0;
@@ -132,7 +161,11 @@ function schedulePollingRestart(err) {
   const baseDelay = isDns ? 5000 : 1000;
   const delay = Math.min(baseDelay * Math.pow(2, restartAttempts), MAX_BACKOFF_MS);
   restartAttempts += 1;
+  runtime.restartAttempts = restartAttempts;
+  runtime.lastErrorAt = new Date().toISOString();
+  runtime.lastError = formatError(err);
   appendLog(`Polling error: ${formatError(err)}. Restarting in ${Math.round(delay / 1000)}s.`);
+  updateHeartbeat();
 
   restartTimer = setTimeout(async () => {
     restartTimer = null;
@@ -143,12 +176,20 @@ function schedulePollingRestart(err) {
       await bot.stopPolling();
       await bot.startPolling();
       appendLog("Telegram polling restarted.");
+      runtime.lastError = null;
+      runtime.lastErrorAt = null;
+      updateHeartbeat();
       if (stabilityTimer) clearTimeout(stabilityTimer);
       stabilityTimer = setTimeout(() => {
         restartAttempts = 0;
+        runtime.restartAttempts = 0;
+        updateHeartbeat();
       }, STABLE_RESET_MS);
     } catch (restartErr) {
       appendLog(`Polling restart failed: ${formatError(restartErr)}`);
+      runtime.lastErrorAt = new Date().toISOString();
+      runtime.lastError = formatError(restartErr);
+      updateHeartbeat();
       schedulePollingRestart(restartErr);
     } finally {
       restartInProgress = false;
@@ -170,6 +211,7 @@ bot.on("message", async (msg) => {
   }
   const text = (msg.text || "").trim();
   if (!text) return;
+  runtime.lastMessageAt = new Date().toISOString();
 
   const msgId = String(msg.message_id || "");
   const now = Date.now();
@@ -188,6 +230,7 @@ bot.on("message", async (msg) => {
   }
 
   scheduleProcessing(chatId);
+  updateHeartbeat();
 });
 
 function scheduleProcessing(chatId) {
@@ -251,6 +294,10 @@ async function processQueue(chatId) {
       responseSent = true;
       await bot.sendMessage(chatId, "pong");
       appendLog(`Sent pong to ${chatId}.`);
+      runtime.lastReplyAt = new Date().toISOString();
+      runtime.lastError = null;
+      runtime.lastErrorAt = null;
+      updateHeartbeat();
       return;
     }
 
@@ -279,6 +326,10 @@ async function processQueue(chatId) {
       }
     }
     appendLog(`Replied to ${chatId} (${reply.length} chars).`);
+    runtime.lastReplyAt = new Date().toISOString();
+    runtime.lastError = null;
+    runtime.lastErrorAt = null;
+    updateHeartbeat();
   } catch (err) {
     console.error("Agent error:", err?.message || err);
     try {
@@ -287,6 +338,9 @@ async function processQueue(chatId) {
       // ignore
     }
     appendLog(`Error replying to ${chatId}: ${err?.stack || err?.message || err}`);
+    runtime.lastErrorAt = new Date().toISOString();
+    runtime.lastError = err?.message || String(err);
+    updateHeartbeat();
   } finally {
     stopTyping();
     processingByChat.delete(chatId);
@@ -297,10 +351,12 @@ async function processQueue(chatId) {
 }
 
 process.on("SIGINT", () => {
+  updateHeartbeat({ status: "stopping" });
   releaseLock();
   process.exit(0);
 });
 process.on("SIGTERM", () => {
+  updateHeartbeat({ status: "stopping" });
   releaseLock();
   process.exit(0);
 });

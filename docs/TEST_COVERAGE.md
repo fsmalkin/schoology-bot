@@ -1,38 +1,63 @@
-# Test Coverage
+# Test Coverage and Gaps
 
-## Automated Coverage
+This document summarizes current test coverage and the known gaps.
 
-### Unit tests
-- Date/time parsing and normalization
-- Status normalization and assignment summary bucketing
-- Reminder/task CRUD + rollover
-- Telegram formatting and repetition controls
-- DB migrations
+## Coverage summary
 
-### Integration tests
-- Tool runner paths (assignment updates, notes, reminders, tasks)
-- Agent planning/routing with mocked and live API checks
-- Bug/feature filing flow validation
+Unit tests
+- DB schema migrations and CRUD for tasks/reminders/notes.
+- Status normalization and auto-ignore rules.
+- Summary builder (actionable vs pending).
+- Readable message formatter (Do Now/Soon/Waiting routing, status wording, links, caps).
+- Refresh login-failure messaging when `SCHOLOGY_IDP` is already configured (avoids redundant provider prompts).
+- Dashboard health/data builders (heartbeat + snapshot shaping).
+- Time parsing and timezone formatting (local labels, shorthand).
+- Reminder rollovers.
+- Bug filing guardrails (no empty body).
+- Telegram formatting sanitization.
+- Capability registry rendering and runtime limits.
+- Capability guard behavior (unsupported request blocked with fallback; supported request proceeds to tools).
 
-### Live/API tests (in `npm test`)
-- JSON-schema planning responses
-- Tool routing checks for common intents
-- Live simulation log generation
+Integration tests
+- OpenAI live plan tests (tool planning and schema format).
+- Live API simulation using dummy data.
+- Reminder delivery flow (runReminders with mocked Telegram sender).
+- Dashboard HTTP integration (page + `/api/health` endpoint).
 
-### Docker/Smoke coverage
-- Compose startup health checks
-- OpenClaw gateway channel status checks
-- CLI smoke flows against beta OpenClaw runtime
+Smoke tests
+- Docker smoke script: `scripts/smoke_docker.ps1` for build + health check.
 
-## Current Gaps
-1. End-to-end Schoology scrape with live login in CI (requires interactive auth/session).
-2. Telegram end-to-end reply assertion in CI (depends on external bot/chat state).
-3. Automated verification of daily cron schedule timing across DST boundaries.
-4. Regression suite for long multi-turn conversation continuity in OpenClaw channel mode.
+CLI checks
+- Manual CLI runs via `npm run agent:cli -- "..."` for basic flows.
 
-## SOP for New Functionality
-- Add unit tests for core logic and edge cases.
-- Add integration tests for tool/agent routing changes.
-- Add CLI tests when user-facing CLI/scripts are changed.
-- Add Docker smoke checks when runtime wiring changes.
-- Update this file with coverage additions and any remaining gaps.
+## Gaps and risks
+
+Schoology scraping (live)
+- No automated live Schoology login/scrape tests.
+- Playwright flow can regress if Schoology UI changes.
+
+Telegram end-to-end
+- No automated E2E tests for Telegram receive -> tool -> send.
+- Manual UAT required after changes to agent or formatting.
+
+Reminder delivery timing
+- Automated test covers delivery + rollover with a fixed clock.
+- Cron scheduling is not validated under real clock drift.
+
+Bug filing to GitHub
+- No automated integration test for GitHub issue creation (avoids live API calls).
+- Relies on unit guards + manual verification.
+
+OpenClaw stack
+- Tool API cron-facing flows covered by unit tests (`tests/tool_runner_openclaw_cron.test.js`).
+- No automated tests for OpenClaw gateway UI.
+- Cron bootstrap behavior (`scripts/openclaw_cron_sync.mjs`) is validated via docker runtime logs, not unit tests.
+
+Performance and reliability
+- No load or soak tests.
+- Network failure handling not stress tested.
+
+## Near-term additions (recommended)
+- Add a Telegram E2E test harness that runs against a test bot and test chat.
+- Add a reminder delivery integration test using a fake clock.
+- Add a live scrape smoke test behind a feature flag.

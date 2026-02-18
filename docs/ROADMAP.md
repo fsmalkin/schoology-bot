@@ -1,21 +1,7 @@
 # Roadmap
 
 ## Goal
-Build a local automation that logs into Schoology daily, finds missing assignments for Mayari, and sends a morning summary. Design it so it can be moved to a server later with minimal changes.
-
-## Top Priority (P0): Cloud Runtime Migration
-Objective: move runtime off laptop to an always-on, low-cost cloud host while preserving current Docker architecture.
-
-Decision gates:
-1. Pick hosting option (cost + reliability + operational effort).
-2. Define backup/restore SOP for `data/` (SQLite + storage/session state).
-3. Cut over prod with rollback path (old host still runnable for 48h).
-
-Execution slices:
-1. Provision host and baseline hardening (SSH keys, firewall, fail2ban, auto-security updates).
-2. Deploy Docker Compose stack with persistent volume and health checks.
-3. Add unattended restart/update SOP and backup schedule.
-4. Run 7am summary + reminder smoke checks for 3 consecutive days.
+Run a reliable Schoology assistant on the local server that refreshes assignments, keeps actionable status clean, and delivers clear daily/reminder updates via Telegram.
 
 ## Current Decisions
 - Login uses Mayari username and password directly.
@@ -30,9 +16,9 @@ Execution slices:
 - Agent tool routing uses a multi-step structured-output planner (tool group -> tool picker -> augment).
 - Tool execution is handled by app code (not model tool-calling).
 - Availability target: run via Docker with restart policy + health check; update with `docker compose up -d --build`.
-- Docker support included for easy server migration.
+- Production runtime is hosted on the local server (Docker Compose).
 - If using Twilio later, use Auth Token for now; plan to switch to API Key for server move.
-- Session-based login: use one-time interactive login locally; improve automated auth when moving to server.
+- Session-based login: use one-time interactive login and refresh when session expires.
 - Add Telegram alert when re-authentication is required.
 - Daily summary lists only unresolved items (Missing, Incomplete, Not completed/submitted, Absent).
 - Agent model choice: GPT-5.2 (not mini or pro).
@@ -40,16 +26,29 @@ Execution slices:
 - Daily summary includes tasks scheduled for today.
 - Tasks roll over by 24 hours if not completed.
 - Daily summary is DB-backed (manual statuses honored) and agentic for Telegram.
+- Local health dashboard is available at `http://127.0.0.1:8787` for service/data checks.
 - Bug filing auto-generates a title when missing.
 - Pending actions are stored per chat to complete multi-step confirmations.
 - Bug filing uses a draft+validate+submit skill (no empty issues).
 - Schoology "submitted but not graded" indicators are auto-archived (Ignored) in summaries/lists by default.
+- OpenClaw beta runtime uses gateway-native Telegram + cron, with `schoology-tool-api` retained as a parity sidecar.
+
+## Status Snapshot (2026-02-18)
+- Delivered:
+  - Runtime migrated from laptop to local server and is running in Docker Compose with health checks.
+  - OpenClaw beta one-gateway runtime is running from one shared image (`schoology-beta-openclaw-unified:latest`).
+  - Docker image sprawl reduced by consolidating gateway/tool-api/cron/monitor/dashboard onto one image build.
+  - Login failure messaging now respects configured `SCHOLOGY_IDP` and avoids unnecessary provider-selection prompts.
+- In progress:
+  - Beta UAT for login refresh, missing-assignment flows, and reminder delivery before prod promotion.
+  - Production rollout checklist and cutover validation for OpenClaw runtime.
 
 ## Active Queue (P1)
-1. DB-backed context compaction and long-thread memory (#14).
-2. Detail-page fallback for ambiguous submission status (#15).
-3. Auto-cancel assignment reminders when assignment becomes inactive/resolved (#10).
-4. Finalize OpenClaw upstream sync SOP (what to pull, how to validate, when to promote).
+1. OpenClaw beta UAT and production promotion readiness.
+2. DB-backed context compaction and long-thread memory (#14).
+3. Detail-page fallback for ambiguous submission status (#15).
+4. Auto-cancel assignment reminders when assignment becomes inactive/resolved (#10).
+5. Finalize OpenClaw upstream sync SOP (what to pull, how to validate, when to promote).
 
 ## Ready Next (P2)
 1. Recurring reminder support (create/edit/delete UX + tests).

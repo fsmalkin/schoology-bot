@@ -2,6 +2,7 @@
 
 This file is a short description of available tools and their expected behavior.
 The agent should treat tool results as source of truth and avoid guessing.
+Canonical capability metadata for planner/runtime guardrails lives in `src/capabilities.js`.
 
 System expectations:
 - Prefer library-first solutions before custom logic.
@@ -10,6 +11,8 @@ System expectations:
 
 Tool capabilities and limits:
 - Reminders: one-time reminders only (no recurring schedules yet).
+- Cron-safe summary tool (`build_daily_summary`): returns formatted summary text; it does not send directly.
+- Cron-safe reminder drain tool (`drain_due_reminders`): returns due reminder messages and applies rollover state updates.
 - Tasks: can be created, listed, updated, deleted; tasks roll over 24h automatically if still pending.
 - Assignment reminders: tied to a specific assignment; replaces existing pending reminder when requested.
 - Refresh Schoology: resyncs data and updates local state; cannot change Schoology grades or submissions.

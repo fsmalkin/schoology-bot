@@ -71,3 +71,10 @@ test("buildDbSummary respects ignored and pending statuses", () => {
   assert.ok(lab.notes && lab.notes.length === 1);
   assert.equal(lab.notes[0].note, "Meet teacher tomorrow");
 });
+
+test("addAssignmentNote rejects unknown assignment key", () => {
+  const db = createDb(":memory:");
+  const result = addAssignmentNote(db, { key: "missing", note: "Test note" });
+  assert.equal(result.ok, false);
+  assert.match(result.error || "", /not found/i);
+});

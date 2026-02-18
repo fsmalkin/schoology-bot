@@ -20,9 +20,10 @@ It runs on your machine today and is ready to move to a server later.
 2. Run `docker compose up -d --build`.
 3. Check logs with `docker compose logs -f`.
 
-Note: Docker runs two services:
+Note: Docker runs three services:
 - `schoology` (scheduler for scrape/send/reminders)
 - `telegram-agent` (chat agent)
+- `dashboard` (local health + operations page at `http://127.0.0.1:8787`)
 
 ## Uptime and Updates (Docker)
 For higher uptime and safer updates, use Docker with auto-restart and health checks.
@@ -55,6 +56,22 @@ You can run this on a schedule via Windows Task Scheduler if desired.
 - `npm run run-once` scrapes and sends immediately.
 - `npm run agent:telegram` starts the Telegram agent (chat).
 - `npm run agent:cli -- "What is missing today?"` runs a local chat query.
+- `npm run dashboard` starts a local health dashboard.
+
+## Dashboard (Bookmark This)
+Use the dashboard to quickly check health and remind yourself how the bot works:
+- URL: `http://127.0.0.1:8787`
+- API: `http://127.0.0.1:8787/api/health`
+
+What it shows:
+- Scheduler and Telegram agent heartbeat status.
+- Last scrape and last summary send times.
+- Actionable/waiting/ignored assignment counts.
+- Pending/overdue/today/upcoming task counts.
+- Quick Docker commands and docs pointers.
+
+If you run with Docker Compose, the dashboard service starts automatically.
+If you run locally without Docker, use `npm run dashboard`.
 
 ## Data
 - `data/state.json` stores assignment history and last run metadata.
@@ -101,6 +118,7 @@ Optional:
 - `GITHUB_LABELS="bug,agent"` to apply default labels when opening issues.
 - `DATA_DIR="data"` to override the base data folder (useful for beta).
 - `OPENAI_MAX_OUTPUT_TOKENS` to increase response length if replies are getting cut off.
+- `OPENAI_CAPABILITY_GUARD=true` to enable/disable the capability gate for unsupported requests.
 
 Note: If you use a group chat, Telegram bot privacy must be disabled (BotFather -> /setprivacy) or you must mention the bot for it to receive messages.
 
@@ -112,7 +130,7 @@ Tips:
 - The agent runs as a single instance; a lock file prevents duplicate responses.
 - Incoming messages are batched briefly (about 1 second) so fast sequences become one request.
 - If a batch exceeds the limit, the oldest messages are dropped to keep the newest context.
-- The agent shows a typing indicator and sends a "Working on it..." message after 8 seconds if needed.
+- The agent shows a typing indicator and sends a "Working on it..." message after 10 seconds if needed.
 - Bootstrap context files are loaded if present: `AGENTS.md`, `TOOLS.md`, `SOUL.md`, and any markdown files in `skills/`.
 
 ## Skills (Local)
@@ -122,7 +140,23 @@ These are loaded into the agent context on each run.
 ## Beta Telegram Stack
 Use a separate bot for beta testing to avoid conflicts with prod.
 1. Create `.env.beta` and set `DATA_DIR="data/beta"` plus a new Telegram bot token and chat id.
-2. Run: `docker compose -f docker-compose.beta.yml --env-file .env.beta up -d --build`
+2. Run: `docker compose --env-file .env.beta -f docker-compose.beta.yml -p schoology-beta up -d --build`
+3. Compose builds one shared image tag (`schoology-beta-app:latest`) and runs both beta services from it.
+4. Stop beta when not needed: `docker compose --env-file .env.beta -f docker-compose.beta.yml -p schoology-beta down`
+
+## Beta OpenClaw One-Gateway Stack
+Use this to evaluate gateway-native Telegram + gateway cron with Schoology tools exposed by `schoology-tool-api`.
+1. Create `.env.beta` with beta bot credentials and required Schoology/OpenAI values.
+2. Set `OPENCLAW_GATEWAY_TOKEN` in your environment (or `.env.beta`).
+3. Run:
+   `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta up -d --build`
+4. Compose uses one shared image tag (`schoology-beta-openclaw-unified:latest`) for gateway/tool-api/cron/dashboard services. Dashboard is profile-gated and stays off by default.
+5. Validate startup logs:
+   - `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta logs --tail 200 openclaw-cron-sync`
+   - `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta logs --tail 200 openclaw-gateway`
+6. Optional dashboard:
+   - `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta --profile dashboard up -d dashboard`
+   - `http://127.0.0.1:8788` (override with `BETA_DASHBOARD_PORT`).
 
 ## Tasks and Reminders
 You can create personal tasks (not tied to Schoology) and get Telegram reminders.
@@ -173,6 +207,7 @@ These are the default manual status codes the agent understands:
 The agent also accepts custom status text when you specify it explicitly.
 
 By default, **Ignored** statuses (A/B/C) are hidden from the missing list unless you ask to show them.
+Schoology items that are submitted but still ungraded are also archived/ignored by default.
 
 ## Tests (Offline)
 Run unit and offline E2E tests without hitting Schoology:
@@ -198,6 +233,9 @@ For email delivery, set `DELIVERY_CHANNEL="email"` and the SMTP values.
 ## Roadmap
 See `docs/ROADMAP.md`.
 
+## Backlog
+See `docs/BACKLOG.md`.
+
 ## Completed Work
 See `docs/COMPLETED.md`.
 
@@ -214,4 +252,5 @@ Policy for manual statuses on resolved items:
 
 Refresh response behavior:
 - The agent reports Actionable / Pending / Archived counts (not raw missing).
+- Submitted-but-ungraded Schoology items are included in Archived by default.
 - Archived items are still stored and can be shown on request (ex: "show ignored").

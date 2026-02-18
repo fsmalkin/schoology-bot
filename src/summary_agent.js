@@ -1,7 +1,6 @@
 import OpenAI from "openai";
-import { validateOpenAIConfig } from "./config.js";
-import { formatDateTime, formatDateYmd } from "./time.js";
-import { renderTelegramHtml } from "./telegram_format.js";
+import { buildReadableDailySummary } from "./readable_messages.js";
+import { formatDateYmd } from "./time.js";
 import { normalizeAscii } from "./text_utils.js";
 
 function extractText(response) {
@@ -22,58 +21,75 @@ function extractText(response) {
 
 function buildInstructions() {
   return [
-    "You are generating a daily Schoology summary for Telegram.",
+    "You are generating optional add-on notes for a Schoology daily summary.",
     "Return plain text only. Do not use HTML tags.",
-    "Use simple Markdown-style structure: section headers as plain lines, bullets with '-', numbered lists with '1.'.",
-    "Include these sections in order if they have items:",
-    "1) Missing assignments (Actionable)",
-    "2) Missing but waiting on teacher/grade (Pending)",
-    "3) Reminders (Today, Overdue, Upcoming) if provided",
-    "For each assignment include: course, title, due date if present, and status.",
-    "If notes are present, add a line starting with 'Note:' immediately after the assignment.",
-    "If a URL is provided, put it on its own line after the item.",
-    "Keep it concise.",
+    "Write at most three short bullets and avoid repeating list items already shown in the summary.",
+    "Focus on helpful next steps, follow-ups, or timing suggestions.",
+    "If there are no useful add-on notes, return an empty string.",
+    "Keep language simple and concise.",
   ].join(" ");
 }
 
-export async function buildAgenticTelegramSummary({ config, summary, state, reminders }) {
-  validateOpenAIConfig();
+function normalizeOptionalNotes(raw) {
+  const lines = normalizeAscii(String(raw || ""))
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return "";
+
+  const bullets = [];
+  for (const line of lines) {
+    const cleaned = line.replace(/^[-*]\s+/, "").replace(/^\d+\.\s+/, "").trim();
+    if (!cleaned) continue;
+    bullets.push(`- ${cleaned}`);
+    if (bullets.length >= 3) break;
+  }
+  if (bullets.length === 0) return "";
+  return ["Quick Notes", ...bullets].join("\n");
+}
+
+export async function buildOptionalSummaryNotes({ config, summary, state, reminders }) {
+  if (!config?.openai?.apiKey) return "";
   const client = new OpenAI({ apiKey: config.openai.apiKey });
   const today = formatDateYmd(new Date(), config.schedule.timezone);
 
   const payload = {
     date: today,
     timezone: config.schedule.timezone,
-    lastScrapeAt: state.lastScrapeAt || null,
-    actionable: summary.actionable || [],
-    pending: summary.pending || [],
+    lastScrapeAt: state?.lastScrapeAt || null,
+    actionable: summary?.actionable || [],
+    pending: summary?.pending || [],
     reminders: reminders || {},
   };
 
-  const response = await client.responses.create({
-    model: config.openai.model,
-    reasoning: { effort: config.openai.reasoningEffort },
-    max_output_tokens: config.openai.maxOutputTokens,
-    instructions: buildInstructions(),
-    input: JSON.stringify(payload),
-    tool_choice: "none",
-    parallel_tool_calls: false,
+  try {
+    const response = await client.responses.create({
+      model: config.openai.model,
+      reasoning: { effort: config.openai.reasoningEffort },
+      max_output_tokens: Math.min(Number(config.openai.maxOutputTokens || 2000), 400),
+      instructions: buildInstructions(),
+      input: JSON.stringify(payload),
+      tool_choice: "none",
+      parallel_tool_calls: false,
+    });
+
+    return normalizeOptionalNotes(extractText(response).trim());
+  } catch (err) {
+    return "";
+  }
+}
+
+export async function buildAgenticTelegramSummary({ config, summary, state, reminders }) {
+  const core = buildReadableDailySummary({
+    summary,
+    reminders,
+    state,
+    timeZone: config.schedule.timezone,
+    now: new Date(),
   });
-
-  const raw = extractText(response).trim();
-  if (!raw) {
-    return renderTelegramHtml(`Schoology missing summary ${today}`);
-  }
-
-  const header = [`<b>Schoology missing summary</b> ${today}`];
-  if (state.lastScrapeAt) {
-    header.push(
-      `<i>Last scrape:</i> ${formatDateTime(
-        new Date(state.lastScrapeAt),
-        config.schedule.timezone
-      )} ${config.schedule.timezone}`
-    );
-  }
-  const combined = `${header.join("\n")}\n\n${normalizeAscii(raw)}`;
-  return renderTelegramHtml(combined);
+  const notes = await buildOptionalSummaryNotes({ config, summary, state, reminders });
+  if (!notes) return core;
+  return normalizeAscii(`${core}\n\n${notes}`);
 }

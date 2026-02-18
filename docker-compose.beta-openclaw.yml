@@ -1,67 +1,48 @@
-name: schoology-beta-openclaw
+name: openclaw-beta
+
+x-beta-unified-image: &beta-unified-image
+  image: schoology-beta-openclaw-unified:latest
+
+x-beta-unified-build: &beta-unified-build
+  build:
+    context: .
+    dockerfile: Dockerfile.openclaw-unified
 
 services:
-  schoology-beta-openclaw:
-    build: .
-    env_file:
-      - .env.beta
-    command: npm run start
-    environment:
-      - AGENT_DB_PATH=/app/db/agent.db
-      - STATE_PATH=/app/data/beta/state.json
-      - STORAGE_PATH=/app/data/beta/storage.json
-      - BUG_LOG_PATH=/app/data/beta/bugs.log
-    volumes:
-      - ./data:/app/data
-      - agent-db-beta-openclaw:/app/db
-    restart: unless-stopped
-    init: true
-    healthcheck:
-      test: ["CMD-SHELL", "pgrep -f \"node src/scheduler.js\" > /dev/null"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
-
-  schoology-tool-api-beta:
-    build: .
-    env_file:
-      - .env.beta
+  schoology-tool-api:
+    <<: [*beta-unified-image, *beta-unified-build]
+    env_file: .env.beta
+    working_dir: /app/schoology
     command: ["node", "src/openclaw_tool_api.js"]
-    environment:
-      - AGENT_DB_PATH=/app/db/agent.db
-      - STATE_PATH=/app/data/beta/state.json
-      - STORAGE_PATH=/app/data/beta/storage.json
-      - BUG_LOG_PATH=/app/data/beta/bugs.log
-      - SCHOOLOGY_TOOL_API_PORT=3030
     volumes:
-      - ./data:/app/data
-      - agent-db-beta-openclaw:/app/db
+      - ./data:/app/schoology/data
     restart: unless-stopped
     init: true
-    depends_on:
-      - schoology-beta-openclaw
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f \"node src/openclaw_tool_api.js\" > /dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
 
-  openclaw-gateway-beta:
-    build:
-      context: vendor/openclaw
-      dockerfile: Dockerfile
-    env_file:
-      - .env.beta
+  openclaw-gateway:
+    <<: *beta-unified-image
+    working_dir: /app/openclaw
     environment:
-      - HOME=/home/node
-      - TERM=xterm-256color
-      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-schoology-beta-local-token}
-      - OPENCLAW_CONFIG_PATH=/home/node/.openclaw/workspace/openclaw.beta.json5
-      - OPENCLAW_GATEWAY_BIND=lan
-      - SCHOLOGY_TOOL_API_URL=http://schoology-tool-api-beta:3030/tools/run
-      - SCHOLOGY_TOOL_API_KEY=${SCHOLOGY_TOOL_API_KEY:-}
+      HOME: /home/node
+      TERM: xterm-256color
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-}
+      OPENCLAW_GATEWAY_BIND: lan
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      GITHUB_REPO: ${GITHUB_REPO}
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      SCHOLOGY_TOOL_API_URL: http://schoology-tool-api:3030/tools/run
+      SCHOLOGY_TOOL_API_KEY: ${SCHOLOGY_TOOL_API_KEY:-}
     volumes:
       - ./data/openclaw-beta:/home/node/.openclaw
       - ./openclaw_workspace:/home/node/.openclaw/workspace
@@ -70,11 +51,92 @@ services:
       - "18800:18790"
     restart: unless-stopped
     init: true
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f \"node dist/index.js gateway\" > /dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     depends_on:
-      - schoology-tool-api-beta
+      - schoology-tool-api
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
     command:
-      ["node", "dist/index.js", "gateway", "--allow-unconfigured", "--bind", "lan", "--port", "18789"]
+      ["node", "dist/index.js", "gateway", "--bind", "lan", "--port", "18789"]
 
-volumes:
-  agent-db-beta-openclaw:
-    name: schoology_agent_db_beta_openclaw
+  openclaw-gateway-monitor:
+    <<: *beta-unified-image
+    env_file: .env.beta
+    working_dir: /app/schoology
+    command: ["node", "src/openclaw_gateway_monitor.js"]
+    environment:
+      - OPENCLAW_GATEWAY_HOST=openclaw-gateway
+      - OPENCLAW_GATEWAY_PORT=18789
+    volumes:
+      - ./data:/app/schoology/data
+    restart: unless-stopped
+    init: true
+    depends_on:
+      - openclaw-gateway
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f \"node src/openclaw_gateway_monitor.js\" > /dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  openclaw-cron-sync:
+    <<: *beta-unified-image
+    env_file: .env.beta
+    working_dir: /app/openclaw
+    environment:
+      HOME: /home/node
+      TERM: xterm-256color
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-}
+      OPENCLAW_GATEWAY_URL: ws://openclaw-gateway:18789
+    volumes:
+      - ./data/openclaw-beta:/home/node/.openclaw
+      - ./openclaw_workspace:/home/node/.openclaw/workspace
+    restart: on-failure
+    init: true
+    depends_on:
+      - openclaw-gateway
+    command: ["node", "/app/schoology/scripts/openclaw_cron_sync.mjs"]
+
+  dashboard:
+    <<: *beta-unified-image
+    profiles: ["dashboard"]
+    env_file: .env.beta
+    working_dir: /app/schoology
+    command: ["npm", "run", "dashboard"]
+    environment:
+      - RUNTIME_STACK=openclaw
+      - AGENT_DB_PATH=/app/schoology/data/beta/agent.db
+    volumes:
+      - ./data:/app/schoology/data
+    ports:
+      - "127.0.0.1:${BETA_DASHBOARD_PORT:-8788}:8787"
+    restart: unless-stopped
+    init: true
+    depends_on:
+      - schoology-tool-api
+      - openclaw-gateway-monitor
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f \"node src/dashboard.js\" > /dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"

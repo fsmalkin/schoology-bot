@@ -29,21 +29,17 @@ function textResponse(id, text) {
   return { id, output_text: text };
 }
 
-function toolGroupResponse(id, group) {
+function functionCallResponse(id, name, args, callId) {
   return {
     id,
-    output_text: JSON.stringify({ group, reason: `Group ${group}` }),
-  };
-}
-
-function toolPlanResponse(id, payload) {
-  return { id, output_text: JSON.stringify(payload) };
-}
-
-function toolAugmentResponse(id, addCalls) {
-  return {
-    id,
-    output_text: JSON.stringify({ add_calls: addCalls || [], reason: "No extra tools" }),
+    output: [
+      {
+        type: "function_call",
+        name,
+        arguments: JSON.stringify(args || {}),
+        call_id: callId || `call_${id}`,
+      },
+    ],
   };
 }
 
@@ -138,6 +134,7 @@ test("agent conversation cases (mock)", async () => {
   process.env.OPENAI_MODEL = "gpt-5.2";
   process.env.OPENAI_MAX_OUTPUT_TOKENS = "200";
   process.env.OPENAI_COMPACT_AFTER_TURNS = "0";
+  process.env.OPENAI_CAPABILITY_GUARD = "0";
   process.env.AGENT_DB_PATH = dbPath;
 
   const {
@@ -158,42 +155,53 @@ test("agent conversation cases (mock)", async () => {
   db.close();
 
   const mockList = createMockClient([
-    toolGroupResponse("r0", "assignments"),
-    toolPlanResponse("r1", {
-      action: "call_tool",
-      tool: "list_assignments",
-      args: "{\"status\":\"missing\",\"bucketed\":true}",
-      calls: null,
-    }),
-    toolAugmentResponse("r2", []),
-    textResponse("r3", "Missing assignments: Algebra Homework 1; Latin Quiz 1; Science Lab 1; Science Lab 2."),
+    functionCallResponse(
+      "r0",
+      "list_assignments",
+      {
+        status: "missing",
+        course: null,
+        limit: 1000,
+        includeIgnored: false,
+        includePending: true,
+        bucketed: true,
+      },
+      "call_list_0"
+    ),
+    textResponse("r1", "Missing assignments: Algebra Homework 1; Latin Quiz 1; Science Lab 1; Science Lab 2."),
   ]);
 
   const chatId = `chat-mock-${Date.now()}`;
   const reply1 = await runAgentMessage({ chatId, text: "What is missing?", clientOverride: mockList });
   assert.match(reply1, /Missing assignments/i);
-  assert.equal(mockList.calls.length, 4);
+  assert.equal(mockList.calls.length, 2);
 
   const mockUpdate = createMockClient([
-    toolGroupResponse("r4", "assignments"),
-    toolPlanResponse("r5", {
-      action: "call_tool",
-      tool: "apply_numbered_statuses",
-      args:
-        "{\"statusByIndex\":[{\"index\":1,\"status\":\"C\"},{\"index\":2,\"status\":\"B\"},{\"index\":3,\"status\":\"D\"},{\"index\":4,\"status\":\"E\"}]}",
-      calls: null,
-    }),
-    toolAugmentResponse("r6", []),
+    functionCallResponse(
+      "r2",
+      "apply_numbered_statuses",
+      {
+        listStatus: "missing",
+        statusByIndex: [
+          { index: 1, status: "C" },
+          { index: 2, status: "B" },
+          { index: 3, status: "D" },
+          { index: 4, status: "E" },
+        ],
+      },
+      "call_apply_0"
+    ),
     textResponse(
-      "r7",
+      "r3",
       "Updating now.\nDone.\nUpdating now.\nDone.\nUpdating now.\nDone.\nUpdating now."
     ),
   ]);
 
   const reply2 = await runAgentMessage({ chatId, text: "1 C, 2 B, 3 D, 4 E", clientOverride: mockUpdate });
-  assert.match(reply2, /Updates applied/i);
-  assert.match(reply2, /Follow-up needed/i);
+  assert.match(reply2, /Do Now/i);
+  assert.match(reply2, /Waiting/i);
   assert.doesNotMatch(reply2, /Updating now/i);
+  assert.equal(mockUpdate.calls[0].previous_response_id, "r1");
 
   const dbLive = getDb(getConfig());
   const allRows = listAssignments(dbLive, {
@@ -209,55 +217,56 @@ test("agent conversation cases (mock)", async () => {
   assert.equal(statusByKey.get("a4"), "Waiting on teacher");
 
   const mockClarify = createMockClient([
-    toolGroupResponse("r8", "none"),
-    textResponse("r9", "Which assignment did you mean?"),
+    textResponse("r4", "Which assignment did you mean?"),
   ]);
   const reply3 = await runAgentMessage({ chatId, text: "Mark Lab as B", clientOverride: mockClarify });
   assert.equal(reply3, "Which assignment did you mean?");
 
-  const mockPending = createMockClient([
-    toolGroupResponse("r10", "assignments"),
-    toolPlanResponse("r11", {
-      action: "call_tool",
-      tool: "update_assignment_status",
-      args: "{\"title\":\"Lab\",\"status\":\"C\"}",
-      calls: null,
-    }),
-    toolAugmentResponse("r12", []),
-    textResponse("r13", "Which Lab did you mean?"),
-    pendingDecisionResponse("r14", "proceed"),
-    toolPlanResponse("r15", {
-      action: "call_tool",
-      tool: "update_assignment_status",
-      args: "{\"title\":\"Lab 1\"}",
-      calls: null,
-    }),
-    toolAugmentResponse("r16", []),
-    textResponse("r17", "Updated."),
+  const mockPending1 = createMockClient([
+    functionCallResponse(
+      "r5",
+      "update_assignment_status",
+      { key: null, title: "Lab", course: null, status: "C" },
+      "call_update_0"
+    ),
+    textResponse("r6", "Which Lab did you mean?"),
   ]);
 
-  const reply4 = await runAgentMessage({ chatId, text: "Mark Lab as C", clientOverride: mockPending });
+  const reply4 = await runAgentMessage({ chatId, text: "Mark Lab as C", clientOverride: mockPending1 });
   assert.match(reply4, /Which Lab/i);
   const pending = getPendingAction(getDb(getConfig()), chatId);
   assert.ok(pending);
   assert.equal(pending.tool, "update_assignment_status");
   assert.equal(pending.args.status, "C");
 
-  const reply5 = await runAgentMessage({ chatId, text: "Lab 1", clientOverride: mockPending });
+  const mockPending2 = createMockClient([
+    pendingDecisionResponse("r7", "proceed"),
+    functionCallResponse("r8", "update_assignment_status", { key: null, title: "Lab 1", course: null }, "call_update_1"),
+    textResponse("r9", "Updated."),
+  ]);
+  const reply5 = await runAgentMessage({ chatId, text: "Lab 1", clientOverride: mockPending2 });
   assert.match(reply5, /Updated/i);
   const pendingAfter = getPendingAction(getDb(getConfig()), chatId);
   assert.equal(pendingAfter, null);
 
+  const mockConfirm = createMockClient([
+    functionCallResponse("r10", "schedule_reminder", {}, "call_reminder_0"),
+    textResponse("r11", ""),
+  ]);
+
+  setPendingAction(getDb(getConfig()), {
+    chatId,
+    tool: "schedule_reminder",
+    args: { key: "a1", remindAt: "2026-02-03T20:30:00Z", message: "Follow up" },
+  });
+
+  const reply6 = await runAgentMessage({ chatId, text: "Go", clientOverride: mockConfirm });
+  assert.match(reply6, /Saved reminder/i);
+  const pendingAfterConfirm = getPendingAction(getDb(getConfig()), chatId);
+  assert.equal(pendingAfterConfirm, null);
+
   const mockInvalidPending = createMockClient([
-    toolGroupResponse("r18", "assignments"),
-    toolPlanResponse("r19", {
-      action: "call_tool",
-      tool: "list_assignments",
-      args: "{\"status\":\"missing\",\"bucketed\":true}",
-      calls: null,
-    }),
-    toolAugmentResponse("r20", []),
-    textResponse("r21", "Which assignment did you mean? Paste the assignment link or title and I'll do it."),
+    textResponse("r12", "Which assignment did you mean? Paste the assignment link or title and I'll do it."),
   ]);
 
   // Malformed pending action: missing key/title selector, which would otherwise loop on "Go".
@@ -268,8 +277,8 @@ test("agent conversation cases (mock)", async () => {
     note: "Assignment key or title is required.",
   });
 
-  const reply6 = await runAgentMessage({ chatId, text: "Go", clientOverride: mockInvalidPending });
-  assert.match(reply6, /Which assignment/i);
+  const reply7 = await runAgentMessage({ chatId, text: "Go", clientOverride: mockInvalidPending });
+  assert.match(reply7, /Which assignment/i);
   const pendingAfterInvalid = getPendingAction(getDb(getConfig()), chatId);
   assert.equal(pendingAfterInvalid, null);
 

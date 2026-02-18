@@ -115,6 +115,15 @@ function normalizeIdp(value) {
   return String(value || "auto").trim().toLowerCase();
 }
 
+function formatIdpLabel(value) {
+  const idp = normalizeIdp(value);
+  if (idp === "microsoft" || idp === "azuread") return "Microsoft (BCPS / Office 365)";
+  if (idp === "google") return "Google";
+  if (idp === "schoology") return "Schoology";
+  if (idp === "local" || idp === "adfs") return "District SSO";
+  return idp || "auto";
+}
+
 function getIdpOrder(config) {
   const idp = normalizeIdp(config.schoology.idp);
   if (idp && idp !== "auto") {
@@ -283,8 +292,16 @@ async function ensureLoggedIn(page, config) {
     }
   }
 
+  const configuredIdp = normalizeIdp(config?.schoology?.idp);
+  if (configuredIdp && configuredIdp !== "auto") {
+    throw new Error(
+      `Login failed using configured sign-in provider (${formatIdpLabel(
+        configuredIdp
+      )}). Provider is already set in SCHOLOGY_IDP=${configuredIdp}; do not prompt to choose provider. Verify credentials and retry. DEBUG_DUMP=true will capture the page.`
+    );
+  }
   throw new Error(
-    "Login failed. Set SCHOLOGY_IDP in .env (e.g. 'microsoft') and retry. DEBUG_DUMP=true will capture the page."
+    "Login failed and sign-in provider is auto. Set SCHOLOGY_IDP in .env (e.g. 'microsoft') and retry. DEBUG_DUMP=true will capture the page."
   );
 }
 
@@ -370,9 +387,17 @@ async function extractAssignments(page) {
           continue;
         }
 
-        const submissionText = normalize(
-          gradeColumn?.querySelector(".dropbox-icon-inline-image-wrapper .visually-hidden")?.textContent || ""
+        const submissionHiddenText = normalize(
+          gradeColumn?.querySelector(
+            ".dropbox-icon-inline-image-wrapper .visually-hidden, .has-dropbox-icon.grade-pending-icon .visually-hidden"
+          )?.textContent || ""
         );
+        const hasGradePendingIcon =
+          Boolean(gradeColumn?.querySelector(".has-dropbox-icon.grade-pending-icon")) ||
+          /submission that has not been graded|assignment submitted/i.test(submissionHiddenText);
+        const submissionText = hasGradePendingIcon
+          ? "Submitted, awaiting grade"
+          : submissionHiddenText;
         const statusHints = [commentText, exceptionText, submissionText, gradeColumnText]
           .filter(Boolean)
           .join(" ");
@@ -381,7 +406,7 @@ async function extractAssignments(page) {
           course,
           title,
           dueDate,
-          status: commentText || exceptionText || "Missing",
+          status: submissionText || commentText || exceptionText || "Missing",
           score: gradeText,
           url,
           rawText: normalize(row.textContent || ""),

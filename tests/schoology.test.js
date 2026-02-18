@@ -29,5 +29,28 @@ test("extractMissingAssignmentsFromHtml finds missing and excludes exempt", asyn
 
   const coolDowns = items.find((item) => item.title.includes("Cool Downs"));
   assert.ok(coolDowns);
-  assert.equal(coolDowns.status, "Missing");
+  assert.equal(coolDowns.status, "Not Submitted");
+});
+
+test("extractMissingAssignmentsFromHtml marks grade-pending submissions as awaiting grade", async () => {
+  const html = `
+    <div class="gradebook-course">
+      <div class="gradebook-course-title">Novice Latin B</div>
+      <table>
+        <tr class="report-row item-row">
+          <td class="item-title"><a href="/assignment/999">January 30th Show What You Know</a></td>
+          <td class="grade-column">
+            <span class="exception-text">Missing</span>
+            <span class="has-dropbox-icon grade-pending-icon">
+              <span class="visually-hidden">This student has made a submission that has not been graded.</span>
+            </span>
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
+  const items = await extractMissingAssignmentsFromHtml(html);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].status, "Submitted, awaiting grade");
+  assert.equal(items[0].isMissing, true);
 });

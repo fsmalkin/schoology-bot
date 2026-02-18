@@ -15,13 +15,14 @@
     "openai:smoke": "node src/openai_smoke.js",
     "agent:telegram": "node src/telegram_agent.js",
     "agent:cli": "node src/agent_cli.js",
+    "dashboard": "node src/dashboard.js",
     "openclaw:api": "node src/openclaw_tool_api.js",
     "reminders:cleanup": "node src/reminder_cleanup.js",
-    "test": "node --test tests/*.js",
+    "test": "node --test \"tests/**/*.test.js\"",
     "test:agent": "node tests/agent_conversation.js"
   },
   "dependencies": {
-    "better-sqlite3": "^11.5.0",
+    "better-sqlite3": "^12.6.2",
     "chrono-node": "^2.9.0",
     "dotenv": "^16.4.5",
     "node-cron": "^3.0.3",

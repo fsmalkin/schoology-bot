@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
-import { getManualStatusCategory, normalizeManualStatus, isIgnoredStatus, isPendingStatus } from "./statuses.js";
+import { getManualStatusCategory, normalizeManualStatus } from "./statuses.js";
 import { nowIso, parseSchoologyDate } from "./time.js";
 import { loadState } from "./storage.js";
 
@@ -26,6 +26,86 @@ function normalizeRemindAt(remindAt) {
 function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });
+  }
+}
+
+function sleepSync(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) return;
+  try {
+    // Atomics.wait provides a simple synchronous sleep without busy looping.
+    const sab = new SharedArrayBuffer(4);
+    const int32 = new Int32Array(sab);
+    Atomics.wait(int32, 0, 0, ms);
+  } catch {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      // busy wait fallback (should be rare)
+    }
+  }
+}
+
+function maybeMigrateLegacyDb(dbPath, legacyDbPath) {
+  if (!dbPath || dbPath === ":memory:") return;
+  if (!legacyDbPath) return;
+
+  let resolvedDbPath = dbPath;
+  let resolvedLegacy = legacyDbPath;
+  try {
+    resolvedDbPath = path.resolve(dbPath);
+    resolvedLegacy = path.resolve(legacyDbPath);
+  } catch {
+    // leave as-is
+  }
+
+  if (resolvedDbPath === resolvedLegacy) return;
+  if (fs.existsSync(resolvedDbPath)) return;
+  if (!fs.existsSync(resolvedLegacy)) return;
+
+  ensureDir(path.dirname(resolvedDbPath));
+
+  const lockPath = `${resolvedDbPath}.migrate.lock`;
+  let lockFd = null;
+  try {
+    lockFd = fs.openSync(lockPath, "wx");
+  } catch (err) {
+    // Another process/container is migrating. Wait briefly for the target DB to appear.
+    if (err && err.code === "EEXIST") {
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        if (fs.existsSync(resolvedDbPath)) return;
+        sleepSync(100);
+      }
+    }
+    return;
+  }
+
+  try {
+    if (!fs.existsSync(resolvedDbPath)) {
+      const tmp = `${resolvedDbPath}.tmp`;
+      fs.copyFileSync(resolvedLegacy, tmp);
+      fs.renameSync(tmp, resolvedDbPath);
+    }
+
+    // If legacy had WAL/shm files, bring them too.
+    for (const suffix of ["-wal", "-shm"]) {
+      const legacySidecar = `${resolvedLegacy}${suffix}`;
+      const targetSidecar = `${resolvedDbPath}${suffix}`;
+      if (!fs.existsSync(legacySidecar) || fs.existsSync(targetSidecar)) continue;
+      const tmp = `${targetSidecar}.tmp`;
+      fs.copyFileSync(legacySidecar, tmp);
+      fs.renameSync(tmp, targetSidecar);
+    }
+  } finally {
+    try {
+      if (lockFd) fs.closeSync(lockFd);
+    } catch {
+      // ignore
+    }
+    try {
+      fs.unlinkSync(lockPath);
+    } catch {
+      // ignore
+    }
   }
 }
 
@@ -313,6 +393,10 @@ export function getDb(config) {
   if (dbInstance) return dbInstance;
   const dbPath = config?.paths?.agentDbPath || path.join(process.cwd(), "data", "agent.db");
   ensureDir(path.dirname(dbPath));
+  const legacyDbPath = config?.paths?.dataDir
+    ? path.join(config.paths.dataDir, "agent.db")
+    : path.join(process.cwd(), "data", "agent.db");
+  maybeMigrateLegacyDb(dbPath, legacyDbPath);
   const db = createDb(dbPath);
   dbInstance = db;
   return dbInstance;
@@ -443,6 +527,15 @@ export function ensureDbSeeded(db, statePath) {
   syncAssignmentsFromState(db, state);
 }
 
+function isSubmittedUngraded(row) {
+  const text = `${row.status || ""} ${row.rawText || ""}`.toLowerCase();
+  return (
+    text.includes("submitted, awaiting grade") ||
+    text.includes("submission that has not been graded") ||
+    text.includes("assignment submitted")
+  );
+}
+
 export function listAssignments(db, options = {}) {
   const status = (options.status || "missing").toLowerCase();
   const course = options.course ? String(options.course).toLowerCase() : null;
@@ -475,6 +568,7 @@ export function listAssignments(db, options = {}) {
         title,
         due_date AS dueDate,
         status,
+        raw_text AS rawText,
         manual_status AS manualStatus,
         auto_ignored AS autoIgnored,
         auto_ignore_reason AS autoIgnoreReason,
@@ -497,20 +591,27 @@ export function listAssignments(db, options = {}) {
 
   const mapped = rows.map((row) => {
     const manualStatus = row.manualStatus || "";
-    const statusCategory = getManualStatusCategory(manualStatus);
+    const manualCategory = getManualStatusCategory(manualStatus);
     const autoIgnored = row.autoIgnored === 1;
+    const inferredSubmittedUngraded = row.isMissing === 1 && isSubmittedUngraded(row);
+    const statusCategory = autoIgnored
+      ? "ignored"
+      : inferredSubmittedUngraded
+      ? "ignored"
+      : manualCategory;
     return {
       ...row,
       isMissing: row.isMissing === 1,
       autoIgnored,
-      effectiveStatus: manualStatus || row.status || "",
-      statusCategory: autoIgnored ? "ignored" : statusCategory,
+      effectiveStatus:
+        manualStatus || (inferredSubmittedUngraded ? "Submitted, awaiting grade" : row.status || ""),
+      statusCategory,
     };
   });
 
   const filtered = mapped.filter((row) => {
-    if (!includeIgnored && (isIgnoredStatus(row.manualStatus) || row.autoIgnored)) return false;
-    if (!includePending && isPendingStatus(row.manualStatus)) return false;
+    if (!includeIgnored && row.statusCategory === "ignored") return false;
+    if (!includePending && row.statusCategory === "pending") return false;
     return true;
   });
 
@@ -778,6 +879,12 @@ export function addAssignmentNote(db, { key, title, course, note }) {
   if (!targetKey) {
     return { ok: false, error: "Assignment key or title is required." };
   }
+  const existing = db
+    .prepare("SELECT key FROM assignments WHERE key = ?")
+    .get(targetKey);
+  if (!existing) {
+    return { ok: false, error: "Assignment not found." };
+  }
 
   const result = db
     .prepare(
@@ -838,6 +945,12 @@ export function scheduleReminder(db, { key, title, course, remindAt, message, re
 
   if (!targetKey) {
     return { ok: false, error: "Assignment key or title is required." };
+  }
+  const existing = db
+    .prepare("SELECT key FROM assignments WHERE key = ?")
+    .get(targetKey);
+  if (!existing) {
+    return { ok: false, error: "Assignment not found." };
   }
 
   if (replaceExisting) {

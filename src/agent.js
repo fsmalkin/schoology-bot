@@ -6,7 +6,6 @@ import {
   ensureDbSeeded,
   getChatState,
   getDb,
-  listAssignments,
   listTasks,
   createTask,
   updateTaskStatus,
@@ -33,14 +32,26 @@ import { runToolByName, TOOL_NAMES } from "./tool_runner.js";
 import { isRepetitiveOutput, isToolingLoop, normalizeAscii, sanitizeRepeatedText } from "./text_utils.js";
 import { getBootstrapContext } from "./bootstrap.js";
 import { nowIso } from "./time.js";
+import {
+  buildCapabilitySummary,
+  capabilityListForPrompt,
+} from "./capabilities.js";
+import { buildReadableToolResponse } from "./readable_messages.js";
 
-function buildResponsePrompt() {
+function buildResponsePrompt(config, allowedTools = TOOL_NAMES) {
+  const capabilitySummary = buildCapabilitySummary({ allowedTools, config });
+  const configuredIdp = String(config?.schoology?.idp || "").trim().toLowerCase();
+  const idpInstruction =
+    configuredIdp && configuredIdp !== "auto"
+      ? `Schoology sign-in is already configured as "${configuredIdp}". Do not ask the user to choose a sign-in provider unless they explicitly ask to change it.`
+      : "If Schoology login fails and sign-in provider is unknown, ask whether the provider is Microsoft, Google, or Other.";
   return [
     "You are a Schoology assistant.",
     "Use the provided tool results as the source of truth.",
     "Respect tool capabilities listed in Bootstrap Context; if something is unsupported (ex: recurring reminders), say so and offer the closest supported alternative.",
     "Never claim updates unless tool results confirm success.",
     "If tool results include errors, explain them briefly and ask for the missing detail.",
+    idpInstruction,
     "When talking about tasks or assignment reminders, use the term 'Reminders' and combine them unless the user asks for a specific type.",
     "If a note implies a follow-up action, ask if the user wants a reminder created.",
     "Manual statuses, assignment notes, and reminders are stored locally (not in Schoology) and can be updated immediately via tools.",
@@ -49,13 +60,14 @@ function buildResponsePrompt() {
     "Default reporting buckets: Actionable, Pending, Ignored. Hide Ignored by default unless asked.",
     "When confirming status updates, include a short list of items waiting on teacher/grade (No grade put in yet, Waiting on teacher).",
     "If the user suggests improvements or feature ideas, ask if they want you to log a feature request.",
-    "Return a JSON object with a single key \"message\" containing your reply.",
-    "Inside message, use plain text with simple lists (use '-' for bullets, '1.' for numbering).",
-    "Do not use HTML tags or Markdown code fences inside the message.",
+    "Reply with plain text.",
+    "Use simple lists (use '-' for bullets, '1.' for numbering).",
+    "Do not use HTML tags or Markdown code fences.",
     "Do not mention tool calls or function names.",
     "If a reminder time is slightly ambiguous, make a best-guess schedule and offer to adjust. Ask for clarification only when no reasonable guess is possible.",
     "Times are America/New_York by default. If tool results include remindAtLabel or remindAtLocal, use those instead of raw ISO/UTC.",
     "Keep responses concise and action-oriented.",
+    `\nCapability summary:\n${capabilitySummary}`,
     getBootstrapContext() ? `\\nBootstrap Context:\\n${getBootstrapContext()}` : "",
   ].join(" ");
 }
@@ -477,6 +489,32 @@ function extractText(response) {
     .join("");
 }
 
+function extractFunctionCalls(response) {
+  const output = Array.isArray(response?.output) ? response.output : [];
+  return output
+    .filter((item) => item && item.type === "function_call")
+    .map((item) => ({
+      name: item?.name || null,
+      arguments: item?.arguments || null,
+      callId: item?.call_id || null,
+    }))
+    .filter((call) => Boolean(call.name));
+}
+
+function parseToolCallArgs(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return {};
+  const trimmed = value.trim();
+  if (!trimmed) return {};
+  try {
+    const parsed = JSON.parse(trimmed);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 function parseResponseMessage(raw) {
   if (!raw) return "";
   const trimmed = String(raw).trim();
@@ -516,6 +554,16 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isInvalidPreviousResponseIdError(err) {
+  const message = String(err?.message || err || "").toLowerCase();
+  return (
+    message.includes("previous_response_id") ||
+    message.includes("previous response") ||
+    message.includes("no tool output found") ||
+    (message.includes("response_id") && message.includes("not found"))
+  );
+}
+
 function isRetryableError(err) {
   const status = Number(err?.status || err?.statusCode || 0);
   if (status === 429) return true;
@@ -535,6 +583,12 @@ async function createResponseWithRetry(client, payload, retries = 2, baseDelayMs
     try {
       return await client.responses.create(payload);
     } catch (err) {
+      if (payload?.previous_response_id && isInvalidPreviousResponseIdError(err)) {
+        const next = { ...payload };
+        delete next.previous_response_id;
+        payload = next;
+        continue;
+      }
       if (!isRetryableError(err) || attempt >= retries) {
         throw err;
       }
@@ -638,7 +692,8 @@ function buildToolPlanSchema(allowedTools = TOOL_NAMES) {
   };
 }
 
-function buildToolGroupInstructions() {
+function buildToolGroupInstructions(config) {
+  const capabilitySummary = buildCapabilitySummary({ config });
   return [
     "Return JSON only. No extra text.",
     "Pick group=assignments for Schoology, assignments, grades, missing work, reminders, notes, status updates, refresh/sync.",
@@ -646,10 +701,12 @@ function buildToolGroupInstructions() {
     "Pick group=bugs for requests to file bugs or feature requests.",
     "Pick group=none only for greetings, thanks, or small talk.",
     "If unsure, choose group=assignments.",
+    `\nCapability summary:\n${capabilitySummary}`,
   ].join(" ");
 }
 
-function buildToolPlanInstructions(allowedTools = TOOL_NAMES) {
+function buildToolPlanInstructions(allowedTools = TOOL_NAMES, config = null) {
+  const capabilitySummary = buildCapabilitySummary({ allowedTools, config });
   return [
     "Return JSON only. No extra text.",
     "Choose the single best tool (or multiple tools) to satisfy the user request.",
@@ -663,11 +720,13 @@ function buildToolPlanInstructions(allowedTools = TOOL_NAMES) {
     `Allowed tools: ${allowedTools.join(", ")}.`,
     "Examples:",
     "User: refresh my assignments -> {\"action\":\"call_tool\",\"tool\":\"refresh_schoology\",\"args\":\"{}\",\"calls\":null}",
-    "User: refresh and list missing -> {\"action\":\"call_tools\",\"tool\":null,\"args\":null,\"calls\":[{\"tool\":\"refresh_schoology\",\"args\":\"{}\"},{\"tool\":\"list_assignments\",\"args\":\"{\\\"status\\\":\\\"missing\\\",\\\"includePending\\\":true,\\\"includeIgnored\\\":false,\\\"bucketed\\\":true}\"}]}",
+    "User: refresh and list missing -> {\"action\":\"call_tools\",\"tool\":\"refresh_schoology\",\"args\":\"{}\",\"calls\":[{\"tool\":\"refresh_schoology\",\"args\":\"{}\"},{\"tool\":\"list_assignments\",\"args\":\"{\\\"status\\\":\\\"missing\\\",\\\"includePending\\\":true,\\\"includeIgnored\\\":false,\\\"bucketed\\\":true}\"}]}",
     "User: what are my missing assignments -> {\"action\":\"call_tool\",\"tool\":\"list_assignments\",\"args\":\"{\\\"status\\\":\\\"missing\\\",\\\"includePending\\\":true,\\\"includeIgnored\\\":false,\\\"bucketed\\\":true}\",\"calls\":null}",
     "User: add note to Latin Quiz 1 -> {\"action\":\"call_tool\",\"tool\":\"add_assignment_note\",\"args\":\"{\\\"title\\\":\\\"Quiz 1\\\",\\\"course\\\":\\\"Latin\\\",\\\"note\\\":\\\"Submitted. Waiting for grade.\\\"}\",\"calls\":null}",
     "User: mark Latin Quiz 1 as Waiting on teacher -> {\"action\":\"call_tool\",\"tool\":\"update_assignment_status\",\"args\":\"{\\\"title\\\":\\\"Quiz 1\\\",\\\"course\\\":\\\"Latin\\\",\\\"status\\\":\\\"E\\\"}\",\"calls\":null}",
     "User: remind me Thu 7:15am to follow up on Algebra Homework 1 -> {\"action\":\"call_tool\",\"tool\":\"schedule_reminder\",\"args\":\"{\\\"title\\\":\\\"Homework 1\\\",\\\"course\\\":\\\"Algebra\\\",\\\"remindAt\\\":\\\"Thu 7:15am\\\",\\\"message\\\":\\\"Follow up with teacher\\\"}\",\"calls\":null}",
+    "User: add note + set status + schedule reminder -> {\"action\":\"call_tools\",\"tool\":\"add_assignment_note\",\"args\":\"{\\\"title\\\":\\\"January 30th-Tpc01C\\\",\\\"course\\\":\\\"Latin\\\",\\\"note\\\":\\\"Submitted. Waiting for grade.\\\"}\",\"calls\":[{\"tool\":\"add_assignment_note\",\"args\":\"{\\\"title\\\":\\\"January 30th-Tpc01C\\\",\\\"course\\\":\\\"Latin\\\",\\\"note\\\":\\\"Submitted. Waiting for grade.\\\"}\"},{\"tool\":\"update_assignment_status\",\"args\":\"{\\\"title\\\":\\\"January 30th-Tpc01C\\\",\\\"course\\\":\\\"Latin\\\",\\\"status\\\":\\\"E\\\"}\"},{\"tool\":\"schedule_reminder\",\"args\":\"{\\\"title\\\":\\\"U5 Compound Interest/Intervals\\\",\\\"course\\\":\\\"Algebra\\\",\\\"remindAt\\\":\\\"Thu 7:15am\\\",\\\"message\\\":\\\"Follow up on math make-up after school plan\\\"}\"}]}",
+    `\nCapability summary:\n${capabilitySummary}`,
   ].join(" ");
 }
 
@@ -700,7 +759,9 @@ function buildToolAugmentInstructions() {
     "You are checking if the current tool plan fully satisfies the user request.",
     "If additional tools are needed, return them in add_calls in the order they should run AFTER the current plan.",
     "If no additional tools are needed, return an empty add_calls array.",
-    "Only add tools if the user explicitly asked for extra actions beyond the current plan.",
+    "If the user asked for any write actions (notes/status/reminders/tasks), you MUST add the corresponding write tool calls until the request is fully satisfied.",
+    "Do not stop at a read-only tool (like list_assignments) if the user clearly requested updates.",
+    "If you do not have an assignment key, use title (and course if available). The tools can match by title/course and will ask for clarification if ambiguous.",
     "For args, provide a JSON string like \"{}\" or \"{\\\"status\\\":\\\"missing\\\"}\".",
   ].join(" ");
 }
@@ -711,7 +772,7 @@ async function pickToolGroup(client, config, text, previousResponseId) {
     model: config.openai.model,
     reasoning: { effort: "low" },
     max_output_tokens: 120,
-    instructions: buildToolGroupInstructions(),
+    instructions: buildToolGroupInstructions(config),
     input: text,
     text: {
       format: {
@@ -723,7 +784,6 @@ async function pickToolGroup(client, config, text, previousResponseId) {
     },
     tool_choice: "none",
     parallel_tool_calls: false,
-    previous_response_id: previousResponseId || undefined,
   });
 
   const raw = extractText(response);
@@ -742,7 +802,8 @@ async function pickToolPlan(client, config, text, previousResponseId, allowedToo
   const runPlan = async (instructions, name) => {
     const response = await createResponseWithRetry(client, {
       model: config.openai.model,
-      reasoning: { effort: "low" },
+      // Tool planning is where we most need good intent understanding. Use the configured effort.
+      reasoning: { effort: config.openai.reasoningEffort || "low" },
       max_output_tokens: 280,
       instructions,
       input: text,
@@ -756,7 +817,6 @@ async function pickToolPlan(client, config, text, previousResponseId, allowedToo
       },
       tool_choice: "none",
       parallel_tool_calls: false,
-      previous_response_id: previousResponseId || undefined,
     });
     const raw = extractText(response);
     try {
@@ -767,12 +827,12 @@ async function pickToolPlan(client, config, text, previousResponseId, allowedToo
     }
   };
 
-  const first = await runPlan(buildToolPlanInstructions(allowedTools), "tool_plan");
+  const first = await runPlan(buildToolPlanInstructions(allowedTools, config), "tool_plan");
   const isValidFirst =
     first.tool && (first.action === "call_tool" || (first.action === "call_tools" && first.calls));
   if (isValidFirst) return first;
 
-  const retryInstructions = `${buildToolPlanInstructions(allowedTools)} Tool must be one of: ${allowedTools.join(
+  const retryInstructions = `${buildToolPlanInstructions(allowedTools, config)} Tool must be one of: ${allowedTools.join(
     ", "
   )}. Tool cannot be null.`;
   return await runPlan(retryInstructions, "tool_plan_retry");
@@ -788,7 +848,8 @@ async function augmentToolPlan(client, config, text, plan, previousResponseId, a
   })}`;
   const response = await createResponseWithRetry(client, {
     model: config.openai.model,
-    reasoning: { effort: "low" },
+    // Keep the same effort as the planner to avoid missing write actions in multi-step requests.
+    reasoning: { effort: config.openai.reasoningEffort || "low" },
     max_output_tokens: 200,
     instructions: buildToolAugmentInstructions(),
     input,
@@ -802,7 +863,6 @@ async function augmentToolPlan(client, config, text, plan, previousResponseId, a
     },
     tool_choice: "none",
     parallel_tool_calls: false,
-    previous_response_id: previousResponseId || undefined,
   });
 
   const raw = extractText(response);
@@ -834,6 +894,22 @@ async function augmentToolPlan(client, config, text, plan, previousResponseId, a
 export async function planAction(client, config, text, previousResponseId, allowedToolsOverride = null) {
   if (Array.isArray(allowedToolsOverride) && allowedToolsOverride.length > 0) {
     const allowedTools = allowedToolsOverride;
+    const guard = await assessCapabilityGuard(
+      client,
+      config,
+      text,
+      previousResponseId,
+      allowedTools
+    );
+    if (guard.decision === "unsupported") {
+      return {
+        action: "respond",
+        tool: null,
+        args: null,
+        calls: null,
+        message: guard.message || "That action is not supported yet. I can do the closest supported option.",
+      };
+    }
     const plan = await pickToolPlan(client, config, text, previousResponseId, allowedTools);
     const augmented = await augmentToolPlan(client, config, text, plan, previousResponseId, allowedTools);
     const fallbackTool = allowedTools[0] || "list_assignments";
@@ -855,6 +931,22 @@ export async function planAction(client, config, text, previousResponseId, allow
     return { action: "respond", tool: null, args: null, calls: null, message: null };
   }
   const allowedTools = TOOL_GROUPS[group] || TOOL_NAMES;
+  const guard = await assessCapabilityGuard(
+    client,
+    config,
+    text,
+    previousResponseId,
+    allowedTools
+  );
+  if (guard.decision === "unsupported") {
+    return {
+      action: "respond",
+      tool: null,
+      args: null,
+      calls: null,
+      message: guard.message || "That action is not supported yet. I can do the closest supported option.",
+    };
+  }
   const plan = await pickToolPlan(client, config, text, previousResponseId, allowedTools);
   const augmented = await augmentToolPlan(client, config, text, plan, previousResponseId, allowedTools);
   const fallbackTool =
@@ -938,6 +1030,86 @@ function buildPlanInput(text, pending, bootstrap) {
   ].join("\\n");
 }
 
+function buildCapabilityGuardSchema() {
+  return {
+    type: "object",
+    properties: {
+      decision: { type: "string", enum: ["proceed", "unsupported"] },
+      reason: { type: "string" },
+      message: { type: "string" },
+    },
+    required: ["decision", "reason", "message"],
+    additionalProperties: false,
+  };
+}
+
+function buildCapabilityGuardInstructions(capabilitySummary) {
+  return [
+    "Return JSON only. No extra text.",
+    "Capability gate: decide if the user request requires unsupported functionality.",
+    "Use decision=unsupported only when the user clearly asked for something unavailable.",
+    "If unsure or the request can be done with available tools, use decision=proceed.",
+    "If decision=unsupported, message must explain the limit and the nearest supported fallback in 1-2 sentences.",
+    "If decision=proceed, set message to an empty string.",
+    `Capabilities:\n${capabilitySummary}`,
+  ].join(" ");
+}
+
+async function assessCapabilityGuard(
+  client,
+  config,
+  text,
+  previousResponseId,
+  allowedTools = TOOL_NAMES
+) {
+  if (!config?.openai?.capabilityGuard) {
+    return { decision: "proceed", reason: "disabled", message: "", responseId: previousResponseId || null };
+  }
+  const schema = buildCapabilityGuardSchema();
+  const capabilitySummary = buildCapabilitySummary({ allowedTools, config });
+  const capabilityPayload = capabilityListForPrompt({ allowedTools, config });
+  const input = [
+    "User message:",
+    text,
+    "",
+    "Capability payload (JSON):",
+    JSON.stringify(capabilityPayload, null, 2),
+  ].join("\n");
+
+  const response = await createResponseWithRetry(client, {
+    model: config.openai.model,
+    reasoning: { effort: "low" },
+    max_output_tokens: 180,
+    instructions: buildCapabilityGuardInstructions(capabilitySummary),
+    input,
+    text: {
+      format: {
+        type: "json_schema",
+        name: "capability_gate",
+        strict: true,
+        schema,
+      },
+    },
+    tool_choice: "none",
+    parallel_tool_calls: false,
+    previous_response_id: previousResponseId || undefined,
+  });
+
+  const raw = extractText(response).trim();
+  try {
+    const parsed = JSON.parse(raw);
+    const decision = parsed?.decision === "unsupported" ? "unsupported" : "proceed";
+    return {
+      decision,
+      reason: String(parsed?.reason || "").trim(),
+      message: String(parsed?.message || "").trim(),
+      responseId: response?.id || null,
+    };
+  } catch (err) {
+    return { decision: "proceed", reason: "parse-failed", message: "", responseId: response?.id || null };
+  }
+}
+
 function buildPendingDecisionSchema() {
   return {
     type: "object",
@@ -956,7 +1128,42 @@ function buildPendingDecisionInstructions() {
     "You decide whether the user message is confirming/providing details for the pending action.",
     "If the user wants to proceed, return action=proceed.",
     "If the user is cancelling or changing topics, return action=cancel.",
+    "Treat explicit confirmations like 'go', 'confirmed', or 'yes' as proceed.",
   ].join(" ");
+}
+
+function normalizeConfirmText(text) {
+  return String(text || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[.!?]+$/g, "");
+}
+
+function isExplicitConfirm(text) {
+  const value = normalizeConfirmText(text);
+  if (!value) return false;
+  if (value.length > 32) return false;
+  const confirms = new Set([
+    "go",
+    "confirmed",
+    "confirm",
+    "yes",
+    "y",
+    "ok",
+    "okay",
+    "do it",
+    "proceed",
+    "sounds good",
+    "please do",
+  ]);
+  return confirms.has(value);
+}
+
+function isExplicitCancel(text) {
+  const value = normalizeConfirmText(text);
+  if (!value) return false;
+  const cancels = new Set(["cancel", "never mind", "nevermind", "stop", "no"]);
+  return cancels.has(value);
 }
 
 async function decidePendingAction(client, config, pending, text, previousResponseId) {
@@ -1080,248 +1287,16 @@ function shouldStorePendingAction(toolName, output) {
   return false;
 }
 
-function formatAssignmentLabel(assignment) {
-  if (!assignment) return "Unknown assignment";
-  const course = assignment.course ? `${assignment.course}` : "Unknown course";
-  const title = assignment.title ? `${assignment.title}` : "Untitled";
-  return `${course} - ${title}`;
-}
-
 function formatUpdateSummary(results, db) {
-  const applied = [];
-  const needs = [];
-  const info = [];
-
-  for (const item of results) {
-    const name = item.call?.name;
-    const output = item.output || {};
-    const args = parseArguments(item.call?.arguments);
-
-    if (name === "open_bug_report" || name === "open_feature_request") {
-      if (output?.issue?.ok) {
-        info.push(`Created issue: ${output.issue.url}`);
-      } else if (output?.logged) {
-        info.push(`Logged locally: ${output.logPath || "data/bugs.log"}`);
-      } else if (output?.issue?.error) {
-        needs.push(`Could not file issue: ${output.issue.error}`);
-      }
-      continue;
-    }
-
-    if (name === "schedule_reminder") {
-      if (output?.ok) {
-        const verb = output.replaced ? "Updated reminder for" : "Scheduled reminder for";
-        applied.push(`${verb} ${formatAssignmentLabel(output.assignment) || output.key}`);
-        if (output.deletedDuplicates) {
-          info.push(`Removed ${output.deletedDuplicates} duplicate reminder(s).`);
-        }
-        if (output.remindAtLabel) {
-          info.push(`Reminder time: ${output.remindAtLabel}.`);
-        }
-        if (output.assumption) {
-          info.push(
-            `I picked a best-guess time (${output.remindAtLabel || "see reminder time"}). Say "change to ..." if you want a different time.`
-          );
-        }
-      } else if (output?.error) {
-        needs.push(output.error);
-      }
-      continue;
-    }
-
-    if (name === "update_assignment_reminder") {
-      if (output?.ok) {
-        applied.push(`Updated reminder #${output.reminder?.id}`);
-        if (output.reminder?.remindAtLabel) {
-          info.push(`Reminder time: ${output.reminder.remindAtLabel}.`);
-        }
-        if (output.assumption) {
-          info.push(
-            `I picked a best-guess time (${output.reminder?.remindAtLabel || "see reminder time"}). Say "change to ..." if you want a different time.`
-          );
-        }
-      } else if (output?.error) {
-        needs.push(output.error);
-      }
-      continue;
-    }
-
-    if (name === "delete_assignment_reminder") {
-      if (output?.ok) {
-        applied.push(`Deleted reminder #${output.id}`);
-      } else if (output?.error) {
-        needs.push(output.error);
-      }
-      continue;
-    }
-
-    if (name === "refresh_schoology") {
-      if (output?.ok) {
-        const actionable = Number(output.actionableCount || 0);
-        const pending = Number(output.pendingCount || 0);
-        const ignored = Number(output.ignoredCount || 0);
-        const parts = [];
-        if (actionable > 0) {
-          parts.push(`${actionable} still need action`);
-        } else {
-          parts.push("no items need action");
-        }
-        if (pending > 0) {
-          parts.push(`${pending} waiting on a grade`);
-        }
-        if (ignored > 0) {
-          parts.push(`${ignored} archived`);
-        }
-        applied.push(`Refresh complete. ${parts.join("; ")}.`);
-        if (Array.isArray(output.ignoredReasons) && output.ignoredReasons.length > 0) {
-          info.push(`Archived because: ${output.ignoredReasons.join(", ")}.`);
-        }
-        if (output.clearedManualCount > 0) {
-          info.push(`Cleared ${output.clearedManualCount} manual status(es).`);
-        }
-        if (output.keptManual?.length) {
-          info.push(`Kept ${output.keptManual.length} manual status(es) that may still be relevant.`);
-        }
-      } else if (output?.error) {
-        needs.push(output.error);
-      }
-      continue;
-    }
-
-    if (name === "create_task") {
-      if (output?.ok) {
-        applied.push(`Created task #${output.id}: ${output.title}`);
-        if (output.remindAtLabel) {
-          info.push(`Reminder time: ${output.remindAtLabel}.`);
-        }
-        if (output.assumption) {
-          info.push(
-            `I picked a best-guess time (${output.remindAtLabel || "see reminder time"}). Say "change to ..." if you want a different time.`
-          );
-        }
-      } else if (output?.error) {
-        needs.push(output.error);
-      }
-      continue;
-    }
-
-    if (name === "update_task_status") {
-      if (output?.ok) {
-        applied.push(`Task #${output.task?.id} -> ${output.task?.status}`);
-      } else if (output?.error) {
-        needs.push(output.error);
-      }
-      continue;
-    }
-
-    if (name === "update_task") {
-      if (output?.ok) {
-        applied.push(`Updated task #${output.task?.id}: ${output.task?.title}`);
-        if (output.task?.remindAtLabel) {
-          info.push(`Reminder time: ${output.task.remindAtLabel}.`);
-        }
-        if (output.assumption) {
-          info.push(
-            `I picked a best-guess time (${output.task?.remindAtLabel || "see reminder time"}). Say "change to ..." if you want a different time.`
-          );
-        }
-      } else if (output?.error) {
-        needs.push(output.error);
-      }
-      continue;
-    }
-
-    if (name === "delete_task") {
-      if (output?.ok) {
-        applied.push(`Deleted task #${output.id}`);
-      } else if (output?.error) {
-        needs.push(output.error);
-      }
-      continue;
-    }
-
-    if (name === "add_assignment_note") {
-      if (output?.ok) {
-        applied.push(`Added note to ${formatAssignmentLabel(output.assignment) || output.key}`);
-      } else if (output?.error) {
-        needs.push(output.error);
-      }
-      continue;
-    }
-
-    if (name === "update_assignment_status") {
-      if (output?.ok) {
-        applied.push(`${formatAssignmentLabel(output.assignment)} -> ${output.status}`);
-      } else if (output?.matches?.length) {
-        needs.push(`Multiple matches for "${args.title || "assignment"}".`);
-      } else if (output?.error) {
-        needs.push(output.error);
-      }
-      continue;
-    }
-
-    if (name === "bulk_update_assignment_statuses") {
-      const resultsList = output?.results || [];
-      for (const entry of resultsList) {
-        const res = entry.result;
-        if (res?.ok) {
-          applied.push(`${formatAssignmentLabel(res.assignment)} -> ${res.status}`);
-        } else if (res?.matches?.length) {
-          needs.push(`Multiple matches for "${entry.input?.title || "assignment"}".`);
-        } else if (res?.error) {
-          needs.push(res.error);
-        }
-      }
-      continue;
-    }
-
-    if (name === "apply_numbered_statuses") {
-      const resultsList = output?.results || [];
-      for (const entry of resultsList) {
-        const res = entry.result;
-        if (res?.ok) {
-          applied.push(`${formatAssignmentLabel(res.assignment || entry.assignment)} -> ${res.status}`);
-        } else if (res?.error) {
-          needs.push(res.error);
-        }
-      }
-      continue;
-    }
-  }
-
-  const lines = [];
-  if (applied.length > 0) {
-    lines.push("Updates applied:");
-    applied.forEach((line, idx) => lines.push(`${idx + 1}. ${line}`));
-  }
-
-  if (needs.length > 0) {
-    if (lines.length > 0) lines.push("");
-    lines.push("Needs clarification:");
-    needs.forEach((line, idx) => lines.push(`${idx + 1}. ${line}`));
-  }
-
-  if (info.length > 0) {
-    if (lines.length > 0) lines.push("");
-    lines.push("Info:");
-    info.forEach((line, idx) => lines.push(`${idx + 1}. ${line}`));
-  }
-
-  if (db) {
-    const pending = listAssignments(db, { status: "missing", includeIgnored: true, includePending: true })
-      .filter((row) => row.statusCategory === "pending");
-    if (pending.length > 0) {
-      if (lines.length > 0) lines.push("");
-      lines.push("Follow-up needed (waiting on teacher/grade):");
-      pending.forEach((row, idx) => {
-        const status = row.manualStatus || row.status || "Pending";
-        const due = row.dueDate ? ` (Due ${row.dueDate})` : "";
-        lines.push(`${idx + 1}. ${row.course} - ${row.title}${due} - ${status}`);
-      });
-    }
-  }
-
-  return lines.join("\n").trim();
+  const config = getConfig();
+  const timeZone = config?.schedule?.timezone || "America/New_York";
+  return buildReadableToolResponse({
+    executed: results,
+    db,
+    timeZone,
+    now: new Date(),
+    schoologyIdp: config?.schoology?.idp || "auto",
+  });
 }
 
 function hasToolErrors(results = []) {
@@ -1355,16 +1330,6 @@ async function maybeCompact(client, config, chatId, chatState, responseId) {
   return responseId;
 }
 
-function isInvalidPreviousResponse(err) {
-  const message = String(err?.message || err || "").toLowerCase();
-  return (
-    message.includes("previous_response_id") ||
-    message.includes("response_id") ||
-    message.includes("not found") ||
-    message.includes("no tool output found")
-  );
-}
-
 export async function runAgentMessage({ chatId, text, clientOverride }) {
   const config = getConfig();
   validateOpenAIConfig();
@@ -1386,7 +1351,19 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
   let pendingDecision = null;
   if (activePending) {
     try {
-      pendingDecision = await decidePendingAction(client, config, activePending, text, previousResponseId);
+      if (isExplicitCancel(text)) {
+        pendingDecision = "cancel";
+      } else if (isExplicitConfirm(text)) {
+        pendingDecision = "proceed";
+      } else {
+        pendingDecision = await decidePendingAction(
+          client,
+          config,
+          activePending,
+          text,
+          previousResponseId
+        );
+      }
     } catch (err) {
       pendingDecision = "proceed";
     }
@@ -1399,158 +1376,154 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
   const planText = buildPlanInput(text, activePending, getBootstrapContext());
   const allowedToolsOverride =
     activePending && pendingDecision === "proceed" ? [activePending.tool] : null;
-  let plan;
-  try {
-    plan = await planAction(client, config, planText, previousResponseId, allowedToolsOverride);
-  } catch (err) {
-    if (previousResponseId && isInvalidPreviousResponse(err)) {
-      resetChatState(db, chatId);
-      plan = await planAction(client, config, planText, undefined, allowedToolsOverride);
-    } else if (previousResponseId && isRetryableError(err)) {
-      plan = await planAction(client, config, planText, undefined, allowedToolsOverride);
-    } else {
-      throw err;
-    }
-  }
-
-  let calls = [];
-  if (plan.action === "call_tool" && plan.tool) {
-    calls = [{ tool: plan.tool, args: plan.args || {} }];
-  } else if (plan.action === "call_tools" && Array.isArray(plan.calls)) {
-    calls = plan.calls;
-  }
-
-  const bugTools = new Set(["open_bug_report", "open_feature_request"]);
-  if (calls.some((call) => bugTools.has(call?.tool))) {
-    const updatedCalls = [];
-    for (const call of calls) {
-      if (!bugTools.has(call?.tool)) {
-        updatedCalls.push(call);
-        continue;
+  const allowedToolNames =
+    Array.isArray(allowedToolsOverride) && allowedToolsOverride.length > 0
+      ? allowedToolsOverride
+      : TOOL_NAMES;
+  const tools = toolDefinitions().filter((tool) => allowedToolNames.includes(tool.name));
+  const forcedToolName =
+    Array.isArray(allowedToolsOverride) && allowedToolsOverride.length === 1
+      ? allowedToolsOverride[0]
+      : null;
+  const toolChoice = forcedToolName ? { type: "function", name: forcedToolName } : "auto";
+  let guardResponseId = null;
+  if (!activePending) {
+    try {
+      const guard = await assessCapabilityGuard(
+        client,
+        config,
+        text,
+        previousResponseId,
+        allowedToolNames
+      );
+      guardResponseId = guard.responseId || null;
+      if (guard.decision === "unsupported") {
+        const blockedMessage = normalizeAscii(
+          guard.message ||
+            "That action is not supported yet. I can do the closest supported alternative."
+        );
+        const blockedResponseId = guardResponseId || previousResponseId || chatState.lastResponseId || "";
+        if (blockedResponseId) {
+          updateChatState(db, chatId, blockedResponseId);
+        }
+        return blockedMessage;
       }
-      const kind = call.tool === "open_feature_request" ? "feature" : "bug";
-      const draft = await buildBugDraft(client, config, text, call.args, kind, previousResponseId);
-      updatedCalls.push({
-        tool: call.tool,
-        args: {
-          title: draft.title,
-          body: draft.body,
-          labels: draft.labels,
-        },
-      });
+    } catch (err) {
+      guardResponseId = null;
     }
-    calls = updatedCalls;
   }
+
+  const toolLoopInstructions = [
+    buildResponsePrompt(config, allowedToolNames),
+    "Tools are available. Use tools to read/update the local DB.",
+    "Do not claim you cannot apply updates. Notes/statuses/reminders are local and always writable.",
+    "If a tool output indicates missing details or multiple matches, ask a clarifying question and stop calling tools until the user responds.",
+  ].join("\n");
 
   const executed = [];
-  for (const call of calls) {
-    const normalizedTool = normalizeToolName(call?.tool);
-    if (!call || !normalizedTool) {
-      executed.push({
-        call: { name: call?.tool || "unknown", arguments: call?.args || {} },
-        output: { ok: false, error: "Invalid or missing tool name." },
-      });
-      continue;
-    }
-    const pendingArgs =
-      activePending && activePending.tool === normalizedTool ? activePending.args : null;
-    const mergedArgs = mergePendingArgs(pendingArgs, call.args);
-    const normalizedArgs = normalizeToolArgs(normalizedTool, mergedArgs);
-    const output = await runToolByName(db, normalizedTool, normalizedArgs);
-    executed.push({ call: { name: normalizedTool, arguments: normalizedArgs }, output });
-  }
+  let response = null;
+  // Carry conversation state across turns so the model can resolve references like "that one" or "Step 1".
+  // We still update loopPrev inside the tool loop so function_call_output attaches to the correct response.
+  let loopPrev = guardResponseId || previousResponseId || undefined;
+  let nextInput = planText;
+  let finalText = "";
 
-  for (const item of executed) {
-    const name = item.call?.name;
-    const output = item.output || {};
-    if (activePending && name === activePending.tool && output?.ok === true) {
-      clearPendingAction(db, chatId);
-      continue;
-    }
-    if (shouldStorePendingAction(name, output)) {
-      const args = parseArguments(item.call?.arguments);
-      const matches = Array.isArray(output?.matches) ? output.matches : null;
-      setPendingAction(db, { chatId, tool: name, args, note: output?.error || "", matches });
-    }
-  }
-
-  const toolResults = executed.map((item) => ({
-    tool: item.call.name,
-    args: item.call.arguments,
-    output: item.output,
-  }));
-  let draftMessage = null;
-  if (hasWriteTool(executed)) {
-    const summaryDraft = formatUpdateSummary(executed, db);
-    if (summaryDraft) draftMessage = summaryDraft;
-  } else if (plan.action === "respond" || plan.action === "clarify") {
-    draftMessage = plan.message;
-  }
-  const finalInput = buildFinalInput(text, draftMessage, toolResults);
-
-  let response;
-  try {
+  for (let step = 0; step < 6; step += 1) {
     response = await createResponseWithRetry(client, {
       model: config.openai.model,
       reasoning: { effort: config.openai.reasoningEffort },
       max_output_tokens: config.openai.maxOutputTokens,
-      instructions: buildResponsePrompt(),
-      input: finalInput,
-      text: {
-        format: {
-          type: "json_object",
-        },
-      },
-      tool_choice: "none",
+      instructions: toolLoopInstructions,
+      input: nextInput,
+      tools,
+      tool_choice: toolChoice,
       parallel_tool_calls: false,
-      previous_response_id: previousResponseId,
+      previous_response_id: loopPrev || undefined,
     });
-  } catch (err) {
-    if (previousResponseId && isInvalidPreviousResponse(err)) {
-      resetChatState(db, chatId);
-      response = await createResponseWithRetry(client, {
-        model: config.openai.model,
-        reasoning: { effort: config.openai.reasoningEffort },
-        max_output_tokens: config.openai.maxOutputTokens,
-        instructions: buildResponsePrompt(),
-        input: finalInput,
-        text: {
-          format: {
-            type: "json_object",
-          },
-        },
-        tool_choice: "none",
-        parallel_tool_calls: false,
-      });
-    } else if (previousResponseId && isRetryableError(err)) {
-      response = await createResponseWithRetry(client, {
-        model: config.openai.model,
-        reasoning: { effort: config.openai.reasoningEffort },
-        max_output_tokens: config.openai.maxOutputTokens,
-        instructions: buildResponsePrompt(),
-        input: finalInput,
-        text: {
-          format: {
-            type: "json_object",
-          },
-        },
-        tool_choice: "none",
-        parallel_tool_calls: false,
-      });
-    } else {
-      throw err;
+
+    const functionCalls = extractFunctionCalls(response);
+    if (!functionCalls || functionCalls.length === 0) {
+      finalText = parseResponseMessage(extractText(response).trim());
+      break;
     }
+
+    const outputs = [];
+    for (const call of functionCalls) {
+      const normalizedTool = normalizeToolName(call?.name, allowedToolNames);
+      if (!normalizedTool) {
+        executed.push({
+          call: { name: call?.name || "unknown", arguments: {} },
+          output: { ok: false, error: "Invalid or missing tool name." },
+        });
+        continue;
+      }
+
+      let callArgs = parseToolCallArgs(call.arguments);
+      if (normalizedTool === "open_bug_report" || normalizedTool === "open_feature_request") {
+        const kind = normalizedTool === "open_feature_request" ? "feature" : "bug";
+        const draft = await buildBugDraft(client, config, text, callArgs, kind, loopPrev);
+        callArgs = { title: draft.title, body: draft.body, labels: draft.labels };
+      }
+
+      const pendingArgs =
+        activePending && activePending.tool === normalizedTool ? activePending.args : null;
+      const mergedArgs = mergePendingArgs(pendingArgs, callArgs);
+      const normalizedArgs = normalizeToolArgs(normalizedTool, mergedArgs);
+      const output = await runToolByName(db, normalizedTool, normalizedArgs);
+      executed.push({ call: { name: normalizedTool, arguments: normalizedArgs }, output });
+
+      if (call.callId) {
+        outputs.push({
+          type: "function_call_output",
+          call_id: call.callId,
+          output: JSON.stringify(output),
+        });
+      }
+
+      if (activePending && normalizedTool === activePending.tool && output?.ok === true) {
+        clearPendingAction(db, chatId);
+        activePending = null;
+      }
+
+      if (shouldStorePendingAction(normalizedTool, output)) {
+        const args = parseArguments(normalizedArgs);
+        const matches = Array.isArray(output?.matches) ? output.matches : null;
+        setPendingAction(db, {
+          chatId,
+          tool: normalizedTool,
+          args,
+          note: output?.error || "",
+          matches,
+        });
+        activePending = getPendingAction(db, chatId);
+      }
+    }
+
+    loopPrev = response?.id || loopPrev;
+    nextInput = outputs;
   }
 
-  const rawText = extractText(response).trim();
-  const finalText = parseResponseMessage(rawText);
+  if (!finalText) {
+    finalText = formatUpdateSummary(executed, db) || "Done.";
+  }
   const sanitized = sanitizeRepeatedText(finalText);
   const normalized = normalizeAscii(sanitized);
-  updateChatState(db, chatId, response.id);
+  const responseIdToStore = response?.id || guardResponseId || previousResponseId || "";
+  if (responseIdToStore) {
+    updateChatState(db, chatId, responseIdToStore);
+  }
 
-  const compactedId = await maybeCompact(client, config, chatId, getChatState(db, chatId), response.id);
-  if (compactedId !== response.id) {
-    updateChatCompaction(db, chatId, compactedId);
+  if (responseIdToStore) {
+    const compactedId = await maybeCompact(
+      client,
+      config,
+      chatId,
+      getChatState(db, chatId),
+      responseIdToStore
+    );
+    if (compactedId !== responseIdToStore) {
+      updateChatCompaction(db, chatId, compactedId);
+    }
   }
 
   if (!normalized || isRepetitiveOutput(finalText) || isToolingLoop(finalText)) {
