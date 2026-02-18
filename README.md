@@ -20,10 +20,11 @@ It runs on your machine today and is ready to move to a server later.
 2. Run `docker compose up -d --build`.
 3. Check logs with `docker compose logs -f`.
 
-Note: Docker runs three services:
+Note: Docker runs three services by default:
 - `schoology` (scheduler for scrape/send/reminders)
 - `telegram-agent` (chat agent)
 - `dashboard` (local health + operations page at `http://127.0.0.1:8787`)
+- Optional profile: `dashboard-tailscale` (publishes dashboard on your tailnet domain)
 
 ## Uptime and Updates (Docker)
 For higher uptime and safer updates, use Docker with auto-restart and health checks.
@@ -72,6 +73,22 @@ What it shows:
 
 If you run with Docker Compose, the dashboard service starts automatically.
 If you run locally without Docker, use `npm run dashboard`.
+
+## Dashboard Over Tailscale (Optional)
+Use this if you want the dashboard reachable from anywhere on your Tailscale network.
+
+1. Set in `.env`:
+   - `TAILSCALE_AUTH_KEY=tskey-...`
+   - `TAILSCALE_DASHBOARD_HOSTNAME=schoology-dashboard` (or your preferred node name)
+2. Start with Tailscale profile:
+   - `docker compose --profile tailscale up -d --build`
+3. Open:
+   - `https://schoology-dashboard.<your-tailnet>.ts.net`
+   - Or if you changed the hostname: `https://<TAILSCALE_DASHBOARD_HOSTNAME>.<your-tailnet>.ts.net`
+
+Notes:
+- Dashboard still remains local at `http://127.0.0.1:8787`.
+- Tailnet access is controlled by your Tailscale ACLs.
 
 ## Data
 - `data/state.json` stores assignment history and last run metadata.
