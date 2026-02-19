@@ -5,6 +5,7 @@ import {
   addAssignmentNote,
   ensureDbSeeded,
   getChatState,
+  getChatMemory,
   getDb,
   listTasks,
   createTask,
@@ -26,6 +27,7 @@ import {
   clearPendingAction,
   updateChatCompaction,
   updateChatState,
+  upsertChatMemory,
 } from "./db.js";
 import { statusGuideText } from "./statuses.js";
 import { runToolByName, TOOL_NAMES } from "./tool_runner.js";
@@ -1013,8 +1015,10 @@ function hasWriteTool(executed) {
   return executed.some((item) => writeTools.has(item.call?.name));
 }
 
-function buildPlanInput(text, pending, bootstrap) {
-  const base = bootstrap ? `${bootstrap}\\n\\nUser message:\\n${text}` : text;
+function buildPlanInput(text, pending, bootstrap, memoryText = "") {
+  const trimmedMemory = String(memoryText || "").trim();
+  const memoryBlock = trimmedMemory ? `Persistent memory (from prior compaction):\n${trimmedMemory}\n\n` : "";
+  const base = `${bootstrap ? `${bootstrap}\n\n` : ""}${memoryBlock}User message:\n${text}`;
   if (!pending) return base;
   const pendingSummary = {
     tool: pending.tool,
@@ -1025,9 +1029,12 @@ function buildPlanInput(text, pending, bootstrap) {
   return [
     "Pending action (use only if the user is confirming or providing missing details):",
     JSON.stringify(pendingSummary),
+    trimmedMemory ? `Persistent memory:\n${trimmedMemory}` : "",
     "User message:",
     text,
-  ].join("\\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function buildCapabilityGuardSchema() {
@@ -1166,9 +1173,9 @@ function isExplicitCancel(text) {
   return cancels.has(value);
 }
 
-async function decidePendingAction(client, config, pending, text, previousResponseId) {
+async function decidePendingAction(client, config, pending, text, previousResponseId, memoryText = "") {
   const schema = buildPendingDecisionSchema();
-  const input = buildPlanInput(text, pending, getBootstrapContext());
+  const input = buildPlanInput(text, pending, getBootstrapContext(), memoryText);
   const response = await createResponseWithRetry(client, {
     model: config.openai.model,
     reasoning: { effort: "low" },
@@ -1311,23 +1318,71 @@ function hasToolErrors(results = []) {
   });
 }
 
-async function maybeCompact(client, config, chatId, chatState, responseId) {
+async function maybeCompact(client, config, db, chatId, chatState, responseId) {
   const threshold = config.openai.compactAfterTurns;
-  if (!threshold || chatState.turnCount < threshold) return responseId;
-  if (typeof client.responses.compact !== "function") return responseId;
+  if (!threshold || chatState.turnCount < threshold) {
+    return { responseId, compacted: false, memoryStored: false };
+  }
+  if (typeof client.responses.compact !== "function") {
+    return { responseId, compacted: false, memoryStored: false };
+  }
+
+  const startedAt = Date.now();
+  let compactedId = responseId;
+  let memoryStored = false;
+
+  if (config?.openai?.dbMemoryEnabled !== false) {
+    try {
+      const memoryResponse = await createResponseWithRetry(client, {
+        model: config.openai.model,
+        reasoning: { effort: "low" },
+        max_output_tokens: 450,
+        instructions: [
+          "Return concise plain text only.",
+          "Summarize persistent facts from this conversation for future continuity.",
+          "Keep user preferences, assignment identifiers, pending actions, reminders, and unresolved follow-ups.",
+          "Exclude transient phrasing and avoid repeating the full conversation.",
+        ].join(" "),
+        input: "Create a compact memory summary for future turns.",
+        tool_choice: "none",
+        parallel_tool_calls: false,
+        previous_response_id: responseId,
+      });
+      const memoryText = normalizeAscii(parseResponseMessage(extractText(memoryResponse).trim() || "")).trim();
+      if (memoryText) {
+        upsertChatMemory(db, {
+          chatId,
+          memoryText,
+          sourceResponseId: responseId,
+        });
+        memoryStored = true;
+      }
+    } catch (err) {
+      console.warn("Compaction memory save failed:", err?.message || err);
+    }
+  }
 
   try {
     const compacted = await client.responses.compact({
       previous_response_id: responseId,
     });
     if (compacted?.id) {
-      return compacted.id;
+      compactedId = compacted.id;
     }
   } catch (err) {
     console.warn("Compaction failed:", err?.message || err);
   }
 
-  return responseId;
+  console.log(
+    `[agent] compaction chat=${chatId} turns=${chatState.turnCount} compacted=${
+      compactedId !== responseId
+    } memoryStored=${memoryStored} elapsedMs=${Date.now() - startedAt}`
+  );
+  return {
+    responseId: compactedId,
+    compacted: compactedId !== responseId,
+    memoryStored,
+  };
 }
 
 export async function runAgentMessage({ chatId, text, clientOverride }) {
@@ -1338,6 +1393,8 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
   ensureDbSeeded(db, config.paths.statePath);
 
   const chatState = getChatState(db, chatId);
+  const chatMemory = getChatMemory(db, chatId);
+  const memoryText = chatMemory?.memoryText || "";
   const pendingAction = getPendingAction(db, chatId);
   const client = clientOverride || new OpenAI({ apiKey: config.openai.apiKey });
 
@@ -1361,7 +1418,8 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
           config,
           activePending,
           text,
-          previousResponseId
+          previousResponseId,
+          memoryText
         );
       }
     } catch (err) {
@@ -1373,7 +1431,7 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
     }
   }
 
-  const planText = buildPlanInput(text, activePending, getBootstrapContext());
+  const planText = buildPlanInput(text, activePending, getBootstrapContext(), memoryText);
   const allowedToolsOverride =
     activePending && pendingDecision === "proceed" ? [activePending.tool] : null;
   const allowedToolNames =
@@ -1514,15 +1572,16 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
   }
 
   if (responseIdToStore) {
-    const compactedId = await maybeCompact(
+    const compaction = await maybeCompact(
       client,
       config,
+      db,
       chatId,
       getChatState(db, chatId),
       responseIdToStore
     );
-    if (compactedId !== responseIdToStore) {
-      updateChatCompaction(db, chatId, compactedId);
+    if (compaction.compacted && compaction.responseId !== responseIdToStore) {
+      updateChatCompaction(db, chatId, compaction.responseId);
     }
   }
 

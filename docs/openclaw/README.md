@@ -24,6 +24,9 @@ Schoology bot code in the repo root for comparison and migration planning.
 6. Telegram UX: formatting, no duplicate responses, no tool-call loops.
 7. Error handling: retries, backoff, and friendly failure text without spam.
 
+UAT promotion checklist:
+- `docs/openclaw/UAT_PROMOTION.md`
+
 ## Migration approach (draft)
 1. Run OpenClaw locally using its default stack.
 2. Map only the current tool set (refresh, list missing, update status, reminders, daily summary).

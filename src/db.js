@@ -199,6 +199,14 @@ function initDb(db) {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS chat_memory (
+      chat_id TEXT PRIMARY KEY,
+      memory_text TEXT NOT NULL,
+      source_response_id TEXT,
+      compact_count INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_assignments_course ON assignments(course);
     CREATE INDEX IF NOT EXISTS idx_assignments_due_date ON assignments(due_date);
     CREATE INDEX IF NOT EXISTS idx_assignments_missing ON assignments(is_missing);
@@ -206,6 +214,7 @@ function initDb(db) {
     CREATE INDEX IF NOT EXISTS idx_reminders_pending ON reminders(sent_at, remind_at);
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
     CREATE INDEX IF NOT EXISTS idx_tasks_remind_at ON tasks(remind_at);
+    CREATE INDEX IF NOT EXISTS idx_chat_memory_updated_at ON chat_memory(updated_at);
   `);
 
   runMigrations(db);
@@ -248,6 +257,19 @@ function ensureTaskIndexes(db) {
   } catch (err) {
     // Column may not exist on older DBs until migration completes; ignore.
   }
+}
+
+function ensureChatMemoryTable(db) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS chat_memory (
+      chat_id TEXT PRIMARY KEY,
+      memory_text TEXT NOT NULL,
+      source_response_id TEXT,
+      compact_count INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_chat_memory_updated_at ON chat_memory(updated_at);
+  `);
 }
 
 function migrateRemindersToTasks(db) {
@@ -353,6 +375,13 @@ function runMigrations(db) {
             AND kind = 'assignment'
             AND message LIKE 'Auto reminder for upcoming due date%'
         `);
+      },
+    },
+    {
+      version: 5,
+      name: "chat-memory",
+      apply: () => {
+        ensureChatMemoryTable(db);
       },
     },
   ];
@@ -527,13 +556,26 @@ export function ensureDbSeeded(db, statePath) {
   syncAssignmentsFromState(db, state);
 }
 
-function isSubmittedUngraded(row) {
-  const text = `${row.status || ""} ${row.rawText || ""}`.toLowerCase();
+function hasSubmittedUngradedSignal(status, rawText) {
+  const text = `${status || ""} ${rawText || ""}`.toLowerCase();
   return (
     text.includes("submitted, awaiting grade") ||
     text.includes("submission that has not been graded") ||
     text.includes("assignment submitted")
   );
+}
+
+function isSubmittedUngraded(row) {
+  return hasSubmittedUngradedSignal(row.status, row.rawText);
+}
+
+function deriveTaskCancelReason(row) {
+  if (Number(row.autoIgnored || 0) === 1) return "auto_ignored";
+  if (Number(row.isMissing || 0) !== 1 && String(row.resolvedAt || "").trim()) return "resolved";
+  if (Number(row.isMissing || 0) === 1 && hasSubmittedUngradedSignal(row.status, row.rawText)) {
+    return "submitted_awaiting_grade";
+  }
+  return null;
 }
 
 export function listAssignments(db, options = {}) {
@@ -1314,6 +1356,65 @@ export function deleteTask(db, { id }) {
   return { ok: true, id: taskId };
 }
 
+export function cancelInactiveAssignmentTasks(db, { now, limit = 2000 } = {}) {
+  const cappedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(Number(limit), 5000)) : 2000;
+  const candidates = db
+    .prepare(
+      `
+      SELECT
+        t.id,
+        t.assignment_key AS assignmentKey,
+        a.is_missing AS isMissing,
+        a.resolved_at AS resolvedAt,
+        a.auto_ignored AS autoIgnored,
+        a.status,
+        a.raw_text AS rawText
+      FROM tasks t
+      INNER JOIN assignments a
+        ON a.key = t.assignment_key
+      WHERE t.status = 'pending'
+        AND t.kind = 'assignment'
+        AND t.auto_cancel_on_resolve = 1
+      ORDER BY t.remind_at, t.id
+      LIMIT @limit
+    `
+    )
+    .all({ limit: cappedLimit });
+
+  const ids = [];
+  const byReason = {
+    resolved: 0,
+    auto_ignored: 0,
+    submitted_awaiting_grade: 0,
+  };
+
+  for (const row of candidates) {
+    const reason = deriveTaskCancelReason(row);
+    if (!reason) continue;
+    ids.push(Number(row.id));
+    byReason[reason] += 1;
+  }
+
+  if (ids.length > 0) {
+    const placeholders = ids.map(() => "?").join(",");
+    db.prepare(
+      `
+      UPDATE tasks
+      SET status = 'done',
+          completed_at = ?
+      WHERE id IN (${placeholders})
+    `
+    ).run(now || nowIso(), ...ids);
+  }
+
+  return {
+    ok: true,
+    checked: candidates.length,
+    canceled: ids.length,
+    byReason,
+  };
+}
+
 export function listDueTasks(db, nowIsoValue) {
   return db
     .prepare(
@@ -1409,4 +1510,51 @@ export function resetChatState(db, chatId) {
       updated_at = excluded.updated_at
   `
   ).run({ chat_id: chatId, updated_at: nowIso() });
+}
+
+export function getChatMemory(db, chatId) {
+  if (!chatId) return null;
+  return (
+    db
+      .prepare(
+        `
+      SELECT
+        chat_id AS chatId,
+        memory_text AS memoryText,
+        source_response_id AS sourceResponseId,
+        compact_count AS compactCount,
+        updated_at AS updatedAt
+      FROM chat_memory
+      WHERE chat_id = ?
+    `
+      )
+      .get(chatId) || null
+  );
+}
+
+export function upsertChatMemory(db, { chatId, memoryText, sourceResponseId }) {
+  const normalizedChatId = String(chatId || "").trim();
+  const normalizedMemory = String(memoryText || "").trim();
+  if (!normalizedChatId || !normalizedMemory) {
+    return { ok: false, error: "chatId and memoryText are required." };
+  }
+  const timestamp = nowIso();
+  db.prepare(
+    `
+    INSERT INTO chat_memory (chat_id, memory_text, source_response_id, compact_count, updated_at)
+    VALUES (@chat_id, @memory_text, @source_response_id, 1, @updated_at)
+    ON CONFLICT(chat_id) DO UPDATE SET
+      memory_text = excluded.memory_text,
+      source_response_id = excluded.source_response_id,
+      compact_count = chat_memory.compact_count + 1,
+      updated_at = excluded.updated_at
+  `
+  ).run({
+    chat_id: normalizedChatId,
+    memory_text: normalizedMemory,
+    source_response_id: sourceResponseId ? String(sourceResponseId) : null,
+    updated_at: timestamp,
+  });
+
+  return getChatMemory(db, normalizedChatId) || { ok: true, chatId: normalizedChatId };
 }

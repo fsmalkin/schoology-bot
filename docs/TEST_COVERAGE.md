@@ -6,17 +6,23 @@ This document summarizes current test coverage and the known gaps.
 
 Unit tests
 - DB schema migrations and CRUD for tasks/reminders/notes.
+- DB-backed chat memory persistence (`chat_memory`) and compaction metadata updates.
 - Status normalization and auto-ignore rules.
+- Assignment reminder auto-cancel logic for resolved/ignored/submitted-awaiting-grade states.
 - Summary builder (actionable vs pending).
 - Readable message formatter (Do Now/Soon/Waiting routing, status wording, links, caps).
 - Refresh login-failure messaging when `SCHOLOGY_IDP` is already configured (avoids redundant provider prompts).
 - Dashboard health/data builders (heartbeat + snapshot shaping).
 - Time parsing and timezone formatting (local labels, shorthand).
 - Reminder rollovers.
+- Detail-page fallback classifier and capped fallback resolution flow.
+- Storage-state secret handling (base64 + encrypted blob round-trip/materialization).
+- Config `*_FILE` secret-file loading for Schoology credentials.
 - Bug filing guardrails (no empty body).
 - Telegram formatting sanitization.
 - Capability registry rendering and runtime limits.
 - Capability guard behavior (unsupported request blocked with fallback; supported request proceeds to tools).
+- Agent memory replay injection into planning input.
 
 Integration tests
 - OpenAI live plan tests (tool planning and schema format).
@@ -42,6 +48,7 @@ Telegram end-to-end
 
 Reminder delivery timing
 - Automated test covers delivery + rollover with a fixed clock.
+- Automated test covers pre-dispatch auto-cancel of inactive assignment reminders.
 - Cron scheduling is not validated under real clock drift.
 
 Bug filing to GitHub

@@ -29,4 +29,9 @@ test("db migrations add task columns and index", () => {
 
   const indexes = db.prepare("PRAGMA index_list(tasks)").all().map((row) => row.name);
   assert.ok(indexes.includes("idx_tasks_assignment"));
+
+  const chatMemoryTable = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='chat_memory'")
+    .get();
+  assert.ok(chatMemoryTable);
 });

@@ -1,6 +1,24 @@
 import fs from "fs";
 import path from "path";
 import { chromium } from "playwright";
+import { materializeStorageStateFromSecrets } from "./storage_state_secrets.js";
+
+const MISSING_STATUS_PATTERNS = [
+  /missing/i,
+  /not completed/i,
+  /not submitted/i,
+  /no submission/i,
+  /not turned in/i,
+  /incomplete/i,
+  /absent/i,
+];
+
+const SUBMITTED_UNGRADED_PATTERNS = [
+  /submitted, awaiting grade/i,
+  /submission that has not been graded/i,
+  /assignment submitted/i,
+  /awaiting grade/i,
+];
 
 function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) {
@@ -276,6 +294,12 @@ async function ensureLoggedIn(page, config) {
     return;
   }
 
+  if (!config.schoology.username || !config.schoology.password) {
+    throw new Error(
+      "Login is required but credentials are unavailable. Set SCHOLOGY_USERNAME/SCHOLOGY_PASSWORD (or *_FILE), or refresh STORAGE_STATE_B64/STORAGE_STATE_ENC_B64."
+    );
+  }
+
   const idpOrder = getIdpOrder(config);
 
   for (const idp of idpOrder) {
@@ -335,6 +359,82 @@ function normalizeText(text) {
   return text.replace(/\s+/g, " ").trim().replace(/\u00e2\u20ac\u201d/g, "-");
 }
 
+function hasPatternMatch(patterns, text) {
+  const haystack = String(text || "").toLowerCase();
+  return patterns.some((pattern) => pattern.test(haystack));
+}
+
+export function needsAssignmentDetailFallback(item) {
+  if (!item || typeof item !== "object") return false;
+  if (!item.url) return false;
+  if (!item.isMissing) return false;
+  return item.needsDetailFallback === true;
+}
+
+export function classifyAssignmentDetailText(detailText) {
+  const text = String(detailText || "").replace(/\s+/g, " ").trim();
+  if (!text) return null;
+
+  if (hasPatternMatch(SUBMITTED_UNGRADED_PATTERNS, text)) {
+    return {
+      status: "Submitted, awaiting grade",
+      isMissing: true,
+      classification: "submitted_awaiting_grade",
+    };
+  }
+
+  if (hasPatternMatch(MISSING_STATUS_PATTERNS, text)) {
+    return {
+      status: "Missing",
+      isMissing: true,
+      classification: "missing",
+    };
+  }
+
+  return null;
+}
+
+export async function applyDetailFallback(assignments, fetchDetailText, options = {}) {
+  const list = Array.isArray(assignments) ? assignments : [];
+  const enabled = options.enabled !== false;
+  const max = Number.isFinite(options.max)
+    ? Math.max(0, Math.min(Number(options.max), 100))
+    : 12;
+
+  if (!enabled || max === 0) {
+    return { assignments: list, candidates: 0, attempted: 0, resolved: 0, capped: 0, errors: 0 };
+  }
+
+  const candidates = list.filter((item) => needsAssignmentDetailFallback(item));
+  const toResolve = candidates.slice(0, max);
+  let resolved = 0;
+  let errors = 0;
+
+  for (const item of toResolve) {
+    try {
+      const detailText = await fetchDetailText(item);
+      const parsed = classifyAssignmentDetailText(detailText);
+      if (!parsed) continue;
+      item.status = parsed.status;
+      item.isMissing = parsed.isMissing;
+      item.rawText = normalizeText(`${item.rawText || ""} ${parsed.status}`.trim());
+      item.detailStatusSource = "detail";
+      resolved += 1;
+    } catch (err) {
+      errors += 1;
+    }
+  }
+
+  return {
+    assignments: list,
+    candidates: candidates.length,
+    attempted: toResolve.length,
+    resolved,
+    capped: Math.max(0, candidates.length - toResolve.length),
+    errors,
+  };
+}
+
 async function extractAssignments(page) {
   return await page.evaluate(() => {
     const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
@@ -392,6 +492,11 @@ async function extractAssignments(page) {
             ".dropbox-icon-inline-image-wrapper .visually-hidden, .has-dropbox-icon.grade-pending-icon .visually-hidden"
           )?.textContent || ""
         );
+        const hasDropboxIcon = Boolean(
+          gradeColumn?.querySelector(
+            ".dropbox-icon-inline-image-wrapper, .has-dropbox-icon"
+          )
+        );
         const hasGradePendingIcon =
           Boolean(gradeColumn?.querySelector(".has-dropbox-icon.grade-pending-icon")) ||
           /submission that has not been graded|assignment submitted/i.test(submissionHiddenText);
@@ -401,6 +506,13 @@ async function extractAssignments(page) {
         const statusHints = [commentText, exceptionText, submissionText, gradeColumnText]
           .filter(Boolean)
           .join(" ");
+        const hasMissingHint = missingPatterns.some((pattern) => pattern.test(statusHints));
+        const needsDetailFallback =
+          Boolean(url) &&
+          hasMissingHint &&
+          hasDropboxIcon &&
+          !hasGradePendingIcon &&
+          !/missing|not submitted|incomplete|absent/i.test(submissionHiddenText);
 
         results.push({
           course,
@@ -410,7 +522,8 @@ async function extractAssignments(page) {
           score: gradeText,
           url,
           rawText: normalize(row.textContent || ""),
-          isMissing: missingPatterns.some((pattern) => pattern.test(statusHints)),
+          isMissing: hasMissingHint,
+          needsDetailFallback,
         });
       }
     }
@@ -438,6 +551,12 @@ async function dumpDebug(page, config) {
 export async function scrapeMissingAssignments(config) {
   ensureDir(config.paths.dataDir);
 
+  try {
+    materializeStorageStateFromSecrets(config);
+  } catch (err) {
+    throw new Error(`Failed to prepare storage state from secrets: ${err?.message || err}`);
+  }
+
   const storageExists = fs.existsSync(config.paths.storagePath);
   const contextOptions = storageExists ? { storageState: config.paths.storagePath } : {};
 
@@ -452,6 +571,31 @@ export async function scrapeMissingAssignments(config) {
     await page.waitForLoadState("networkidle");
 
     const assignments = await extractAssignments(page);
+    const fallback = await applyDetailFallback(
+      assignments,
+      async (item) => {
+        if (!item?.url) return "";
+        const detail = await context.newPage();
+        detail.setDefaultTimeout(25000);
+        try {
+          await detail.goto(item.url, { waitUntil: "domcontentloaded" });
+          await detail.waitForLoadState("networkidle").catch(() => {});
+          return await detail.evaluate(() => document.body?.innerText || "");
+        } finally {
+          await detail.close();
+        }
+      },
+      {
+        enabled: config?.scrape?.detailFallbackEnabled !== false,
+        max: config?.scrape?.detailFallbackMax,
+      }
+    );
+
+    if (fallback.attempted > 0) {
+      console.log(
+        `[scrape] detail fallback candidates=${fallback.candidates} attempted=${fallback.attempted} resolved=${fallback.resolved} errors=${fallback.errors} capped=${fallback.capped}`
+      );
+    }
 
     await context.storageState({ path: config.paths.storagePath });
 

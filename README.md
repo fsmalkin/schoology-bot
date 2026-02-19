@@ -6,7 +6,9 @@ It runs on your machine today and is ready to move to a server later.
 
 ## What it does
 - Scrapes Schoology grades and detects missing or incomplete work.
+- Uses detail-page fallback for ambiguous list rows to improve submission status classification.
 - Sends a daily summary via Telegram (SMS or email optional).
+- Auto-cancels inactive assignment-linked reminders before reminder dispatch.
 - Provides an agentic chat interface (GPT-5.2) to answer questions and update statuses.
 - Stores history, notes, reminders, tasks, and chat context locally.
 
@@ -105,6 +107,15 @@ Complete the login in the browser window, then press Enter in the terminal.
 This saves `data/storage.json`, which is reused for scheduled runs.
 If you are running in Docker, run the login command on your host (not inside the container) so the browser can open.
 
+## Unattended Login (Secrets)
+For unattended Docker/cron runs, you can bootstrap storage state from secrets:
+- Plain: `STORAGE_STATE_B64` (or `STORAGE_STATE_B64_FILE`)
+- Encrypted: `STORAGE_STATE_ENC_B64` (or `STORAGE_STATE_ENC_B64_FILE`) + `STORAGE_STATE_ENC_KEY`
+- File-based credentials: `SCHOLOGY_USERNAME_FILE` and `SCHOLOGY_PASSWORD_FILE`
+
+Generate an encrypted storage-state blob from `data/storage.json`:
+- `npm run storage:encrypt -- --input data/storage.json --output data/storage_state.enc.b64`
+
 ## Login IdP
 If your district uses Microsoft/SSO, set `SCHOLOGY_IDP="microsoft"` in `.env`.
 Other options: `local`, `azuread`, `schoology`, `adfs`. Default is `auto`.
@@ -136,6 +147,7 @@ Optional:
 - `DATA_DIR="data"` to override the base data folder (useful for beta).
 - `OPENAI_MAX_OUTPUT_TOKENS` to increase response length if replies are getting cut off.
 - `OPENAI_CAPABILITY_GUARD=true` to enable/disable the capability gate for unsupported requests.
+- `OPENAI_DB_MEMORY_ENABLED=true` to enable/disable DB-backed compaction memory replay.
 
 Note: If you use a group chat, Telegram bot privacy must be disabled (BotFather -> /setprivacy) or you must mention the bot for it to receive messages.
 

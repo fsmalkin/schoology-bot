@@ -32,6 +32,9 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 - Bug filing uses a draft+validate+submit skill (no empty issues).
 - Schoology "submitted but not graded" indicators are auto-archived (Ignored) in summaries/lists by default.
 - OpenClaw beta runtime uses gateway-native Telegram + cron, with `schoology-tool-api` retained as a parity sidecar.
+- Unattended login supports secret-file credentials and storage-state bootstrap (plain/encrypted blobs).
+- Reminder runtime auto-cancels inactive assignment-linked reminders before scrape/reminder dispatch.
+- Long-thread continuity uses DB-backed compaction memory when enabled.
 
 ## Status Snapshot (2026-02-18)
 - Delivered:
@@ -40,21 +43,32 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
   - Docker image sprawl reduced by consolidating gateway/tool-api/cron/monitor/dashboard onto one image build.
   - Login failure messaging now respects configured `SCHOLOGY_IDP` and avoids unnecessary provider-selection prompts.
 - In progress:
-  - Beta UAT for login refresh, missing-assignment flows, and reminder delivery before prod promotion.
+  - Wave 1 UAT blockers for OpenClaw promotion:
+    - #10 Auto-cancel reminders for inactive/resolved assignments.
+    - #14 DB-backed compaction memory + long-thread continuity.
+    - #15 Detail-page fallback for ambiguous submission status.
+    - #18 Secret/session-based unattended login.
   - Production rollout checklist and cutover validation for OpenClaw runtime.
 
 ## Active Queue (P1)
 1. OpenClaw beta UAT and production promotion readiness.
-2. DB-backed context compaction and long-thread memory (#14).
-3. Detail-page fallback for ambiguous submission status (#15).
-4. Auto-cancel assignment reminders when assignment becomes inactive/resolved (#10).
-5. Finalize OpenClaw upstream sync SOP (what to pull, how to validate, when to promote).
+2. Auto-cancel assignment reminders when assignment becomes inactive/resolved (#10).
+3. DB-backed context compaction and long-thread memory (#14).
+4. Detail-page fallback for ambiguous submission status (#15).
+5. Automate Schoology login via secrets for unattended runs (#18).
+
+## OpenClaw Promotion Gates
+1. Wave 1 automated tests pass (`npm test`).
+2. OpenClaw beta runtime smoke checks pass (`openclaw-cron-sync`, `openclaw-gateway`, `schoology-tool-api`).
+3. UAT checklist in `docs/openclaw/UAT_PROMOTION.md` passes all critical items.
+4. No open P1 regression issues after Wave 1 verification.
+5. Production cutover + rollback steps are documented and validated.
 
 ## Ready Next (P2)
-1. Recurring reminder support (create/edit/delete UX + tests).
-2. OpenClaw upstream sync SOP (what to pull, how to validate, when to promote).
-3. Scheduled auto-update task decision (Windows Task Scheduler).
-4. Agents SDK evaluation versus current direct Responses architecture.
+1. #16 Plain-language mode for recaps/reminders (post-UAT).
+2. #17 Assignment status: "Will complete in class" (post-UAT).
+3. OpenClaw upstream sync SOP (what to pull, how to validate, when to promote).
+4. Scheduled auto-update task decision (Windows Task Scheduler).
 
 ## Later (P3)
 1. Convert action-oriented notes into reminders with user confirmation.

@@ -18,6 +18,7 @@ import {
 } from "./time.js";
 import {
   applyAutoIgnoreRules,
+  cancelInactiveAssignmentTasks,
   createAssignmentTask,
   createTask,
   deleteTask,
@@ -52,7 +53,7 @@ async function maybeSendLoginAlert(config, error) {
   if (!config.telegram.botToken || !config.telegram.chatIds || config.telegram.chatIds.length === 0) return;
 
   const text =
-    "Schoology login failed or expired. Run `npm run login:interactive` to refresh the session, then retry.";
+    "Schoology login failed or expired. Run `npm run login:interactive` to refresh the session (or update STORAGE_STATE_* secrets), then retry.";
 
   try {
     await sendTelegramMessage(config, text);
@@ -86,13 +87,24 @@ export async function runScrape() {
       keywords: config.autoIgnore.keywords,
     });
   }
+  let autoCanceledAssignmentReminders = { ok: true, canceled: 0, byReason: {} };
+  if (config.reminders?.autoCancelResolvedAssignmentReminders !== false) {
+    autoCanceledAssignmentReminders = cancelInactiveAssignmentTasks(db, { now: scrapeAt });
+    if (autoCanceledAssignmentReminders.canceled > 0) {
+      console.log(
+        `Auto-canceled ${autoCanceledAssignmentReminders.canceled} assignment reminder(s): ${JSON.stringify(
+          autoCanceledAssignmentReminders.byReason
+        )}`
+      );
+    }
+  }
   if (config.autoUpcoming.enabled) {
     autoPlanUpcomingReminders(db, config);
   }
 
   const missingCount = assignments.filter((item) => item.isMissing).length;
   console.log(`Scrape complete. Missing assignments found: ${missingCount}`);
-  return { state, assignments };
+  return { state, assignments, autoCanceledAssignmentReminders };
 }
 
 export async function buildDailySummaryText(options = {}) {
@@ -370,8 +382,21 @@ export async function runReminders(options = {}) {
 
   const db = options.dbOverride || getDb(config);
   const now = nowOverride || nowIso();
+  let autoCanceledAssignmentReminders = { ok: true, canceled: 0, byReason: {} };
+  if (config.reminders?.autoCancelResolvedAssignmentReminders !== false) {
+    autoCanceledAssignmentReminders = cancelInactiveAssignmentTasks(db, { now });
+    if (autoCanceledAssignmentReminders.canceled > 0) {
+      console.log(
+        `Auto-canceled ${autoCanceledAssignmentReminders.canceled} due-reminder task(s) before dispatch: ${JSON.stringify(
+          autoCanceledAssignmentReminders.byReason
+        )}`
+      );
+    }
+  }
   const due = listDueTasks(db, now);
-  if (due.length === 0) return { ok: true, sent: 0, messages: [] };
+  if (due.length === 0) {
+    return { ok: true, sent: 0, messages: [], autoCanceledAssignmentReminders };
+  }
 
   const messages = [];
   for (const task of due) {
@@ -390,7 +415,7 @@ export async function runReminders(options = {}) {
       console.error("Failed to send reminder:", err?.message || err);
     }
   }
-  return { ok: true, sent: messages.length, messages };
+  return { ok: true, sent: messages.length, messages, autoCanceledAssignmentReminders };
 }
 
 export const taskApi = {

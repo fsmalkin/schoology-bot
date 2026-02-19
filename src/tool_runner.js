@@ -227,7 +227,7 @@ export async function runToolByName(db, toolName, args) {
       return deleteTask(db, args);
     case "refresh_schoology": {
       try {
-        const { state } = await runScrape();
+        const { state, autoCanceledAssignmentReminders } = await runScrape();
         const since = state?.lastScrapeAt || new Date().toISOString();
         const resolved = listResolvedWithManualStatus(db, since);
         const { cleared, kept } = applyManualStatusPolicy(resolved);
@@ -268,6 +268,8 @@ export async function runToolByName(db, toolName, args) {
           resolvedCount: resolved.length,
           clearedManualCount: clearResult.cleared || 0,
           keptManual: kept,
+          autoCanceledAssignmentReminderCount: autoCanceledAssignmentReminders?.canceled || 0,
+          autoCanceledAssignmentReminderReasons: autoCanceledAssignmentReminders?.byReason || {},
         };
       } catch (err) {
         return { ok: false, error: err?.message || String(err) };
@@ -320,6 +322,10 @@ export async function runToolByName(db, toolName, args) {
           count: captured.length,
           messages: captured,
           now: args?.now || null,
+          autoCanceledAssignmentReminderCount:
+            result?.autoCanceledAssignmentReminders?.canceled || 0,
+          autoCanceledAssignmentReminderReasons:
+            result?.autoCanceledAssignmentReminders?.byReason || {},
           result: result || null,
         };
       } catch (err) {
