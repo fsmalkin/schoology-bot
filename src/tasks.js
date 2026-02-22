@@ -47,15 +47,62 @@ function isLoginFailure(error) {
   );
 }
 
-async function maybeSendLoginAlert(config, error) {
+function getLoginAlertState(state) {
+  if (!state.meta || typeof state.meta !== "object") {
+    state.meta = { createdAt: nowIso() };
+  }
+  if (!state.meta.loginAlert || typeof state.meta.loginAlert !== "object") {
+    state.meta.loginAlert = {};
+  }
+  return state.meta.loginAlert;
+}
+
+function parseMs(value) {
+  const t = Date.parse(String(value || ""));
+  return Number.isFinite(t) ? t : null;
+}
+
+export function shouldSendLoginAlert(state, error, options = {}) {
+  if (!isLoginFailure(error)) return false;
+
+  const cooldownMinutes = Number(options.cooldownMinutes ?? 360);
+  const cooldownMs = Math.max(0, cooldownMinutes) * 60 * 1000;
+  const now = options.now ? new Date(options.now) : new Date();
+  const nowMs = now.getTime();
+  const currentMessage = String(error?.message || error || "");
+
+  const alertState = state?.meta?.loginAlert || {};
+  const lastSentMs = parseMs(alertState.lastSentAt);
+  const lastSuccessMs = parseMs(alertState.lastSuccessAt);
+  const lastError = String(alertState.lastError || "");
+
+  if (lastSentMs === null) return true;
+  if (lastSuccessMs !== null && lastSuccessMs > lastSentMs) return true;
+  if (lastError && lastError !== currentMessage) return true;
+  return nowMs - lastSentMs >= cooldownMs;
+}
+
+async function maybeSendLoginAlert(config, state, error) {
   if (!isLoginFailure(error)) return;
+  if (config.loginAlerts?.enabled === false) return;
   if (!config.telegram.botToken || !config.telegram.chatIds || config.telegram.chatIds.length === 0) return;
+  if (
+    !shouldSendLoginAlert(state, error, {
+      cooldownMinutes: config.loginAlerts?.cooldownMinutes ?? 360,
+    })
+  ) {
+    return;
+  }
 
   const text =
     "Schoology login failed or expired. Run `npm run login:interactive` to refresh the session, then retry.";
 
   try {
     await sendTelegramMessage(config, text);
+    const alertState = getLoginAlertState(state);
+    alertState.lastSentAt = nowIso();
+    alertState.lastError = String(error?.message || error || "");
+    saveState(config.paths.statePath, state);
   } catch (sendError) {
     console.error("Failed to send Telegram alert:", sendError?.message || sendError);
   }
@@ -72,10 +119,12 @@ export async function runScrape() {
   try {
     assignments = await scrapeMissingAssignments(config);
   } catch (error) {
-    await maybeSendLoginAlert(config, error);
+    await maybeSendLoginAlert(config, state, error);
     throw error;
   }
   updateStateWithScrape(state, scrapeAt, assignments);
+  const alertState = getLoginAlertState(state);
+  alertState.lastSuccessAt = scrapeAt;
   saveState(config.paths.statePath, state);
   const db = getDb(config);
   syncAssignmentsFromState(db, state);

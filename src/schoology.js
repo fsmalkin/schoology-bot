@@ -38,6 +38,56 @@ async function clickByText(page, regex) {
   return false;
 }
 
+async function waitForRenderedLoginControls(page, timeout = 15000) {
+  try {
+    await page.waitForFunction(
+      () => {
+        const selectors = [
+          "input[type='email']",
+          "input[name='loginfmt']",
+          "input#i0116",
+          "#signInName",
+          "#password",
+          "#next",
+          "#idSIButton9",
+          "#AzureADBCPSOrgExchange",
+          "#MicrosoftAccountExchange",
+        ];
+        const isVisible = (element) => {
+          if (!element) return false;
+          const style = window.getComputedStyle(element);
+          return style.display !== "none" && style.visibility !== "hidden";
+        };
+        return selectors.some((selector) => isVisible(document.querySelector(selector)));
+      },
+      undefined,
+      { timeout }
+    );
+  } catch {
+    // ignore timeout and let caller continue with normal checks
+  }
+}
+
+async function maybeHandleMicrosoftKmsi(page) {
+  const noButton = page.locator("#idBtn_Back");
+  try {
+    await noButton.first().waitFor({ state: "visible", timeout: 12000 });
+    await noButton.first().click();
+    return true;
+  } catch {
+    // fall through
+  }
+
+  // Fallback for flows that only expose "Yes" on the KMSI step.
+  const yesButton = page.locator("#idSIButton9");
+  if (String(page.url() || "").toLowerCase().includes("/kmsi") && (await isVisible(yesButton.first()))) {
+    await yesButton.first().click();
+    return true;
+  }
+
+  return false;
+}
+
 async function loginWithSchoologyForm(page, username, password) {
   const userInput = page.locator("input#edit-name, input#edit-mail, input[name='mail']");
   if (!(await isVisible(userInput.first()))) return false;
@@ -53,21 +103,59 @@ async function loginWithSchoologyForm(page, username, password) {
 
 
 async function loginWithMicrosoft(page, username, password) {
-  const emailInput = page.locator('input[type="email"], input[name="loginfmt"]');
-  if (!(await isVisible(emailInput.first()))) return false;
+  await waitForRenderedLoginControls(page);
 
-  await emailInput.first().fill(username);
-  await clickByText(page, /Next|Sign in/i);
+  const attemptEntraEmailFlow = async () => {
+    const emailInput = page.locator('input[type="email"], input[name="loginfmt"], input#i0116');
+    if (!(await isVisible(emailInput.first()))) return false;
 
-  const passwordInput = page.locator('input[type="password"], input[name="passwd"]');
+    await emailInput.first().fill(username);
+    await clickByText(page, /Next|Sign in/i);
+
+    const passwordInput = page.locator('input[type="password"], input[name="passwd"], input#i0118');
+    await passwordInput.first().waitFor({ timeout: 15000 });
+    await passwordInput.first().fill(password);
+    await clickByText(page, /Sign in|Next/i);
+    await page.waitForLoadState("domcontentloaded").catch(() => {});
+    await page.waitForTimeout(1200);
+    await maybeHandleMicrosoftKmsi(page);
+    return true;
+  };
+
+  if (await attemptEntraEmailFlow()) {
+    return true;
+  }
+
+  // BCPS unified page can present local Sign in name + Password fields.
+  const signInNameInput = page.locator("#signInName, input[name='signInName'], input[name='Sign in name']");
+  if (!(await isVisible(signInNameInput.first()))) return false;
+
+  try {
+    await signInNameInput.first().fill(username);
+  } catch {
+    // BCPS can auto-redirect to Entra while we're filling; retry on the new form.
+    await page.waitForTimeout(1000);
+    if (await attemptEntraEmailFlow()) {
+      return true;
+    }
+    if (!(await isVisible(signInNameInput.first()))) return false;
+    await signInNameInput.first().fill(username);
+  }
+
+  const passwordInput = page.locator("#password, input[name='password'], input[type='password']");
   await passwordInput.first().waitFor({ timeout: 15000 });
   await passwordInput.first().fill(password);
-  await clickByText(page, /Sign in|Next/i);
 
-  const staySignedInNo = page.locator("#idBtn_Back");
-  if (await isVisible(staySignedInNo)) {
-    await staySignedInNo.click();
+  const nextButton = page.locator("#next, button#next, button[type='submit'], input[type='submit']").first();
+  if (await isVisible(nextButton)) {
+    await nextButton.click();
+  } else {
+    await clickByText(page, /Sign in|Next|Log in/i);
   }
+
+  await page.waitForLoadState("domcontentloaded").catch(() => {});
+  await page.waitForTimeout(1200);
+  await maybeHandleMicrosoftKmsi(page);
 
   return true;
 }
@@ -141,28 +229,35 @@ async function selectClaimsProvider(page, provider) {
     google: "#GoogleExchange",
   };
 
+  // BCPS often exposes both buttons; "microsoft" should prefer district Azure AD.
+  if (provider === "microsoft" && (await hasSelector(page, "#AzureADBCPSOrgExchange"))) {
+    await page.locator("#AzureADBCPSOrgExchange").first().click({ noWaitAfter: true });
+    await page.waitForLoadState("domcontentloaded").catch(() => {});
+    return true;
+  }
+
   const selector = selectors[provider];
   if (selector && (await hasSelector(page, selector))) {
-    await page.click(selector);
-    await page.waitForLoadState("domcontentloaded");
+    await page.locator(selector).first().click({ noWaitAfter: true });
+    await page.waitForLoadState("domcontentloaded").catch(() => {});
     return true;
   }
 
   if (provider === "microsoft") {
     if (await clickByText(page, /Microsoft/i)) {
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("domcontentloaded").catch(() => {});
       return true;
     }
   }
   if (provider === "azuread") {
     if (await clickByText(page, /BCPS Account|BCPS Students|Login with your BCPS/i)) {
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("domcontentloaded").catch(() => {});
       return true;
     }
   }
   if (provider === "google") {
     if (await clickByText(page, /Google/i)) {
-      await page.waitForLoadState("domcontentloaded");
+      await page.waitForLoadState("domcontentloaded").catch(() => {});
       return true;
     }
   }
@@ -182,52 +277,82 @@ async function isBcpsB2CPage(page) {
 async function maybeEnterSsoSchool(page, config) {
   if (await isBcpsB2CPage(page)) return true;
 
-  const ssoLink = page.locator(".sso-login-link, text=SSO Login");
+  // Some pages render SSO controls shortly after DOM ready.
+  await page.waitForTimeout(700);
+
+  const ssoLink = page.locator(".sso-login-link, [role='link'].sso-login-link, text=SSO Login");
   if (await isVisible(ssoLink.first())) {
     await ssoLink.first().click();
   } else {
     await clickByText(page, /SSO Login|School or District|Log in through/i);
   }
 
+  await page.waitForTimeout(400);
+
   const schoolInput = page.locator("#edit-school, input[placeholder*='School']");
   try {
-    await schoolInput.first().waitFor({ state: "visible", timeout: 4000 });
+    await schoolInput.first().waitFor({ state: "visible", timeout: 7000 });
   } catch {
-    // fall through
+    // Fall through and let caller try another path.
   }
 
   if (await isBcpsB2CPage(page)) return true;
 
-  if (await schoolInput.first().isVisible().catch(() => false)) {
-    const schoolName = config.schoology.ssoSchool || "Baltimore County Public Schools";
-    await schoolInput.first().fill(schoolName);
-    await page.waitForTimeout(800);
-
-    const suggestion = page.locator(".ui-autocomplete li, .ui-menu-item, .ac_results li").first();
-    if (await isVisible(suggestion)) {
-      await suggestion.click();
-    } else {
-      await schoolInput.first().press("Enter");
-    }
-    const submitButton = page.locator("#edit-submit, input#edit-submit, button[type='submit']");
-    if (await isVisible(submitButton.first())) {
-      await Promise.allSettled([
-        page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 8000 }),
-        submitButton.first().click(),
-      ]);
-    }
-  } else if (await schoolInput.first().isVisible().catch(() => false) === false) {
-    // Try forcing the value if the field is still hidden but present
-    const count = await schoolInput.count();
-    if (count > 0) {
-      const schoolName = config.schoology.ssoSchool || "Baltimore County Public Schools";
-      await schoolInput.first().fill(schoolName, { force: true });
-      await page.waitForTimeout(800);
-      await schoolInput.first().press("Enter");
-    }
+  if (!(await schoolInput.first().isVisible().catch(() => false))) {
+    return false;
   }
 
-  await page.waitForTimeout(800);
+  const schoolName = config.schoology.ssoSchool || "Baltimore County Public Schools";
+
+  const maxLengthAttr = await schoolInput.first().getAttribute("maxlength").catch(() => null);
+  const maxLength = Number(maxLengthAttr || 0);
+  const typedSchoolName = maxLength > 0 ? schoolName.slice(0, maxLength) : schoolName;
+
+  await schoolInput.first().fill(typedSchoolName);
+  // Trigger key-driven autocomplete listeners used by Schoology login.
+  await schoolInput.first().press(" ");
+  await schoolInput.first().press("Backspace");
+
+  const suggestionListSelector = ".ui-autocomplete li, .ui-menu-item, .ac_results li";
+  const suggestion = page.locator(suggestionListSelector).first();
+  try {
+    await suggestion.waitFor({ state: "visible", timeout: 7000 });
+  } catch {
+    return false;
+  }
+
+  // Prefer the remote-auth row when duplicate district names exist.
+  const remoteAuthSuggestion = page
+    .locator(".ui-autocomplete li:has(.remote-auth), .ui-menu-item:has(.remote-auth), .ac_results li:has(.remote-auth)")
+    .first();
+  if (await isVisible(remoteAuthSuggestion)) {
+    await remoteAuthSuggestion.click();
+  } else {
+    await suggestion.click();
+  }
+  const schoolIdInput = page.locator("#edit-school-nid").first();
+  try {
+    await page.waitForFunction(
+      () => {
+        const el = document.querySelector("#edit-school-nid");
+        return Boolean(el && String(el.value || "").trim().length > 0);
+      },
+      undefined,
+      { timeout: 5000 }
+    );
+  } catch {
+    // If school id is not resolved, continue and let caller handle fallback.
+  }
+
+  const submitButton = page.locator("#edit-submit, input#edit-submit, button[type='submit']");
+  if (await isVisible(submitButton.first())) {
+    await Promise.allSettled([
+      page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 12000 }),
+      submitButton.first().click(),
+    ]);
+  }
+
+  await page.waitForTimeout(500);
   if (await isBcpsB2CPage(page)) return true;
 
   return false;

@@ -116,6 +116,10 @@ const config = {
   dashboard: {
     port: numEnv("DASHBOARD_PORT", 8787),
   },
+  loginAlerts: {
+    enabled: boolEnv("LOGIN_ALERTS_ENABLED", true),
+    cooldownMinutes: numEnv("LOGIN_ALERT_COOLDOWN_MINUTES", 360),
+  },
   runtime: {
     stack: env("RUNTIME_STACK", "legacy").toLowerCase(),
   },

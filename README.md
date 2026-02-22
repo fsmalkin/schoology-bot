@@ -97,6 +97,7 @@ Notes:
 
 ## Debug
 Set `DEBUG_DUMP=true` in `.env` to save a screenshot and HTML snapshot to `data/` on failures.
+Login-failure alerts are rate-limited via `LOGIN_ALERT_COOLDOWN_MINUTES` (default `360`).
 
 ## Interactive Login (First Time)
 If the login flow changes or is protected by Microsoft, run:

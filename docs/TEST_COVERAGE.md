@@ -10,6 +10,7 @@ Unit tests
 - Summary builder (actionable vs pending).
 - Readable message formatter (Do Now/Soon/Waiting routing, status wording, links, caps).
 - Refresh login-failure messaging when `SCHOLOGY_IDP` is already configured (avoids redundant provider prompts).
+- Login-failure Telegram alert throttling (first alert, cooldown suppression, changed-error resend, post-success resend).
 - Dashboard health/data builders (heartbeat + snapshot shaping).
 - Time parsing and timezone formatting (local labels, shorthand).
 - Reminder rollovers.
