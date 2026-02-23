@@ -21,3 +21,4 @@ openclaw_workspace/TOOLS.md
 openclaw_workspace/USER.md
 openclaw_workspace/memory/
 openclaw_workspace/*.json5
+artifacts/
