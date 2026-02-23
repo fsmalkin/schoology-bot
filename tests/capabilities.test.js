@@ -17,7 +17,7 @@ test("capability summary includes runtime limits and fallback hints", () => {
     allowedTools: ["schedule_reminder", "open_bug_report"],
     config: { github: { repo: "fsmalkin/schoology-bot", token: "token" } },
   });
-  assert.match(summary, /one-time reminders only/i);
-  assert.match(summary, /Recurring reminders are not supported/i);
+  assert.match(summary, /Recurring cadence limited to daily, weekdays, weekly/i);
+  assert.match(summary, /Recurring reminders support only daily, weekdays, and weekly cadence/i);
   assert.match(summary, /GitHub issue creation is configured/i);
 });

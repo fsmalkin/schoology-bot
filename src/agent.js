@@ -48,7 +48,7 @@ function buildResponsePrompt(config, allowedTools = TOOL_NAMES) {
   return [
     "You are a Schoology assistant.",
     "Use the provided tool results as the source of truth.",
-    "Respect tool capabilities listed in Bootstrap Context; if something is unsupported (ex: recurring reminders), say so and offer the closest supported alternative.",
+    "Respect tool capabilities listed in Bootstrap Context; if something is unsupported (ex: monthly recurrence), say so and offer the closest supported alternative.",
     "Never claim updates unless tool results confirm success.",
     "If tool results include errors, explain them briefly and ask for the missing detail.",
     idpInstruction,
@@ -64,6 +64,12 @@ function buildResponsePrompt(config, allowedTools = TOOL_NAMES) {
     "Use simple lists (use '-' for bullets, '1.' for numbering).",
     "Do not use HTML tags or Markdown code fences.",
     "Do not mention tool calls or function names.",
+    "When creating reminders, proactively infer reasonable defaults when details are missing, then confirm what you assumed and give one-step correction examples.",
+    "If user did not provide an explicit reminder time, include a line that begins with 'Assumption:' and states which time default was used.",
+    "Recurring reminders support only daily, weekdays, and weekly cadence.",
+    "If cadence is missing on an explicit recurring ask, default to weekdays.",
+    "If time is missing on a recurring ask, use ET defaults: 7:00 AM for morning/school-start cues, 4:30 PM for check-in/follow-up cues, else 9:00 PM.",
+    "If an unsupported cadence is requested (monthly/custom), use weekly fallback and state the fallback explicitly.",
     "If a reminder time is slightly ambiguous, make a best-guess schedule and offer to adjust. Ask for clarification only when no reasonable guess is possible.",
     "Times are America/New_York by default. If tool results include remindAtLabel or remindAtLocal, use those instead of raw ISO/UTC.",
     "Keep responses concise and action-oriented.",
@@ -301,18 +307,27 @@ export function toolDefinitions() {
           course: { type: "string", description: "Course name to match." },
           remindAt: {
             type: "string",
-            description: "Reminder time in ISO-8601 format.",
+            description:
+              "Reminder time in ISO-8601 or natural language. Optional for recurring requests; defaults will be inferred.",
           },
           message: {
             type: "string",
             description: "Optional reminder message.",
           },
+          recurrence: {
+            type: "string",
+            enum: ["none", "daily", "weekdays", "weekly"],
+            description: "Optional recurrence cadence.",
+          },
+          recurrenceTz: {
+            type: "string",
+            description: "Optional IANA timezone for recurrence expansion.",
+          },
           replaceExisting: {
             type: "boolean",
             description: "Replace existing pending reminder(s) for the same assignment.",
           },
-        },
-        ["remindAt"]
+        }
       ),
     },
     {
@@ -338,6 +353,15 @@ export function toolDefinitions() {
           id: { type: "integer", description: "Reminder id." },
           remindAt: { type: "string", description: "Reminder time in ISO-8601 format." },
           message: { type: "string", description: "Reminder message." },
+          recurrence: {
+            type: "string",
+            enum: ["none", "daily", "weekdays", "weekly"],
+            description: "Optional recurrence cadence update.",
+          },
+          recurrenceTz: {
+            type: "string",
+            description: "Optional recurrence timezone update.",
+          },
         },
         ["id"]
       ),
@@ -371,10 +395,23 @@ export function toolDefinitions() {
       parameters: buildStrictParams(
         {
           title: { type: "string", description: "Task title." },
-          remindAt: { type: "string", description: "Reminder time in ISO-8601 format." },
+          remindAt: {
+            type: "string",
+            description:
+              "Reminder time in ISO-8601 or natural language. Optional for recurring requests; defaults will be inferred.",
+          },
           message: { type: "string", description: "Optional reminder note." },
+          recurrence: {
+            type: "string",
+            enum: ["none", "daily", "weekdays", "weekly"],
+            description: "Optional recurrence cadence.",
+          },
+          recurrenceTz: {
+            type: "string",
+            description: "Optional IANA timezone for recurrence expansion.",
+          },
         },
-        ["title", "remindAt"]
+        ["title"]
       ),
     },
     {
@@ -416,6 +453,15 @@ export function toolDefinitions() {
           title: { type: "string", description: "Task title." },
           remindAt: { type: "string", description: "Reminder time in ISO-8601 format." },
           message: { type: "string", description: "Optional reminder note." },
+          recurrence: {
+            type: "string",
+            enum: ["none", "daily", "weekdays", "weekly"],
+            description: "Optional recurrence cadence update.",
+          },
+          recurrenceTz: {
+            type: "string",
+            description: "Optional recurrence timezone update.",
+          },
         },
         ["id"]
       ),
@@ -713,6 +759,10 @@ function buildToolPlanInstructions(allowedTools = TOOL_NAMES, config = null) {
     "Always call tools for assignment/reminder/task data. Do not respond with the answer.",
     "For write tools (notes/status/reminders/tasks), args must be the actual content to store (short and literal), not a user-facing explanation.",
     "For assignment updates, include enough identification to target the assignment: at least title (and course if known), or key if provided.",
+    "Recurring reminder cadence supports only: daily, weekdays, weekly.",
+    "If user asks recurring but no cadence, set recurrence=weekdays.",
+    "If user asks unsupported cadence (monthly/custom), set recurrence=weekly and let the response explain fallback.",
+    "When a recurring create request omits remindAt, allow remindAt=null so runtime can infer a default.",
     "If exactly one tool is needed, use action=call_tool with tool + args.",
     "If multiple tools are needed, use action=call_tools with calls in order.",
     "Always set tool to the primary tool (for call_tools, use the first tool in calls).",
@@ -725,6 +775,7 @@ function buildToolPlanInstructions(allowedTools = TOOL_NAMES, config = null) {
     "User: add note to Latin Quiz 1 -> {\"action\":\"call_tool\",\"tool\":\"add_assignment_note\",\"args\":\"{\\\"title\\\":\\\"Quiz 1\\\",\\\"course\\\":\\\"Latin\\\",\\\"note\\\":\\\"Submitted. Waiting for grade.\\\"}\",\"calls\":null}",
     "User: mark Latin Quiz 1 as Waiting on teacher -> {\"action\":\"call_tool\",\"tool\":\"update_assignment_status\",\"args\":\"{\\\"title\\\":\\\"Quiz 1\\\",\\\"course\\\":\\\"Latin\\\",\\\"status\\\":\\\"E\\\"}\",\"calls\":null}",
     "User: remind me Thu 7:15am to follow up on Algebra Homework 1 -> {\"action\":\"call_tool\",\"tool\":\"schedule_reminder\",\"args\":\"{\\\"title\\\":\\\"Homework 1\\\",\\\"course\\\":\\\"Algebra\\\",\\\"remindAt\\\":\\\"Thu 7:15am\\\",\\\"message\\\":\\\"Follow up with teacher\\\"}\",\"calls\":null}",
+    "User: remind me every school day to check missing work -> {\"action\":\"call_tool\",\"tool\":\"create_task\",\"args\":\"{\\\"title\\\":\\\"Check missing work\\\",\\\"remindAt\\\":null,\\\"recurrence\\\":\\\"weekdays\\\",\\\"message\\\":\\\"Review missing assignments\\\"}\",\"calls\":null}",
     "User: add note + set status + schedule reminder -> {\"action\":\"call_tools\",\"tool\":\"add_assignment_note\",\"args\":\"{\\\"title\\\":\\\"January 30th-Tpc01C\\\",\\\"course\\\":\\\"Latin\\\",\\\"note\\\":\\\"Submitted. Waiting for grade.\\\"}\",\"calls\":[{\"tool\":\"add_assignment_note\",\"args\":\"{\\\"title\\\":\\\"January 30th-Tpc01C\\\",\\\"course\\\":\\\"Latin\\\",\\\"note\\\":\\\"Submitted. Waiting for grade.\\\"}\"},{\"tool\":\"update_assignment_status\",\"args\":\"{\\\"title\\\":\\\"January 30th-Tpc01C\\\",\\\"course\\\":\\\"Latin\\\",\\\"status\\\":\\\"E\\\"}\"},{\"tool\":\"schedule_reminder\",\"args\":\"{\\\"title\\\":\\\"U5 Compound Interest/Intervals\\\",\\\"course\\\":\\\"Algebra\\\",\\\"remindAt\\\":\\\"Thu 7:15am\\\",\\\"message\\\":\\\"Follow up on math make-up after school plan\\\"}\"}]}",
     `\nCapability summary:\n${capabilitySummary}`,
   ].join(" ");
@@ -762,6 +813,8 @@ function buildToolAugmentInstructions() {
     "If the user asked for any write actions (notes/status/reminders/tasks), you MUST add the corresponding write tool calls until the request is fully satisfied.",
     "Do not stop at a read-only tool (like list_assignments) if the user clearly requested updates.",
     "If you do not have an assignment key, use title (and course if available). The tools can match by title/course and will ask for clarification if ambiguous.",
+    "Recurring cadence supports daily/weekdays/weekly only; use weekly fallback for unsupported cadence asks.",
+    "For recurring create requests without remindAt, set remindAt=null so runtime can infer default time.",
     "For args, provide a JSON string like \"{}\" or \"{\\\"status\\\":\\\"missing\\\"}\".",
   ].join(" ");
 }
@@ -1049,6 +1102,7 @@ function buildCapabilityGuardInstructions(capabilitySummary) {
     "Capability gate: decide if the user request requires unsupported functionality.",
     "Use decision=unsupported only when the user clearly asked for something unavailable.",
     "If unsure or the request can be done with available tools, use decision=proceed.",
+    "If a request can be handled with an in-scope fallback (for example unsupported cadence -> weekly), use decision=proceed.",
     "If decision=unsupported, message must explain the limit and the nearest supported fallback in 1-2 sentences.",
     "If decision=proceed, set message to an empty string.",
     `Capabilities:\n${capabilitySummary}`,
@@ -1330,7 +1384,7 @@ async function maybeCompact(client, config, chatId, chatState, responseId) {
   return responseId;
 }
 
-export async function runAgentMessage({ chatId, text, clientOverride }) {
+export async function runAgentMessage({ chatId, text, clientOverride, debug = false }) {
   const config = getConfig();
   validateOpenAIConfig();
 
@@ -1406,6 +1460,18 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
         if (blockedResponseId) {
           updateChatState(db, chatId, blockedResponseId);
         }
+        if (debug) {
+          return {
+            reply: blockedMessage,
+            executed: [],
+            guard: {
+              decision: guard.decision,
+              reason: guard.reason || "",
+              message: guard.message || "",
+            },
+            responseId: blockedResponseId || null,
+          };
+        }
         return blockedMessage;
       }
     } catch (err) {
@@ -1469,7 +1535,9 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
         activePending && activePending.tool === normalizedTool ? activePending.args : null;
       const mergedArgs = mergePendingArgs(pendingArgs, callArgs);
       const normalizedArgs = normalizeToolArgs(normalizedTool, mergedArgs);
-      const output = await runToolByName(db, normalizedTool, normalizedArgs);
+      const output = await runToolByName(db, normalizedTool, normalizedArgs, {
+        userText: text,
+      });
       executed.push({ call: { name: normalizedTool, arguments: normalizedArgs }, output });
 
       if (call.callId) {
@@ -1528,7 +1596,22 @@ export async function runAgentMessage({ chatId, text, clientOverride }) {
 
   if (!normalized || isRepetitiveOutput(finalText) || isToolingLoop(finalText)) {
     const summary = formatUpdateSummary(executed, db);
-    return normalizeAscii(summary || normalized || "Done.");
+    const reply = normalizeAscii(summary || normalized || "Done.");
+    if (debug) {
+      return {
+        reply,
+        executed,
+        responseId: responseIdToStore || null,
+      };
+    }
+    return reply;
+  }
+  if (debug) {
+    return {
+      reply: normalized,
+      executed,
+      responseId: responseIdToStore || null,
+    };
   }
   return normalized;
 }

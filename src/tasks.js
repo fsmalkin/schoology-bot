@@ -14,7 +14,9 @@ import {
   nowIso,
   parseSchoologyDate,
   getLocalDateParts,
+  getLocalDateTimeParts,
   makeDateInZoneParts,
+  shiftYmdParts,
 } from "./time.js";
 import {
   applyAutoIgnoreRules,
@@ -27,6 +29,7 @@ import {
   listAssignments,
   listTasks,
   markTaskReminderSent,
+  normalizeRecurrenceKind,
   syncAssignmentsFromState,
   updateTask,
   updateTaskStatus,
@@ -260,13 +263,75 @@ function addDays(date, days) {
 }
 
 function shiftYmd(parts, days) {
-  const base = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
-  base.setUTCDate(base.getUTCDate() + days);
-  return {
-    year: base.getUTCFullYear(),
-    month: base.getUTCMonth() + 1,
-    day: base.getUTCDate(),
+  return shiftYmdParts(parts, days);
+}
+
+function localWeekday(date, timeZone) {
+  const short = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    weekday: "short",
+  })
+    .format(date)
+    .slice(0, 3)
+    .toLowerCase();
+  const map = {
+    sun: 0,
+    mon: 1,
+    tue: 2,
+    wed: 3,
+    thu: 4,
+    fri: 5,
+    sat: 6,
   };
+  return map[short] ?? null;
+}
+
+export function computeNextReminderTime(task, defaultTimeZone = "America/New_York") {
+  const parsed = task?.remindAt ? new Date(task.remindAt) : null;
+  const base = parsed && Number.isFinite(parsed.getTime()) ? parsed : new Date();
+  const recurrenceCheck = normalizeRecurrenceKind(task?.recurrenceKind);
+  const recurrenceKind = recurrenceCheck.ok ? recurrenceCheck.value : "none";
+  const timeZone = String(task?.recurrenceTz || defaultTimeZone || "America/New_York");
+
+  if (recurrenceKind === "none") {
+    // Preserve legacy one-time reminder semantics.
+    return addDays(base, 1);
+  }
+
+  const parts = getLocalDateTimeParts(base, timeZone);
+  if (!parts) return addDays(base, 1);
+  const baseParts = {
+    year: parts.year,
+    month: parts.month,
+    day: parts.day,
+    hour: parts.hour,
+    minute: parts.minute,
+  };
+
+  if (recurrenceKind === "daily") {
+    const nextDay = shiftYmd(baseParts, 1);
+    return makeDateInZoneParts({ ...nextDay, hour: baseParts.hour, minute: baseParts.minute }, timeZone);
+  }
+
+  if (recurrenceKind === "weekly") {
+    const nextWeek = shiftYmd(baseParts, 7);
+    return makeDateInZoneParts({ ...nextWeek, hour: baseParts.hour, minute: baseParts.minute }, timeZone);
+  }
+
+  if (recurrenceKind === "weekdays") {
+    for (let offset = 1; offset <= 8; offset += 1) {
+      const nextDateParts = shiftYmd(baseParts, offset);
+      const candidate = makeDateInZoneParts(
+        { ...nextDateParts, hour: baseParts.hour, minute: baseParts.minute },
+        timeZone
+      );
+      const weekday = localWeekday(candidate, timeZone);
+      if (weekday !== 0 && weekday !== 6) return candidate;
+    }
+    return addDays(base, 1);
+  }
+
+  return addDays(base, 1);
 }
 
 function buildUpcomingSet(baseDate, timeZone, days = 7) {
@@ -424,7 +489,6 @@ export async function runReminders(options = {}) {
 
   const messages = [];
   for (const task of due) {
-    const remindAt = task.remindAt ? new Date(task.remindAt) : new Date();
     const text = buildReadableReminderMessage({
       task,
       timeZone: config.schedule.timezone,
@@ -433,7 +497,8 @@ export async function runReminders(options = {}) {
     try {
       await sendRaw(config, text);
       messages.push(text);
-      const next = addDays(remindAt, 1).toISOString();
+      const nextDate = computeNextReminderTime(task, config.schedule.timezone);
+      const next = nextDate.toISOString();
       markTaskReminderSent(db, { id: task.id, sentAt: now, nextRemindAt: next });
     } catch (err) {
       console.error("Failed to send reminder:", err?.message || err);

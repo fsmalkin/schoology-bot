@@ -227,6 +227,53 @@ function formatReminderLabel(remindAt, timeZone) {
   return formatDayDateTime(parsed, timeZone, false);
 }
 
+function recurrenceLabel(kind) {
+  const normalized = String(kind || "").trim().toLowerCase();
+  if (normalized === "daily") return "Daily";
+  if (normalized === "weekdays") return "Weekdays";
+  if (normalized === "weekly") return "Weekly";
+  return "One-time";
+}
+
+function formatReminderWhen(remindAt, remindAtLabel, recurrenceKind, recurrenceLabelText, timeZone) {
+  const when = String(remindAtLabel || "").trim() || formatReminderLabel(remindAt, timeZone);
+  const cadence = recurrenceLabelText || recurrenceLabel(recurrenceKind);
+  if (!when) return cadence === "One-time" ? "" : cadence;
+  if (cadence === "One-time") return when;
+  return `${when} (${cadence})`;
+}
+
+function collectAssumptionItems(output) {
+  const assumptions = Array.isArray(output?.assumptions) ? output.assumptions : [];
+  const items = [];
+  for (const assumption of assumptions) {
+    const reason = String(assumption?.reason || "").trim();
+    const label = String(assumption?.valueLabel || assumption?.value || "").trim();
+    if (!reason) continue;
+    if (label) {
+      items.push(makeItem(`Assumed ${assumption?.field || "value"}: ${label}. ${reason}`));
+    } else {
+      items.push(makeItem(`Assumption: ${reason}`));
+    }
+  }
+  for (const warning of Array.isArray(output?.warnings) ? output.warnings : []) {
+    const line = String(warning || "").trim();
+    if (!line) continue;
+    items.push(makeItem(line));
+  }
+  return items.filter(Boolean);
+}
+
+function pushAssumptionsAndCorrection(info, output, correctionExample) {
+  const assumptionItems = collectAssumptionItems(output);
+  for (const item of assumptionItems) {
+    info.push(item);
+  }
+  if (assumptionItems.length > 0 && correctionExample) {
+    info.push(makeItem(`Quick edit: ${correctionExample}`));
+  }
+}
+
 function makeItem(line, link = "") {
   const trimmed = String(line || "").trim();
   if (!trimmed) return null;
@@ -367,12 +414,34 @@ export function buildReadableToolResponse({ executed, db, timeZone, now, schoolo
     if (name === "schedule_reminder") {
       if (output?.ok) {
         const label = assignmentInlineLabel(output.assignment, args);
-        doneNow.push(makeItem(`Saved reminder for ${label}.`));
-        const when = output.remindAtLabel || formatReminderLabel(output.remindAt || args.remindAt, tz);
+        const recurrenceKind = output.recurrenceKind || output?.reminder?.recurrenceKind || args.recurrence || "none";
+        const recurrenceText = output.recurrenceLabel || recurrenceLabel(recurrenceKind);
+        doneNow.push(
+          makeItem(
+            recurrenceKind && recurrenceKind !== "none"
+              ? `Created recurring reminder for ${label}.`
+              : `Saved reminder for ${label}.`
+          )
+        );
+        const when = formatReminderWhen(
+          output.remindAt || output?.reminder?.remindAt || args.remindAt,
+          output.remindAtLabel || output?.reminder?.remindAtLabel || "",
+          recurrenceKind,
+          recurrenceText,
+          tz
+        );
         if (when) soon.push(makeItem(`${label} | ${when}`));
         if (output.deletedDuplicates) {
           info.push(makeItem(`Removed ${output.deletedDuplicates} duplicate reminder(s).`));
         }
+        const reminderId = output?.reminder?.id || output?.reminderId || args.id || null;
+        pushAssumptionsAndCorrection(
+          info,
+          output,
+          reminderId
+            ? `"move reminder #${reminderId} to tomorrow 4:30 PM"`
+            : `"move that reminder to tomorrow 4:30 PM"`
+        );
       } else if (output?.error) {
         doneNow.push(makeItem(`Need your input: ${output.error}`));
       }
@@ -383,10 +452,15 @@ export function buildReadableToolResponse({ executed, db, timeZone, now, schoolo
       if (output?.ok) {
         const id = output?.reminder?.id || args.id || "reminder";
         doneNow.push(makeItem(`Updated reminder #${id}.`));
-        const when =
-          output?.reminder?.remindAtLabel ||
-          formatReminderLabel(output?.reminder?.remindAt || args.remindAt, tz);
+        const when = formatReminderWhen(
+          output?.reminder?.remindAt || args.remindAt,
+          output?.reminder?.remindAtLabel || "",
+          output?.recurrenceKind || output?.reminder?.recurrenceKind || args.recurrence || "none",
+          output?.recurrenceLabel || output?.reminder?.recurrenceLabel || "",
+          tz
+        );
         if (when) soon.push(makeItem(`Reminder #${id} | ${when}`));
+        pushAssumptionsAndCorrection(info, output, `"update reminder #${id} to weekdays at 7:00 AM"`);
       } else if (output?.error) {
         doneNow.push(makeItem(`Need your input: ${output.error}`));
       }
@@ -434,9 +508,27 @@ export function buildReadableToolResponse({ executed, db, timeZone, now, schoolo
     if (name === "create_task") {
       if (output?.ok) {
         const title = String(output.title || args.title || `Task #${output.id}`).trim();
-        doneNow.push(makeItem(`Created reminder task: ${title}.`));
-        const when = output.remindAtLabel || formatReminderLabel(output.remindAt || args.remindAt, tz);
+        const recurrenceKind = output.recurrenceKind || args.recurrence || "none";
+        doneNow.push(
+          makeItem(
+            recurrenceKind !== "none"
+              ? `Created recurring reminder task: ${title}.`
+              : `Created reminder task: ${title}.`
+          )
+        );
+        const when = formatReminderWhen(
+          output.remindAt || args.remindAt,
+          output.remindAtLabel || "",
+          recurrenceKind,
+          output.recurrenceLabel || "",
+          tz
+        );
         if (when) soon.push(makeItem(`${title} | ${when}`));
+        pushAssumptionsAndCorrection(
+          info,
+          output,
+          output?.id ? `"update task #${output.id} to 9:00 PM weekdays"` : `"update that task to 9:00 PM weekdays"`
+        );
       } else if (output?.error) {
         doneNow.push(makeItem(`Need your input: ${output.error}`));
       }
@@ -463,10 +555,15 @@ export function buildReadableToolResponse({ executed, db, timeZone, now, schoolo
         } else {
           doneNow.push(makeItem(`Updated task #${id}.`));
         }
-        const when =
-          output?.task?.remindAtLabel ||
-          formatReminderLabel(output?.task?.remindAt || args.remindAt, tz);
+        const when = formatReminderWhen(
+          output?.task?.remindAt || args.remindAt,
+          output?.task?.remindAtLabel || "",
+          output?.recurrenceKind || output?.task?.recurrenceKind || args.recurrence || "none",
+          output?.recurrenceLabel || output?.task?.recurrenceLabel || "",
+          tz
+        );
         if (when) soon.push(makeItem(`Task #${id} | ${when}`));
+        pushAssumptionsAndCorrection(info, output, `"update task #${id} to daily at 4:30 PM"`);
       } else if (output?.error) {
         doneNow.push(makeItem(`Need your input: ${output.error}`));
       }

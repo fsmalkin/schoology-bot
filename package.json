@@ -18,7 +18,11 @@
     "dashboard": "node src/dashboard.js",
     "openclaw:api": "node src/openclaw_tool_api.js",
     "reminders:cleanup": "node src/reminder_cleanup.js",
-    "test": "node --test \"tests/**/*.test.js\"",
+    "beta:reset-memory": "powershell -ExecutionPolicy Bypass -File scripts/reset_beta_from_prod_memory.ps1",
+    "stories:run": "node scripts/run_agentic_story_suite.mjs",
+    "stories:judge": "node scripts/judge_agentic_story_suite.mjs",
+    "stories:gate": "npm run stories:run && npm run stories:judge",
+    "test": "node --test --test-concurrency=1 \"tests/**/*.test.js\"",
     "test:agent": "node tests/agent_conversation.js"
   },
   "dependencies": {

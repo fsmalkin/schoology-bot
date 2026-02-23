@@ -7,6 +7,41 @@ import { loadState } from "./storage.js";
 
 let dbInstance = null;
 
+const RECURRENCE_KIND_VALUES = ["none", "daily", "weekdays", "weekly"];
+const RECURRENCE_KIND_SET = new Set(RECURRENCE_KIND_VALUES);
+const RECURRENCE_ALIAS_MAP = new Map([
+  ["one-time", "none"],
+  ["one time", "none"],
+  ["once", "none"],
+  ["every day", "daily"],
+  ["everyday", "daily"],
+  ["weekday", "weekdays"],
+  ["every weekday", "weekdays"],
+  ["workdays", "weekdays"],
+  ["every week", "weekly"],
+]);
+
+export function normalizeRecurrenceKind(value, { allowNull = false } = {}) {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return { ok: true, value: allowNull ? null : "none" };
+  }
+  const raw = String(value).trim().toLowerCase();
+  const mapped = RECURRENCE_ALIAS_MAP.get(raw) || raw;
+  if (!RECURRENCE_KIND_SET.has(mapped)) {
+    return {
+      ok: false,
+      error: `Recurrence is invalid. Use one of: ${RECURRENCE_KIND_VALUES.join(", ")}.`,
+    };
+  }
+  return { ok: true, value: mapped };
+}
+
+function normalizeRecurrenceTz(value) {
+  if (value === undefined || value === null) return null;
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed : null;
+}
+
 function normalizeRemindAt(remindAt) {
   const value = String(remindAt || "").trim();
   if (!value) {
@@ -174,6 +209,8 @@ function initDb(db) {
       kind TEXT NOT NULL DEFAULT 'personal',
       auto_cancel_on_resolve INTEGER NOT NULL DEFAULT 0,
       auto_planned INTEGER NOT NULL DEFAULT 0,
+      recurrence_kind TEXT NOT NULL DEFAULT 'none',
+      recurrence_tz TEXT,
       created_at TEXT NOT NULL,
       completed_at TEXT,
       last_sent_at TEXT,
@@ -223,6 +260,8 @@ function ensureTaskColumns(db) {
   addColumn("kind", "TEXT", "'personal'");
   addColumn("auto_cancel_on_resolve", "INTEGER", "0");
   addColumn("auto_planned", "INTEGER", "0");
+  addColumn("recurrence_kind", "TEXT", "'none'");
+  addColumn("recurrence_tz", "TEXT");
 }
 
 function ensureAssignmentAutoIgnoreColumns(db) {
@@ -245,12 +284,22 @@ function ensureAssignmentAutoIgnoreColumns(db) {
 function ensureTaskIndexes(db) {
   try {
     db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_assignment ON tasks(assignment_key);");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_kind_status ON tasks(kind, status);");
   } catch (err) {
     // Column may not exist on older DBs until migration completes; ignore.
   }
 }
 
 function migrateRemindersToTasks(db) {
+  const remindersTable = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='reminders'")
+    .get();
+  if (!remindersTable) return;
+
+  const assignmentsTable = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='assignments'")
+    .get();
+
   const pending = db
     .prepare(
       `
@@ -262,7 +311,9 @@ function migrateRemindersToTasks(db) {
     .all();
   if (!pending.length) return;
 
-  const lookupAssignment = db.prepare("SELECT course, title FROM assignments WHERE key = ?");
+  const lookupAssignment = assignmentsTable
+    ? db.prepare("SELECT course, title FROM assignments WHERE key = ?")
+    : null;
   const insertTask = db.prepare(
     `
     INSERT INTO tasks (
@@ -274,9 +325,23 @@ function migrateRemindersToTasks(db) {
       kind,
       auto_cancel_on_resolve,
       auto_planned,
+      recurrence_kind,
+      recurrence_tz,
       created_at
     )
-    VALUES (@assignment_key, @title, @message, @remind_at, 'pending', 'assignment', 1, 0, @created_at)
+    VALUES (
+      @assignment_key,
+      @title,
+      @message,
+      @remind_at,
+      'pending',
+      'assignment',
+      1,
+      0,
+      'none',
+      NULL,
+      @created_at
+    )
   `
   );
 
@@ -293,7 +358,7 @@ function migrateRemindersToTasks(db) {
       db.prepare("DELETE FROM reminders WHERE id = ?").run(reminder.id);
       continue;
     }
-    const assignment = lookupAssignment.get(reminder.assignmentKey);
+    const assignment = lookupAssignment ? lookupAssignment.get(reminder.assignmentKey) : null;
     const title = assignment ? `${assignment.course} - ${assignment.title}` : "Assignment reminder";
     insertTask.run({
       assignment_key: reminder.assignmentKey,
@@ -353,6 +418,15 @@ function runMigrations(db) {
             AND kind = 'assignment'
             AND message LIKE 'Auto reminder for upcoming due date%'
         `);
+      },
+    },
+    {
+      version: 5,
+      name: "task-recurrence-and-reminder-unification",
+      apply: () => {
+        ensureTaskColumns(db);
+        ensureTaskIndexes(db);
+        migrateRemindersToTasks(db);
       },
     },
   ];
@@ -720,7 +794,8 @@ export function findPendingAssignmentTask(db, { key }) {
   return db
     .prepare(
       `
-      SELECT id, remind_at AS remindAt, status, message
+      SELECT id, remind_at AS remindAt, status, message,
+             recurrence_kind AS recurrenceKind, recurrence_tz AS recurrenceTz
       FROM tasks
       WHERE assignment_key = @key AND status = 'pending' AND kind = 'assignment'
       ORDER BY remind_at ASC
@@ -730,11 +805,18 @@ export function findPendingAssignmentTask(db, { key }) {
     .get({ key });
 }
 
-export function createAssignmentTask(db, { key, title, remindAt, message, autoPlanned = false }) {
+export function createAssignmentTask(
+  db,
+  { key, title, remindAt, message, autoPlanned = false, recurrence, recurrenceTz }
+) {
   if (!key) return { ok: false, error: "Assignment key is required." };
   const remindCheck = normalizeRemindAt(remindAt);
   if (!remindCheck.ok) return { ok: false, error: remindCheck.error };
   const remindTime = remindCheck.value;
+  const recurrenceCheck = normalizeRecurrenceKind(recurrence);
+  if (!recurrenceCheck.ok) return { ok: false, error: recurrenceCheck.error };
+  const recurrenceKind = recurrenceCheck.value;
+  const recurrenceZone = normalizeRecurrenceTz(recurrenceTz);
   const taskTitle = String(title || "Assignment reminder").trim() || "Assignment reminder";
   const result = db
     .prepare(
@@ -748,9 +830,23 @@ export function createAssignmentTask(db, { key, title, remindAt, message, autoPl
         kind,
         auto_cancel_on_resolve,
         auto_planned,
+        recurrence_kind,
+        recurrence_tz,
         created_at
       )
-      VALUES (@assignment_key, @title, @message, @remind_at, 'pending', 'assignment', 1, @auto_planned, @created_at)
+      VALUES (
+        @assignment_key,
+        @title,
+        @message,
+        @remind_at,
+        'pending',
+        'assignment',
+        1,
+        @auto_planned,
+        @recurrence_kind,
+        @recurrence_tz,
+        @created_at
+      )
     `
     )
     .run({
@@ -759,10 +855,18 @@ export function createAssignmentTask(db, { key, title, remindAt, message, autoPl
       message: message ? String(message) : null,
       remind_at: remindTime,
       auto_planned: autoPlanned ? 1 : 0,
+      recurrence_kind: recurrenceKind,
+      recurrence_tz: recurrenceZone,
       created_at: nowIso(),
     });
 
-  return { ok: true, id: result.lastInsertRowid, remindAt: remindTime };
+  return {
+    ok: true,
+    id: result.lastInsertRowid,
+    remindAt: remindTime,
+    recurrenceKind,
+    recurrenceTz: recurrenceZone,
+  };
 }
 
 export function findAssignments(db, options = {}) {
@@ -927,10 +1031,39 @@ export function listAssignmentNotes(db, { keys = [], limitPerAssignment = 3 } = 
   return grouped;
 }
 
-export function scheduleReminder(db, { key, title, course, remindAt, message, replaceExisting = true }) {
+function selectAssignmentReminderTask(db, id) {
+  return db
+    .prepare(
+      `
+      SELECT
+        id,
+        assignment_key AS assignmentKey,
+        title,
+        message,
+        remind_at AS remindAt,
+        status,
+        created_at AS createdAt,
+        last_sent_at AS sentAt,
+        recurrence_kind AS recurrenceKind,
+        recurrence_tz AS recurrenceTz
+      FROM tasks
+      WHERE id = ? AND kind = 'assignment'
+    `
+    )
+    .get(id);
+}
+
+export function scheduleReminder(
+  db,
+  { key, title, course, remindAt, message, replaceExisting = true, recurrence, recurrenceTz }
+) {
   const remindCheck = normalizeRemindAt(remindAt);
   if (!remindCheck.ok) return { ok: false, error: remindCheck.error };
   const remindTime = remindCheck.value;
+  const recurrenceCheck = normalizeRecurrenceKind(recurrence);
+  if (!recurrenceCheck.ok) return { ok: false, error: recurrenceCheck.error };
+  const recurrenceKind = recurrenceCheck.value;
+  const recurrenceZone = normalizeRecurrenceTz(recurrenceTz);
   let targetKey = key || null;
   if (!targetKey && title) {
     const matches = findAssignments(db, { title, course });
@@ -952,14 +1085,20 @@ export function scheduleReminder(db, { key, title, course, remindAt, message, re
   if (!existing) {
     return { ok: false, error: "Assignment not found." };
   }
+  const assignment = db
+    .prepare("SELECT course, title, due_date AS dueDate FROM assignments WHERE key = ?")
+    .get(targetKey);
+  const taskTitle = assignment ? `${assignment.course} - ${assignment.title}` : "Assignment reminder";
 
   if (replaceExisting) {
     const existing = db
       .prepare(
         `
         SELECT id
-        FROM reminders
-        WHERE assignment_key = @key AND sent_at IS NULL
+        FROM tasks
+        WHERE assignment_key = @key
+          AND kind = 'assignment'
+          AND status = 'pending'
         ORDER BY id DESC
       `
       )
@@ -969,20 +1108,30 @@ export function scheduleReminder(db, { key, title, course, remindAt, message, re
       const [keep, ...rest] = existing;
       db.prepare(
         `
-        UPDATE reminders
+        UPDATE tasks
         SET remind_at = @remind_at,
-            message = @message
+            message = @message,
+            title = @title,
+            recurrence_kind = @recurrence_kind,
+            recurrence_tz = @recurrence_tz,
+            last_sent_at = NULL,
+            completed_at = NULL,
+            status = 'pending'
         WHERE id = @id
       `
-      ).run({ remind_at: remindTime, message: message || "", id: keep.id });
+      ).run({
+        remind_at: remindTime,
+        message: message || "",
+        title: taskTitle,
+        recurrence_kind: recurrenceKind,
+        recurrence_tz: recurrenceZone,
+        id: keep.id,
+      });
       if (rest.length > 0) {
         const ids = rest.map((row) => row.id);
-        db.prepare(`DELETE FROM reminders WHERE id IN (${ids.map(() => "?").join(",")})`).run(ids);
+        db.prepare(`DELETE FROM tasks WHERE id IN (${ids.map(() => "?").join(",")})`).run(ids);
       }
-
-      const assignment = db
-        .prepare("SELECT course, title, due_date AS dueDate FROM assignments WHERE key = ?")
-        .get(targetKey);
+      const reminder = selectAssignmentReminderTask(db, keep.id);
 
       return {
         ok: true,
@@ -991,6 +1140,7 @@ export function scheduleReminder(db, { key, title, course, remindAt, message, re
         replaced: true,
         deletedDuplicates: rest.length,
         assignment,
+        reminder,
       };
     }
   }
@@ -998,35 +1148,84 @@ export function scheduleReminder(db, { key, title, course, remindAt, message, re
   const result = db
     .prepare(
       `
-      INSERT INTO reminders (assignment_key, remind_at, message, created_at)
-      VALUES (@key, @remind_at, @message, @created_at)
+      INSERT INTO tasks (
+        assignment_key,
+        title,
+        message,
+        remind_at,
+        status,
+        kind,
+        auto_cancel_on_resolve,
+        auto_planned,
+        recurrence_kind,
+        recurrence_tz,
+        created_at
+      )
+      VALUES (
+        @assignment_key,
+        @title,
+        @message,
+        @remind_at,
+        'pending',
+        'assignment',
+        1,
+        0,
+        @recurrence_kind,
+        @recurrence_tz,
+        @created_at
+      )
     `
     )
-    .run({ key: targetKey, remind_at: remindTime, message: message || "", created_at: nowIso() });
+    .run({
+      assignment_key: targetKey,
+      title: taskTitle,
+      remind_at: remindTime,
+      message: message || "",
+      recurrence_kind: recurrenceKind,
+      recurrence_tz: recurrenceZone,
+      created_at: nowIso(),
+    });
 
-  const assignment = db
-    .prepare("SELECT course, title, due_date AS dueDate FROM assignments WHERE key = ?")
-    .get(targetKey);
-
-  return { ok: true, key: targetKey, reminderId: result.lastInsertRowid, assignment };
+  const reminder = selectAssignmentReminderTask(db, result.lastInsertRowid);
+  return {
+    ok: true,
+    key: targetKey,
+    reminderId: result.lastInsertRowid,
+    assignment,
+    reminder,
+  };
 }
 
 export function listReminders(db, { key, status = "pending" } = {}) {
-  const filters = [];
+  const filters = ["kind = 'assignment'"];
   const params = {};
   if (key) {
     filters.push("assignment_key = @key");
     params.key = key;
   }
   if (status !== "all") {
-    filters.push(status === "sent" ? "sent_at IS NOT NULL" : "sent_at IS NULL");
+    if (status === "sent") {
+      filters.push("(status = 'done' OR last_sent_at IS NOT NULL)");
+    } else {
+      filters.push("status = 'pending'");
+    }
   }
   const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
   return db
     .prepare(
       `
-      SELECT id, assignment_key AS assignmentKey, remind_at AS remindAt, message, created_at AS createdAt, sent_at AS sentAt
-      FROM reminders
+      SELECT
+        id,
+        assignment_key AS assignmentKey,
+        title,
+        remind_at AS remindAt,
+        message,
+        created_at AS createdAt,
+        status,
+        last_sent_at AS sentAt,
+        recurrence_kind AS recurrenceKind,
+        recurrence_tz AS recurrenceTz
+      FROM tasks
       ${where}
       ORDER BY remind_at, id
     `
@@ -1034,22 +1233,33 @@ export function listReminders(db, { key, status = "pending" } = {}) {
     .all(params);
 }
 
-export function updateReminder(db, { id, remindAt, message }) {
+export function updateReminder(db, { id, remindAt, message, recurrence, recurrenceTz }) {
   const reminderId = Number(id);
   if (!Number.isFinite(reminderId)) {
     return { ok: false, error: "Reminder id is required." };
   }
   const fields = [];
   const params = { id: reminderId };
-  if (remindAt !== undefined) {
+  if (remindAt !== undefined && remindAt !== null) {
     const remindCheck = normalizeRemindAt(remindAt);
     if (!remindCheck.ok) return { ok: false, error: remindCheck.error };
     fields.push("remind_at = @remind_at");
     params.remind_at = remindCheck.value;
+    fields.push("last_sent_at = NULL");
   }
-  if (message !== undefined) {
+  if (message !== undefined && message !== null) {
     fields.push("message = @message");
     params.message = message ? String(message) : "";
+  }
+  if (recurrence !== undefined && recurrence !== null) {
+    const recurrenceCheck = normalizeRecurrenceKind(recurrence);
+    if (!recurrenceCheck.ok) return { ok: false, error: recurrenceCheck.error };
+    fields.push("recurrence_kind = @recurrence_kind");
+    params.recurrence_kind = recurrenceCheck.value;
+  }
+  if (recurrenceTz !== undefined) {
+    fields.push("recurrence_tz = @recurrence_tz");
+    params.recurrence_tz = normalizeRecurrenceTz(recurrenceTz);
   }
   if (fields.length === 0) {
     return { ok: false, error: "No updates provided." };
@@ -1057,20 +1267,17 @@ export function updateReminder(db, { id, remindAt, message }) {
   const result = db
     .prepare(
       `
-      UPDATE reminders
+      UPDATE tasks
       SET ${fields.join(", ")}
       WHERE id = @id
+        AND kind = 'assignment'
     `
     )
     .run(params);
   if (result.changes === 0) {
     return { ok: false, error: "Reminder not found." };
   }
-  const reminder = db
-    .prepare(
-      "SELECT id, assignment_key AS assignmentKey, remind_at AS remindAt, message, sent_at AS sentAt FROM reminders WHERE id = ?"
-    )
-    .get(reminderId);
+  const reminder = selectAssignmentReminderTask(db, reminderId);
   return { ok: true, reminder };
 }
 
@@ -1079,7 +1286,9 @@ export function deleteReminder(db, { id }) {
   if (!Number.isFinite(reminderId)) {
     return { ok: false, error: "Reminder id is required." };
   }
-  const result = db.prepare("DELETE FROM reminders WHERE id = ?").run(reminderId);
+  const result = db
+    .prepare("DELETE FROM tasks WHERE id = @id AND kind = 'assignment'")
+    .run({ id: reminderId });
   if (result.changes === 0) {
     return { ok: false, error: "Reminder not found." };
   }
@@ -1088,15 +1297,16 @@ export function deleteReminder(db, { id }) {
 
 export function dedupePendingReminders(db, { key } = {}) {
   const params = {};
-  const where = key ? "WHERE assignment_key = @key" : "";
   if (key) params.key = key;
+  const keyFilter = key ? "AND assignment_key = @key" : "";
   const groups = db
     .prepare(
       `
       SELECT assignment_key AS assignmentKey, COUNT(*) AS count
-      FROM reminders
-      WHERE sent_at IS NULL
-      ${key ? "AND assignment_key = @key" : ""}
+      FROM tasks
+      WHERE kind = 'assignment'
+        AND status = 'pending'
+        ${keyFilter}
       GROUP BY assignment_key
       HAVING COUNT(*) > 1
     `
@@ -1109,16 +1319,18 @@ export function dedupePendingReminders(db, { key } = {}) {
       .prepare(
         `
         SELECT id
-        FROM reminders
-        WHERE assignment_key = @key AND sent_at IS NULL
+        FROM tasks
+        WHERE assignment_key = @key
+          AND kind = 'assignment'
+          AND status = 'pending'
         ORDER BY created_at DESC, id DESC
       `
       )
       .all({ key: group.assignmentKey });
-    const [keep, ...rest] = rows;
+    const [, ...rest] = rows;
     if (rest.length > 0) {
       const ids = rest.map((row) => row.id);
-      const res = db.prepare(`DELETE FROM reminders WHERE id IN (${ids.map(() => "?").join(",")})`).run(ids);
+      const res = db.prepare(`DELETE FROM tasks WHERE id IN (${ids.map(() => "?").join(",")})`).run(ids);
       removed += res.changes || 0;
     }
   }
@@ -1157,7 +1369,7 @@ export function clearManualStatuses(db, keys = []) {
   return { ok: true, cleared: result.changes || 0 };
 }
 
-export function createTask(db, { title, remindAt, message }) {
+export function createTask(db, { title, remindAt, message, recurrence, recurrenceTz }) {
   const taskTitle = String(title || "").trim();
   if (!taskTitle) {
     return { ok: false, error: "Task title is required." };
@@ -1165,22 +1377,51 @@ export function createTask(db, { title, remindAt, message }) {
   const remindCheck = normalizeRemindAt(remindAt);
   if (!remindCheck.ok) return { ok: false, error: remindCheck.error };
   const remindTime = remindCheck.value;
+  const recurrenceCheck = normalizeRecurrenceKind(recurrence);
+  if (!recurrenceCheck.ok) return { ok: false, error: recurrenceCheck.error };
+  const recurrenceKind = recurrenceCheck.value;
+  const recurrenceZone = normalizeRecurrenceTz(recurrenceTz);
 
   const result = db
     .prepare(
       `
-      INSERT INTO tasks (title, message, remind_at, status, created_at)
-      VALUES (@title, @message, @remind_at, 'pending', @created_at)
+      INSERT INTO tasks (
+        title,
+        message,
+        remind_at,
+        status,
+        recurrence_kind,
+        recurrence_tz,
+        created_at
+      )
+      VALUES (
+        @title,
+        @message,
+        @remind_at,
+        'pending',
+        @recurrence_kind,
+        @recurrence_tz,
+        @created_at
+      )
     `
     )
     .run({
       title: taskTitle,
       message: message ? String(message) : null,
       remind_at: remindTime,
+      recurrence_kind: recurrenceKind,
+      recurrence_tz: recurrenceZone,
       created_at: nowIso(),
     });
 
-  return { ok: true, id: result.lastInsertRowid, title: taskTitle, remindAt: remindTime };
+  return {
+    ok: true,
+    id: result.lastInsertRowid,
+    title: taskTitle,
+    remindAt: remindTime,
+    recurrenceKind,
+    recurrenceTz: recurrenceZone,
+  };
 }
 
 export function listTasks(db, options = {}) {
@@ -1208,9 +1449,23 @@ export function listTasks(db, options = {}) {
   return db
     .prepare(
       `
-      SELECT id, title, message, remind_at AS remindAt, status, created_at AS createdAt,
-             completed_at AS completedAt, last_sent_at AS lastSentAt, rolled_over_at AS rolledOverAt,
-             roll_count AS rollCount
+      SELECT
+        id,
+        assignment_key AS assignmentKey,
+        title,
+        message,
+        remind_at AS remindAt,
+        status,
+        kind,
+        auto_cancel_on_resolve AS autoCancelOnResolve,
+        auto_planned AS autoPlanned,
+        recurrence_kind AS recurrenceKind,
+        recurrence_tz AS recurrenceTz,
+        created_at AS createdAt,
+        completed_at AS completedAt,
+        last_sent_at AS lastSentAt,
+        rolled_over_at AS rolledOverAt,
+        roll_count AS rollCount
       FROM tasks
       ${where}
       ORDER BY remind_at, id
@@ -1230,51 +1485,78 @@ export function updateTaskStatus(db, { id, status }) {
   }
   const finalStatus = normalized === "done" || normalized === "completed" ? "done" : "pending";
   const completedAt = finalStatus === "done" ? nowIso() : null;
-
-  const result = db
-    .prepare(
-      `
+  const query =
+    finalStatus === "pending"
+      ? `
+      UPDATE tasks
+      SET status = @status,
+          completed_at = @completed_at,
+          last_sent_at = NULL
+      WHERE id = @id
+    `
+      : `
       UPDATE tasks
       SET status = @status,
           completed_at = @completed_at
       WHERE id = @id
-    `
-    )
-    .run({ status: finalStatus, completed_at: completedAt, id: taskId });
+    `;
+
+  const result = db.prepare(query).run({ status: finalStatus, completed_at: completedAt, id: taskId });
 
   if (result.changes === 0) {
     return { ok: false, error: "Task not found." };
   }
 
   const task = db
-    .prepare("SELECT id, title, remind_at AS remindAt, status FROM tasks WHERE id = ?")
+    .prepare(
+      `SELECT
+         id,
+         title,
+         remind_at AS remindAt,
+         status,
+         recurrence_kind AS recurrenceKind,
+         recurrence_tz AS recurrenceTz
+       FROM tasks
+       WHERE id = ?`
+    )
     .get(taskId);
 
   return { ok: true, task };
 }
 
-export function updateTask(db, { id, title, remindAt, message }) {
+export function updateTask(db, { id, title, remindAt, message, recurrence, recurrenceTz }) {
   const taskId = Number(id);
   if (!Number.isFinite(taskId)) {
     return { ok: false, error: "Task id is required." };
   }
   const fields = [];
   const params = { id: taskId };
-  if (title !== undefined) {
+  if (title !== undefined && title !== null) {
     const taskTitle = String(title || "").trim();
     if (!taskTitle) return { ok: false, error: "Task title is required." };
     fields.push("title = @title");
     params.title = taskTitle;
   }
-  if (remindAt !== undefined) {
+  if (remindAt !== undefined && remindAt !== null) {
     const remindCheck = normalizeRemindAt(remindAt);
     if (!remindCheck.ok) return { ok: false, error: remindCheck.error };
     fields.push("remind_at = @remind_at");
     params.remind_at = remindCheck.value;
+    fields.push("last_sent_at = NULL");
   }
-  if (message !== undefined) {
+  if (message !== undefined && message !== null) {
     fields.push("message = @message");
     params.message = message ? String(message) : null;
+  }
+  if (recurrence !== undefined && recurrence !== null) {
+    const recurrenceCheck = normalizeRecurrenceKind(recurrence);
+    if (!recurrenceCheck.ok) return { ok: false, error: recurrenceCheck.error };
+    fields.push("recurrence_kind = @recurrence_kind");
+    params.recurrence_kind = recurrenceCheck.value;
+  }
+  if (recurrenceTz !== undefined) {
+    fields.push("recurrence_tz = @recurrence_tz");
+    params.recurrence_tz = normalizeRecurrenceTz(recurrenceTz);
   }
 
   if (fields.length === 0) {
@@ -1296,7 +1578,18 @@ export function updateTask(db, { id, title, remindAt, message }) {
   }
 
   const task = db
-    .prepare("SELECT id, title, remind_at AS remindAt, status, message FROM tasks WHERE id = ?")
+    .prepare(
+      `SELECT
+         id,
+         title,
+         remind_at AS remindAt,
+         status,
+         message,
+         recurrence_kind AS recurrenceKind,
+         recurrence_tz AS recurrenceTz
+       FROM tasks
+       WHERE id = ?`
+    )
     .get(taskId);
 
   return { ok: true, task };
@@ -1318,11 +1611,21 @@ export function listDueTasks(db, nowIsoValue) {
   return db
     .prepare(
       `
-      SELECT id, title, message, remind_at AS remindAt, status, last_sent_at AS lastSentAt
+      SELECT
+        id,
+        assignment_key AS assignmentKey,
+        title,
+        message,
+        remind_at AS remindAt,
+        status,
+        kind,
+        recurrence_kind AS recurrenceKind,
+        recurrence_tz AS recurrenceTz,
+        last_sent_at AS lastSentAt
       FROM tasks
       WHERE status = 'pending'
-        AND remind_at <= @now
-        AND (last_sent_at IS NULL OR last_sent_at < remind_at)
+        AND datetime(remind_at) <= datetime(@now)
+        AND (last_sent_at IS NULL OR datetime(last_sent_at) < datetime(remind_at))
       ORDER BY remind_at, id
     `
     )

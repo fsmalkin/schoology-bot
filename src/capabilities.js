@@ -24,10 +24,10 @@ const TOOL_CAPABILITY_REGISTRY = {
     requires: ["assignment key or title", "note text"],
   },
   schedule_reminder: {
-    summary: "Create or replace one assignment reminder at a specific time.",
+    summary: "Create or replace one assignment reminder (one-time or recurring).",
     supports: ["write_assignment_reminder"],
-    limitations: ["one-time reminders only"],
-    requires: ["assignment key or title", "remindAt"],
+    limitations: ["Recurring cadence limited to daily, weekdays, weekly"],
+    requires: ["assignment key or title"],
   },
   list_assignment_reminders: {
     summary: "List reminders for one assignment.",
@@ -50,10 +50,10 @@ const TOOL_CAPABILITY_REGISTRY = {
     limitations: ["does not change grades or submissions in Schoology"],
   },
   create_task: {
-    summary: "Create one standalone reminder/task.",
+    summary: "Create one standalone reminder/task (one-time or recurring).",
     supports: ["write_task"],
-    limitations: ["one-time reminders only"],
-    requires: ["title", "remindAt"],
+    limitations: ["Recurring cadence limited to daily, weekdays, weekly"],
+    requires: ["title"],
   },
   list_tasks: {
     summary: "List standalone tasks/reminders with optional date filters.",
@@ -90,9 +90,10 @@ const TOOL_CAPABILITY_REGISTRY = {
 
 const GLOBAL_LIMITS = [
   {
-    id: "recurring_reminders",
-    constraint: "Recurring reminders are not supported.",
-    fallback: "Offer a one-time reminder and offer to adjust later.",
+    id: "recurring_cadence_scope",
+    constraint: "Recurring reminders support only daily, weekdays, and weekly cadence.",
+    fallback:
+      "If a monthly/custom cadence is requested, use weekly fallback and include a quick correction option.",
   },
   {
     id: "schoology_writeback",

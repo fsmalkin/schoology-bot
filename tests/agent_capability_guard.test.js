@@ -75,7 +75,7 @@ async function cleanupDb() {
   throw new Error(`Failed to delete ${dbPath}`);
 }
 
-test("capability guard blocks unsupported recurring reminder requests", async () => {
+test("capability guard blocks unsupported monthly recurrence requests", async () => {
   process.env.OPENAI_API_KEY = "test";
   process.env.OPENAI_MODEL = "gpt-5.2";
   process.env.OPENAI_MAX_OUTPUT_TOKENS = "200";
@@ -96,20 +96,20 @@ test("capability guard blocks unsupported recurring reminder requests", async ()
       "g1",
       JSON.stringify({
         decision: "unsupported",
-        reason: "Recurring reminders not supported",
+        reason: "Monthly cadence unsupported",
         message:
-          "I cannot set recurring reminders yet. I can set a one-time reminder now and adjust it anytime.",
+          "Monthly recurrence is not supported. I can set a weekly reminder now and adjust it anytime.",
       })
     ),
   ]);
 
   const reply = await runAgentMessage({
     chatId: `capability-chat-${Date.now()}`,
-    text: "Set a recurring reminder every weekday at 7am",
+    text: "Set a monthly reminder at 7am",
     clientOverride: mock,
   });
 
-  assert.match(reply, /cannot set recurring reminders/i);
+  assert.match(reply, /monthly recurrence is not supported/i);
   assert.equal(mock.calls.length, 1);
   closeDb();
   await cleanupDb();

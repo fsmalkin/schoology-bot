@@ -1,12 +1,25 @@
-﻿import test from "node:test";
+import test from "node:test";
 import assert from "node:assert/strict";
-import { createDb, scheduleReminder, listReminders, updateReminder, deleteReminder, dedupePendingReminders } from "../src/db.js";
+import {
+  createDb,
+  scheduleReminder,
+  listReminders,
+  updateReminder,
+  deleteReminder,
+  dedupePendingReminders,
+} from "../src/db.js";
 
 function seedAssignment(db) {
   db.prepare(
     `
-    INSERT INTO assignments (key, course, title, due_date, status, score, url, raw_text, first_seen_at, last_seen_at, last_missing_at, resolved_at, is_missing)
-    VALUES ('a1', 'Algebra', 'Homework 1', '2026-02-01', 'Missing', '', '', '', '2026-02-01T00:00:00Z', '2026-02-01T00:00:00Z', '2026-02-01T00:00:00Z', NULL, 1)
+    INSERT INTO assignments (
+      key, course, title, due_date, status, score, url, raw_text,
+      first_seen_at, last_seen_at, last_missing_at, resolved_at, is_missing
+    )
+    VALUES (
+      'a1', 'Algebra', 'Homework 1', '2026-02-01', 'Missing', '', '', '',
+      '2026-02-01T00:00:00Z', '2026-02-01T00:00:00Z', '2026-02-01T00:00:00Z', NULL, 1
+    )
   `
   ).run();
 }
@@ -15,16 +28,46 @@ test("scheduleReminder replaces existing pending reminders", () => {
   const db = createDb(":memory:");
   seedAssignment(db);
 
-  const first = scheduleReminder(db, { key: "a1", remindAt: "2026-02-03T20:30:00Z", message: "first" });
+  const first = scheduleReminder(db, {
+    key: "a1",
+    remindAt: "2026-02-03T20:30:00Z",
+    message: "first",
+  });
   assert.equal(first.ok, true);
 
-  const second = scheduleReminder(db, { key: "a1", remindAt: "2026-02-03T21:00:00Z", message: "second" });
+  const second = scheduleReminder(db, {
+    key: "a1",
+    remindAt: "2026-02-03T21:00:00Z",
+    message: "second",
+  });
   assert.equal(second.ok, true);
   assert.equal(second.replaced, true);
 
   const reminders = listReminders(db, { key: "a1", status: "pending" });
   assert.equal(reminders.length, 1);
   assert.equal(reminders[0].remindAt, "2026-02-03T21:00:00Z");
+});
+
+test("assignment reminder recurrence can be created and updated", () => {
+  const db = createDb(":memory:");
+  seedAssignment(db);
+
+  const created = scheduleReminder(db, {
+    key: "a1",
+    remindAt: "2026-02-03T20:30:00Z",
+    recurrence: "weekdays",
+    recurrenceTz: "America/New_York",
+  });
+  assert.equal(created.ok, true);
+  assert.equal(created.reminder.recurrenceKind, "weekdays");
+  assert.equal(created.reminder.recurrenceTz, "America/New_York");
+
+  const updated = updateReminder(db, {
+    id: created.reminderId,
+    recurrence: "daily",
+  });
+  assert.equal(updated.ok, true);
+  assert.equal(updated.reminder.recurrenceKind, "daily");
 });
 
 test("update and delete reminders", () => {

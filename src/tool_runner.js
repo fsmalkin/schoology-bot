@@ -12,6 +12,7 @@ import {
   deleteTask,
   updateAssignmentStatus,
   updateAssignmentStatuses,
+  normalizeRecurrenceKind,
   updateReminder,
   updateTask,
   updateTaskStatus,
@@ -24,8 +25,11 @@ import {
   formatDateTime,
   formatDateTimeLabel,
   formatIsoWithOffset,
+  getLocalDateTimeParts,
+  makeDateInZoneParts,
   parseReminderTime,
 } from "./time.js";
+import { applyReminderAssumptions } from "./reminder_assumptions.js";
 
 export const TOOL_NAMES = [
   "list_assignments",
@@ -72,6 +76,16 @@ export function applyManualStatusPolicy(rows) {
 }
 
 function addLocalReminderFields(item, timeZone) {
+  const recurrenceCheck = normalizeRecurrenceKind(item?.recurrenceKind, { allowNull: true });
+  const recurrenceKind = recurrenceCheck.ok ? recurrenceCheck.value || "none" : "none";
+  const recurrenceLabel =
+    recurrenceKind === "daily"
+      ? "Daily"
+      : recurrenceKind === "weekdays"
+      ? "Weekdays"
+      : recurrenceKind === "weekly"
+      ? "Weekly"
+      : "One-time";
   if (!item || !item.remindAt) {
     return {
       ...item,
@@ -79,6 +93,8 @@ function addLocalReminderFields(item, timeZone) {
       remindAtLocal: null,
       remindAtLabel: null,
       remindAtTz: timeZone,
+      recurrenceKind,
+      recurrenceLabel,
     };
   }
   const parsed = new Date(item.remindAt);
@@ -89,6 +105,8 @@ function addLocalReminderFields(item, timeZone) {
       remindAtLocal: null,
       remindAtLabel: null,
       remindAtTz: timeZone,
+      recurrenceKind,
+      recurrenceLabel,
     };
   }
   const localIso = formatIsoWithOffset(parsed, timeZone);
@@ -100,6 +118,8 @@ function addLocalReminderFields(item, timeZone) {
     remindAtLocal: formatDateTime(parsed, timeZone),
     remindAtLabel: formatDateTimeLabel(parsed, timeZone),
     remindAtTz: timeZone,
+    recurrenceKind,
+    recurrenceLabel,
   };
 }
 
@@ -108,23 +128,273 @@ function addLocalReminderFieldsToList(items, timeZone) {
   return items.map((item) => addLocalReminderFields(item, timeZone));
 }
 
-function normalizeReminderArgs(args, timeZone) {
-  const raw = args?.remindAt;
-  if (raw === undefined || raw === null || String(raw).trim() === "") {
-    return { args, assumption: null };
+function assumptionFromTimeParse(note, remindAt, timeZone) {
+  const parsed = new Date(remindAt);
+  if (!Number.isFinite(parsed.getTime())) {
+    return {
+      field: "remindAt",
+      kind: "time_parse",
+      reason: note,
+      value: remindAt,
+      valueLabel: remindAt,
+    };
   }
-  const parsed = parseReminderTime(raw, timeZone);
-  if (!parsed.ok || !parsed.date) {
-    return { args, assumption: null };
-  }
-  const iso = formatIsoWithOffset(parsed.date, timeZone);
   return {
-    args: { ...args, remindAt: iso },
-    assumption: parsed.assumption || null,
+    field: "remindAt",
+    kind: "time_parse",
+    reason: note,
+    value: remindAt,
+    valueLabel: formatDateTimeLabel(parsed, timeZone),
   };
 }
 
-export async function runToolByName(db, toolName, args) {
+function hasDateCue(text) {
+  const value = String(text || "").trim();
+  if (!value) return false;
+  return (
+    /\b(today|tomorrow|tonight|next|this)\b/i.test(value) ||
+    /\b(mon(day)?|tue(s(day)?)?|wed(nesday)?|thu(rs(day)?)?|fri(day)?|sat(urday)?|sun(day)?)\b/i.test(value) ||
+    /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)(uary|ruary|ch|il|e|y|ust|tember|ober|ember)?\b/i.test(
+      value
+    ) ||
+    /\b\d{4}-\d{2}-\d{2}\b/.test(value) ||
+    /\b\d{1,2}[/-]\d{1,2}([/-]\d{2,4})?\b/.test(value)
+  );
+}
+
+function hasValue(value) {
+  return value !== undefined && value !== null && String(value).trim() !== "";
+}
+
+function combineDateWithDefaultTime({ dateLike, timeLike, timeZone }) {
+  const date = new Date(dateLike);
+  const time = new Date(timeLike);
+  if (!Number.isFinite(date.getTime()) || !Number.isFinite(time.getTime())) return null;
+  const dateParts = getLocalDateTimeParts(date, timeZone);
+  const timeParts = getLocalDateTimeParts(time, timeZone);
+  if (!dateParts || !timeParts) return null;
+  return makeDateInZoneParts(
+    {
+      year: dateParts.year,
+      month: dateParts.month,
+      day: dateParts.day,
+      hour: timeParts.hour,
+      minute: timeParts.minute,
+    },
+    timeZone
+  );
+}
+
+function normalizeReminderArgs(args, timeZone, options = {}) {
+  const nextArgs = args && typeof args === "object" ? { ...args } : {};
+  const assumptions = [];
+  const warnings = [];
+  const userText = String(options?.userText || "");
+
+  const hasExplicitTimeInUserText = (() => {
+    if (!userText.trim()) return false;
+    if (
+      /\b\d{1,2}(:\d{2})?\s*(am|pm)\b/i.test(userText) ||
+      /\bat\s+\d{1,2}(:\d{2})?\b/i.test(userText) ||
+      /\b(noon|midnight)\b/i.test(userText)
+    ) {
+      return true;
+    }
+    return false;
+  })();
+
+  const inferred = applyReminderAssumptions({
+    args: nextArgs,
+    userText,
+    timeZone,
+    now: options?.now || new Date(),
+    allowCreateDefaults: options?.allowCreateDefaults === true,
+  });
+  if (inferred?.error) {
+    return {
+      args: inferred.args || nextArgs,
+      assumptions,
+      warnings,
+      assumption: null,
+      error: inferred.error,
+    };
+  }
+  if (Array.isArray(inferred?.assumptions) && inferred.assumptions.length > 0) {
+    assumptions.push(...inferred.assumptions);
+  }
+  if (Array.isArray(inferred?.warnings) && inferred.warnings.length > 0) {
+    warnings.push(...inferred.warnings);
+  }
+  const mergedArgs = inferred?.args && typeof inferred.args === "object" ? inferred.args : nextArgs;
+  const recurrenceCheck = normalizeRecurrenceKind(mergedArgs?.recurrence, { allowNull: true });
+  const recurrenceKind = recurrenceCheck.ok ? recurrenceCheck.value || "none" : "none";
+
+  if (
+    options?.allowCreateDefaults === true &&
+    recurrenceKind !== "none" &&
+    !hasExplicitTimeInUserText &&
+    mergedArgs?.remindAt !== undefined &&
+    mergedArgs?.remindAt !== null &&
+    String(mergedArgs.remindAt).trim() !== ""
+  ) {
+    const originalRemindAt = String(mergedArgs.remindAt);
+    const originalParsed = parseReminderTime(originalRemindAt, timeZone, options?.now || new Date());
+    const shouldPreserveDate =
+      hasDateCue(originalRemindAt) &&
+      originalParsed?.ok === true &&
+      originalParsed?.date instanceof Date &&
+      Number.isFinite(originalParsed.date.getTime());
+
+    mergedArgs.remindAt = null;
+    const fallbackAssumed = applyReminderAssumptions({
+      args: mergedArgs,
+      userText,
+      timeZone,
+      now: options?.now || new Date(),
+      allowCreateDefaults: true,
+    });
+    if (fallbackAssumed?.error) {
+      return {
+        args: mergedArgs,
+        assumptions,
+        warnings,
+        assumption: assumptions[0]?.reason || null,
+        error: fallbackAssumed.error,
+      };
+    }
+    if (fallbackAssumed?.args && typeof fallbackAssumed.args === "object") {
+      Object.assign(mergedArgs, fallbackAssumed.args);
+    }
+
+    if (shouldPreserveDate && hasValue(mergedArgs.remindAt)) {
+      const preserved = combineDateWithDefaultTime({
+        dateLike: originalParsed.date,
+        timeLike: mergedArgs.remindAt,
+        timeZone,
+      });
+      if (preserved && Number.isFinite(preserved.getTime())) {
+        mergedArgs.remindAt = formatIsoWithOffset(preserved, timeZone);
+      }
+    }
+
+    if (Array.isArray(fallbackAssumed?.assumptions) && fallbackAssumed.assumptions.length > 0) {
+      const adjustedAssumptions = fallbackAssumed.assumptions.map((entry) => {
+        if (
+          entry &&
+          typeof entry === "object" &&
+          entry.field === "remindAt" &&
+          entry.kind === "default_time" &&
+          hasValue(mergedArgs.remindAt)
+        ) {
+          const parsedValue = new Date(mergedArgs.remindAt);
+          if (Number.isFinite(parsedValue.getTime())) {
+            return {
+              ...entry,
+              value: mergedArgs.remindAt,
+              valueLabel: formatDateTimeLabel(parsedValue, timeZone),
+            };
+          }
+        }
+        return entry;
+      });
+      assumptions.push(...adjustedAssumptions);
+    }
+    if (Array.isArray(fallbackAssumed?.warnings) && fallbackAssumed.warnings.length > 0) {
+      warnings.push(...fallbackAssumed.warnings);
+    }
+  }
+
+  const raw = mergedArgs?.remindAt;
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    const recurrenceRaw = mergedArgs?.recurrence;
+    if (recurrenceRaw !== undefined && recurrenceRaw !== null && String(recurrenceRaw).trim() !== "") {
+      const recurrence = normalizeRecurrenceKind(recurrenceRaw);
+      if (recurrence.ok) mergedArgs.recurrence = recurrence.value;
+    }
+    return {
+      args: mergedArgs,
+      assumption: assumptions[0]?.reason || null,
+      assumptions,
+      warnings,
+      error: null,
+    };
+  }
+
+  const parsed = parseReminderTime(raw, timeZone);
+  let assumption = assumptions[0]?.reason || null;
+  if (parsed.ok && parsed.date) {
+    mergedArgs.remindAt = formatIsoWithOffset(parsed.date, timeZone);
+    if (parsed.assumption) {
+      assumptions.push(assumptionFromTimeParse(parsed.assumption, mergedArgs.remindAt, timeZone));
+      assumption = parsed.assumption;
+    }
+  } else if (!parsed.ok) {
+    return {
+      args: mergedArgs,
+      assumption,
+      assumptions,
+      warnings,
+      error: parsed.error || "Reminder time is invalid.",
+    };
+  }
+
+  const recurrenceRaw = mergedArgs?.recurrence;
+  if (recurrenceRaw !== undefined && recurrenceRaw !== null && String(recurrenceRaw).trim() !== "") {
+    const recurrence = normalizeRecurrenceKind(recurrenceRaw);
+    if (recurrence.ok) {
+      mergedArgs.recurrence = recurrence.value;
+    } else {
+      return {
+        args: mergedArgs,
+        assumption,
+        assumptions,
+        warnings,
+        error: recurrence.error,
+      };
+    }
+  }
+
+  return {
+    args: mergedArgs,
+    assumption,
+    assumptions,
+    warnings,
+    error: null,
+  };
+}
+
+function attachAssumptions(result, normalized) {
+  if (!result || !normalized) return result;
+  const assumptions = Array.isArray(normalized.assumptions) ? normalized.assumptions : [];
+  const warnings = Array.isArray(normalized.warnings) ? normalized.warnings : [];
+  if (assumptions.length > 0) {
+    result.assumptions = assumptions;
+    if (!result.assumption && assumptions[0]?.reason) {
+      result.assumption = assumptions[0].reason;
+    }
+  } else if (normalized.assumption) {
+    result.assumption = normalized.assumption;
+  }
+  if (warnings.length > 0) {
+    result.warnings = warnings;
+  }
+  return result;
+}
+
+function enrichSingleReminderResult(result, reminderLike, timeZone) {
+  const enriched = addLocalReminderFields(reminderLike, timeZone);
+  result.reminder = enriched;
+  result.remindAt = enriched.remindAt;
+  result.remindAtUtc = enriched.remindAtUtc;
+  result.remindAtLocal = enriched.remindAtLocal;
+  result.remindAtLabel = enriched.remindAtLabel;
+  result.remindAtTz = enriched.remindAtTz;
+  result.recurrenceKind = enriched.recurrenceKind;
+  result.recurrenceLabel = enriched.recurrenceLabel;
+  return result;
+}
+
+export async function runToolByName(db, toolName, args, context = {}) {
   const config = getConfig();
   const timeZone = config?.schedule?.timezone || "America/New_York";
   switch (toolName) {
@@ -140,23 +410,25 @@ export async function runToolByName(db, toolName, args) {
       return addAssignmentNote(db, args);
     case "schedule_reminder":
       {
-        const normalized = normalizeReminderArgs(args, timeZone);
+        const normalized = normalizeReminderArgs(args, timeZone, {
+          userText: context?.userText || "",
+          allowCreateDefaults: true,
+        });
+        if (normalized.error) {
+          return attachAssumptions({ ok: false, error: normalized.error }, normalized);
+        }
         const result = scheduleReminder(db, normalized.args);
-        if (result?.ok && normalized.args?.remindAt) {
-          const enriched = addLocalReminderFields(
-            { remindAt: normalized.args.remindAt },
+        if (result?.ok) {
+          enrichSingleReminderResult(
+            result,
+            result?.reminder || {
+              remindAt: normalized.args?.remindAt,
+              recurrenceKind: normalized.args?.recurrence,
+            },
             timeZone
           );
-          result.remindAt = enriched.remindAt;
-          result.remindAtUtc = enriched.remindAtUtc;
-          result.remindAtLocal = enriched.remindAtLocal;
-          result.remindAtLabel = enriched.remindAtLabel;
-          result.remindAtTz = enriched.remindAtTz;
         }
-        if (normalized.assumption) {
-          result.assumption = normalized.assumption;
-        }
-        return result;
+        return attachAssumptions(result, normalized);
       }
     case "list_assignment_reminders":
       return {
@@ -166,40 +438,56 @@ export async function runToolByName(db, toolName, args) {
       };
     case "update_assignment_reminder":
       {
-        const normalized = normalizeReminderArgs(args, timeZone);
+        const normalized = normalizeReminderArgs(args, timeZone, {
+          userText: context?.userText || "",
+          allowCreateDefaults: false,
+        });
+        if (normalized.error) {
+          return attachAssumptions({ ok: false, error: normalized.error }, normalized);
+        }
         const result = updateReminder(db, normalized.args);
         if (result?.ok && result.reminder) {
           result.reminder = addLocalReminderFields(result.reminder, timeZone);
+          result.recurrenceKind = result.reminder.recurrenceKind;
+          result.recurrenceLabel = result.reminder.recurrenceLabel;
         }
-        if (normalized.assumption) {
-          result.assumption = normalized.assumption;
-        }
-        return result;
+        return attachAssumptions(result, normalized);
       }
     case "delete_assignment_reminder":
       return deleteReminder(db, args);
     case "create_task":
       {
-        const normalized = normalizeReminderArgs(args, timeZone);
+        const normalized = normalizeReminderArgs(args, timeZone, {
+          userText: context?.userText || "",
+          allowCreateDefaults: true,
+        });
+        if (normalized.error) {
+          return attachAssumptions({ ok: false, error: normalized.error }, normalized);
+        }
         const result = createTask(db, normalized.args);
         if (result?.ok && result.remindAt) {
           const enriched = addLocalReminderFields(
-            { remindAt: result.remindAt },
+            {
+              remindAt: result.remindAt,
+              recurrenceKind: result.recurrenceKind || normalized.args?.recurrence,
+            },
             timeZone
           );
-          return {
+          return attachAssumptions(
+            {
             ...result,
             remindAt: enriched.remindAt,
             remindAtUtc: enriched.remindAtUtc,
             remindAtLocal: enriched.remindAtLocal,
             remindAtLabel: enriched.remindAtLabel,
             remindAtTz: enriched.remindAtTz,
-          };
+            recurrenceKind: enriched.recurrenceKind,
+            recurrenceLabel: enriched.recurrenceLabel,
+            },
+            normalized
+          );
         }
-        if (normalized.assumption) {
-          result.assumption = normalized.assumption;
-        }
-        return result;
+        return attachAssumptions(result, normalized);
       }
     case "list_tasks":
       return { ok: true, timeZone, tasks: addLocalReminderFieldsToList(listTasks(db, args), timeZone) };
@@ -208,20 +496,27 @@ export async function runToolByName(db, toolName, args) {
         const result = updateTaskStatus(db, args);
         if (result?.ok && result.task) {
           result.task = addLocalReminderFields(result.task, timeZone);
+          result.recurrenceKind = result.task.recurrenceKind;
+          result.recurrenceLabel = result.task.recurrenceLabel;
         }
         return result;
       }
     case "update_task":
       {
-        const normalized = normalizeReminderArgs(args, timeZone);
+        const normalized = normalizeReminderArgs(args, timeZone, {
+          userText: context?.userText || "",
+          allowCreateDefaults: false,
+        });
+        if (normalized.error) {
+          return attachAssumptions({ ok: false, error: normalized.error }, normalized);
+        }
         const result = updateTask(db, normalized.args);
         if (result?.ok && result.task) {
           result.task = addLocalReminderFields(result.task, timeZone);
+          result.recurrenceKind = result.task.recurrenceKind;
+          result.recurrenceLabel = result.task.recurrenceLabel;
         }
-        if (normalized.assumption) {
-          result.assumption = normalized.assumption;
-        }
-        return result;
+        return attachAssumptions(result, normalized);
       }
     case "delete_task":
       return deleteTask(db, args);

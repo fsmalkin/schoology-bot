@@ -1,6 +1,16 @@
-﻿import test from "node:test";
+import test from "node:test";
 import assert from "node:assert/strict";
-import { createDb, createTask, listTasks, updateTaskStatus, updateTask, deleteTask, listDueTasks, markTaskReminderSent } from "../src/db.js";
+import {
+  createDb,
+  createTask,
+  listTasks,
+  updateTaskStatus,
+  updateTask,
+  deleteTask,
+  listDueTasks,
+  markTaskReminderSent,
+} from "../src/db.js";
+import { computeNextReminderTime } from "../src/tasks.js";
 
 function newDb() {
   return createDb(":memory:");
@@ -15,7 +25,11 @@ test("tasks CRUD", () => {
   assert.equal(all.length, 1);
   assert.equal(all[0].title, "Ask a friend");
 
-  const updated = updateTask(db, { id: created.id, title: "Ask a friend to call", remindAt: "2026-02-04T21:00:00Z" });
+  const updated = updateTask(db, {
+    id: created.id,
+    title: "Ask a friend to call",
+    remindAt: "2026-02-04T21:00:00Z",
+  });
   assert.equal(updated.ok, true);
   assert.equal(updated.task.title, "Ask a friend to call");
 
@@ -52,4 +66,51 @@ test("createTask requires a valid reminder time", () => {
   const invalid = createTask(db, { title: "Bad time", remindAt: "tomorrow at 4pl" });
   assert.equal(invalid.ok, false);
   assert.match(invalid.error, /Reminder time is invalid/i);
+});
+
+test("tasks support recurrence fields", () => {
+  const db = newDb();
+  const created = createTask(db, {
+    title: "Daily check",
+    remindAt: "2026-03-02T12:00:00Z",
+    recurrence: "daily",
+    recurrenceTz: "America/New_York",
+  });
+  assert.equal(created.ok, true);
+  assert.equal(created.recurrenceKind, "daily");
+  assert.equal(created.recurrenceTz, "America/New_York");
+  const row = listTasks(db, { status: "all" })[0];
+  assert.equal(row.recurrenceKind, "daily");
+  assert.equal(row.recurrenceTz, "America/New_York");
+});
+
+test("computeNextReminderTime skips weekends for weekday recurrence", () => {
+  const task = {
+    remindAt: "2026-03-06T14:00:00Z",
+    recurrenceKind: "weekdays",
+    recurrenceTz: "America/New_York",
+  };
+  const next = computeNextReminderTime(task, "America/New_York");
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+  }).format(next);
+  assert.equal(weekday, "Mon");
+});
+
+test("computeNextReminderTime preserves wall-clock hour across DST for weekly recurrence", () => {
+  const task = {
+    remindAt: "2026-03-01T13:00:00Z",
+    recurrenceKind: "weekly",
+    recurrenceTz: "America/New_York",
+  };
+  const next = computeNextReminderTime(task, "America/New_York");
+  const localHm = (value) =>
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(new Date(value));
+  assert.equal(localHm(task.remindAt), localHm(next.toISOString()));
 });
