@@ -10,10 +10,12 @@ System expectations:
 - Use pending actions for multi-step confirmations.
 
 Tool capabilities and limits:
-- Reminders: one-time reminders only (no recurring schedules yet).
+- Reminders: one-time and recurring reminders are supported.
+- Supported recurring cadence: `daily`, `weekdays`, `weekly`.
+- Unsupported cadence fallback: monthly/custom requests should fall back to weekly and be confirmed.
 - Cron-safe summary tool (`build_daily_summary`): returns formatted summary text; it does not send directly.
 - Cron-safe reminder drain tool (`drain_due_reminders`): returns due reminder messages and applies rollover state updates.
-- Tasks: can be created, listed, updated, deleted; tasks roll over 24h automatically if still pending.
+- Tasks: can be created, listed, updated, deleted; one-time tasks roll over 24h automatically if still pending.
 - Assignment reminders: tied to a specific assignment; replaces existing pending reminder when requested.
 - Refresh Schoology: resyncs data and updates local state; cannot change Schoology grades or submissions.
 - Manual statuses + assignment notes: stored locally in our DB to help track what matters; they do not change anything in Schoology itself.

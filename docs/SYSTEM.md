@@ -29,11 +29,16 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
    - Sends via Telegram (agentic if OpenAI key is set).
 3) Reminders
    - Pending tasks due now trigger Telegram reminders.
-   - Reminders roll over by 24h if not completed.
+   - One-time reminders roll over by 24h if not completed.
+   - Recurring reminders are expanded by cadence (`daily`, `weekdays`, `weekly`) in reminder runner logic.
 4) Agent chat
    - Capability gate checks for unsupported requests and proposes nearest supported fallback.
    - Planner selects tools, executes, then composes final message.
    - Pending actions stored per chat for multi-step confirmations.
+   - Reminder writes are agent-mediated with proactive assumptions + post-create confirmation:
+     - missing recurring cadence defaults to weekdays on explicit recurring asks,
+     - missing recurring time defaults to 7:00 AM / 4:30 PM / 9:00 PM ET by cue type,
+     - unsupported cadence falls back to weekly with explicit warning.
 5) Dashboard
    - Reads state.json, SQLite, and heartbeat files.
    - Shows service freshness + assignment/task health at a glance.
@@ -42,7 +47,11 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
 - data/state.json
   - Last scrape timestamps and raw assignment cache.
 - data/agent.db
-  - SQLite for assignments, tasks, notes, reminders, chat_state.
+  - SQLite for assignments, unified task/reminder records, notes, chat_state.
+- artifacts/beta-reset/*
+  - Beta reset snapshots and parity report artifacts.
+- artifacts/agentic-story-suite/*
+  - Story transcripts, tool snapshots, and judge evidence JSON artifacts.
 - data/bugs.log
   - Local bug/feature drafts (JSON lines).
 - data/agent.log
@@ -68,6 +77,9 @@ Key settings:
 - Dashboard: `npm run dashboard`
 - Interactive login: `npm run login:interactive`
 - Tests: `npm test`
+- Agentic stories: `npm run stories:run`
+- Agentic judge: `npm run stories:judge`
+- Beta reset from prod memory: `npm run beta:reset-memory`
 
 ## Docker
 Image strategy:
@@ -98,6 +110,10 @@ Beta (OpenClaw):
 - `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta logs --tail 200 dashboard` (when profile enabled)
 
 ## Known constraints
-- No recurring reminders (one-time only).
+- Recurring cadence is limited to `daily`, `weekdays`, `weekly`.
 - Schoology login is session-based; interactive login required when session expires.
 - Production Telegram bot should be single-instance to avoid duplicate messages.
+- Release gate for reminder-scope changes is mandatory before UAT:
+  - beta reset from prod memory,
+  - agentic story suite,
+  - one GPT-5.2 judge run with evidence artifact.

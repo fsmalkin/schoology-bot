@@ -24,7 +24,9 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 - Agent model choice: GPT-5.2 (not mini or pro).
 - Maintain offline unit + E2E tests using fixtures (no live Schoology needed).
 - Daily summary includes tasks scheduled for today.
-- Tasks roll over by 24 hours if not completed.
+- One-time tasks roll over by 24 hours if not completed.
+- Recurring reminders are supported for `daily`, `weekdays`, and `weekly` cadence.
+- Reminder writes are agent-mediated: infer missing cadence/time when safe, create, then confirm assumptions with quick correction prompts.
 - Daily summary is DB-backed (manual statuses honored) and agentic for Telegram.
 - Local health dashboard is available at `http://127.0.0.1:8787` for service/data checks.
 - Bug filing auto-generates a title when missing.
@@ -32,35 +34,50 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 - Bug filing uses a draft+validate+submit skill (no empty issues).
 - Schoology "submitted but not graded" indicators are auto-archived (Ignored) in summaries/lists by default.
 - OpenClaw beta runtime uses gateway-native Telegram + cron, with `schoology-tool-api` retained as a parity sidecar.
+- Agentic release gate is mandatory before UAT for reminder-impacting releases:
+  - Reset beta from prod memory.
+  - Run agentic story suite.
+  - Run one GPT-5.2 judge pass and review evidence.
+  - Then execute user UAT.
 
-## Status Snapshot (2026-02-18)
+## Status Snapshot (2026-02-22)
 - Delivered:
   - Runtime migrated from laptop to local server and is running in Docker Compose with health checks.
   - OpenClaw beta one-gateway runtime is running from one shared image (`schoology-beta-openclaw-unified:latest`).
   - Docker image sprawl reduced by consolidating gateway/tool-api/cron/monitor/dashboard onto one image build.
   - Login failure messaging now respects configured `SCHOLOGY_IDP` and avoids unnecessary provider-selection prompts.
+  - Recurring reminder runtime support implemented across DB, tool runner, and reminder scheduler (`daily`, `weekdays`, `weekly`).
 - In progress:
-  - Beta UAT for login refresh, missing-assignment flows, and reminder delivery before prod promotion.
-  - Production rollout checklist and cutover validation for OpenClaw runtime.
+  - Beta reset from prod memory + evidence artifact flow.
+  - Agentic story suite run and single-pass GPT-5.2 judge evidence review before UAT.
+  - Production rollout checklist and cutover validation for recurring reminder release.
 
 ## Active Queue (P1)
-1. OpenClaw beta UAT and production promotion readiness.
-2. DB-backed context compaction and long-thread memory (#14).
-3. Detail-page fallback for ambiguous submission status (#15).
-4. Auto-cancel assignment reminders when assignment becomes inactive/resolved (#10).
-5. Finalize OpenClaw upstream sync SOP (what to pull, how to validate, when to promote).
+1. Recurring reminders release gate completion (beta reset, story suite, GPT-5.2 judge evidence, UAT, prod rollout).
+2. OpenClaw beta UAT and production promotion readiness.
+3. DB-backed context compaction and long-thread memory (#14).
+4. Detail-page fallback for ambiguous submission status (#15).
+5. Auto-cancel assignment reminders when assignment becomes inactive/resolved (#10).
+6. Finalize OpenClaw upstream sync SOP (what to pull, how to validate, when to promote).
 
 ## Ready Next (P2)
-1. Recurring reminder support (create/edit/delete UX + tests).
-2. OpenClaw upstream sync SOP (what to pull, how to validate, when to promote).
-3. Scheduled auto-update task decision (Windows Task Scheduler).
-4. Agents SDK evaluation versus current direct Responses architecture.
+1. OpenClaw upstream sync SOP (what to pull, how to validate, when to promote).
+2. Scheduled auto-update task decision (Windows Task Scheduler).
+3. Agents SDK evaluation versus current direct Responses architecture.
+4. Extend the agentic release pattern to other projects and templates.
 
 ## Later (P3)
 1. Convert action-oriented notes into reminders with user confirmation.
 2. Unified single Task model (Option B).
 3. Daily cost summary.
 4. Local admin UI for status/notes/reminders.
+
+## Standard Release Flow (Mandatory for Reminder-Scope Changes)
+1. Run beta reset from prod memory and keep report artifact.
+2. Run agentic story suite and collect transcripts/tool snapshots.
+3. Run one GPT-5.2 judge pass on artifacts and review evidence.
+4. Execute user UAT only after judge pass.
+5. Promote to production with canary prompts and 24h stabilization.
 
 ## Tracking
 - Backlog source of truth: `docs/BACKLOG.md`.

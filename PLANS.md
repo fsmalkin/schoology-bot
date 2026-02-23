@@ -103,122 +103,139 @@ Notes:
 ---
 
 Title:
-OpenClaw One-Gateway Beta Migration
+Recurring Reminders Release (Agent-Mediated + GPT-5.2 Story Gate)
 
 Last updated:
-2026-02-16
+2026-02-22
 
 Goal:
-- Move the beta runtime to a one-gateway OpenClaw architecture while preserving Schoology domain behavior via the existing tool API sidecar and validating parity before any production cutover.
+- Ship recurring reminders end-to-end for assignment-linked and personal reminders, with agent-mediated assumptions and a single GPT-5.2 acceptance-judge pass before user UAT.
 
 Scope:
 In scope:
-- Beta stack topology shift from `schoology + schoology-tool-api + openclaw-gateway` to `schoology-tool-api + openclaw-gateway` with gateway-owned cron scheduling.
-- Add gateway-facing cron-safe tool endpoints for daily summary generation and due reminder draining.
-- Add automated cron job sync/bootstrap for OpenClaw gateway (idempotent, named managed jobs).
-- Keep legacy production compose untouched during beta validation.
-- Update OpenClaw workspace skill instructions to include new cron tools.
-- Update docs and test coverage notes for the new beta runtime behavior.
+- Recurrence support for `daily`, `weekdays`, `weekly`.
+- Reminder data model unification on `tasks` (including assignment reminders).
+- Agent-mediated inference for recurring cadence/time defaults and create-then-confirm messaging.
+- Beta reset from prod memory flow for `schoology-beta`.
+- Agentic story suite execution and single-pass GPT-5.2 judge artifacts.
+- Process institutionalization updates in roadmap/pattern docs.
 Out of scope:
-- Full production cutover to one-gateway.
-- Replacing Schoology tool API sidecar with OpenClaw-native plugin tooling.
-- MCP migration for Schoology tools.
+- Monthly/custom recurrence execution.
+- Auto-cancel enhancement #10.
+- UI redesign.
 
 Constraints and assumptions:
-- Migration scope is beta-first with phased dual-run and manual acceptance gate.
-- Telegram IO in target beta flow is gateway-native.
-- Scheduler ownership in target beta flow is OpenClaw cron.
-- Schoology domain data/tool execution remains in existing Node code exposed by `schoology-tool-api`.
-- Existing DB/state files remain the source of truth.
+- Runtime timezone defaults to `America/New_York`.
+- External `openclaw-beta` runtime from other workspace is untouched.
+- Legacy one-time rollover behavior is preserved.
+- Missing cadence on explicit recurring asks defaults to `weekdays`.
+- Missing recurring time defaults:
+  - 7:00 AM ET for morning/school-start cues.
+  - 4:30 PM ET for check-in/follow-up cues.
+  - 9:00 PM ET fallback.
+- Judge policy is exactly one GPT-5.2 run with evidence artifacts.
 
 Risks and mitigations:
 Risk:
-- Duplicate or stale cron jobs causing repeated outputs.
+- Recurrence defaults create unintended reminders.
 Impact:
-- Duplicate reminders/summaries and noisy Telegram output.
+- User trust regression and incorrect scheduling.
 Mitigation:
-- Cron sync removes managed jobs by name before re-adding desired definitions.
+- Explicit assumption evidence in tool output + response confirmation with one-step correction examples.
 
 Risk:
-- Reminder/scheduler logic drift when moved from Node scheduler loop to cron-triggered tool calls.
+- Reminder migration regresses existing assignment reminder behavior.
 Impact:
-- Behavioral regressions in reminder rollover or summary output.
+- Legacy reminders may duplicate or disappear.
 Mitigation:
-- Reuse existing summary/reminder logic via shared functions and add dedicated tool-level tests.
+- Migration test coverage for pending legacy reminders -> tasks and duplicate protection.
 
 Risk:
-- Beta/prod operational confusion during dual-run.
+- Beta reset procedure accidentally impacts non-target runtime.
 Impact:
-- Wrong logs checked or wrong bot/token tested.
+- Operational disruption in other workspace.
 Mitigation:
-- Keep beta compose + docs explicit, with separate service names and cron bootstrap behavior documented.
+- Script hard-codes `schoology-beta` compose project and only prod/beta DB volumes.
+
+Risk:
+- Story gate drift between heuristic checks and judge verdict.
+Impact:
+- Unclear acceptance signal.
+Mitigation:
+- Preserve transcripts + tool snapshots per story and require judge evidence snippets per verdict.
 
 Plan:
-Phase 1 - Tooling and runtime primitives
+Phase 1 - Data and runtime core
 Tasks:
-- Add cron-safe tool operations:
-  - `build_daily_summary` (returns summary text without direct channel send).
-  - `drain_due_reminders` (returns due reminder messages and applies rollover/sent markers).
-- Refactor/reuse summary build path so scheduler send and tool path share logic.
-- Keep backwards compatibility with existing scheduler + telegram-agent flows.
+- Add recurrence fields to task schema and migration path.
+- Migrate pending legacy `reminders` rows into `tasks` (`kind='assignment'`).
+- Repoint assignment reminder CRUD operations to tasks.
+- Make reminder runner recurrence-aware with timezone-safe next-run math.
 Dependencies:
-- Existing `tasks.js`, `tool_runner.js`, DB and message formatter modules.
+- Existing DB migration framework and task runner.
 End state:
-- OpenClaw gateway can trigger deterministic summary/reminder behavior through tool API without running legacy scheduler.
+- Assignment and personal reminders share one recurring-capable task model.
 
-Phase 2 - Beta compose + cron ownership
+Phase 2 - Agent mediation and capability updates
 Tasks:
-- Update `docker-compose.beta-openclaw.yml` to:
-  - remove legacy beta scheduler dependency,
-  - keep `schoology-tool-api`,
-  - keep `openclaw-gateway`,
-  - add `openclaw-cron-sync` bootstrap service.
-- Add cron sync script that waits for gateway health, removes managed jobs, and recreates:
-  - Schoology scrape refresh (no deliver),
-  - Daily summary deliver,
-  - Due reminders deliver.
+- Expand tool schemas for recurrence fields.
+- Add inference helpers for cadence/time defaults and unsupported cadence fallback.
+- Inject assumptions into reminder tool calls and output payloads.
+- Update readable confirmation responses to include:
+  - what was assumed,
+  - what was created/updated,
+  - one-step correction examples.
+- Update capabilities/guardrails to support recurring scope and fallback policy.
 Dependencies:
-- Phase 1 tool endpoints.
-- OpenClaw CLI available in gateway image.
+- Phase 1 complete.
 End state:
-- Beta stack schedules are gateway-owned and recreated idempotently on stack startup.
+- Agent proactively handles recurring reminders with explicit assumption confirmation.
 
-Phase 3 - Docs and verification
+Phase 3 - Validation automation and beta reset SOP
 Tasks:
-- Add unit/integration tests for new tool behaviors.
-- Update OpenClaw skill docs in workspace for new tool names and cron usage.
-- Update system/openclaw/test coverage docs with decision + outcome notes.
+- Add/expand tests for migration, recurrence math, inference behavior, and mock conversation correction flow.
+- Add `scripts/reset_beta_from_prod_memory.ps1` with verification report artifacts.
+- Add `scripts/run_agentic_story_suite.mjs` for chat-only story execution with transcript/tool snapshot artifacts.
+- Add `scripts/judge_agentic_story_suite.mjs` for single-pass GPT-5.2 judge JSON output.
 Dependencies:
 - Phase 1 and Phase 2 complete.
 End state:
-- Migration behavior is documented and test-covered for beta operations.
+- Repeatable pre-UAT gate with artifacts and beta reset reproducibility.
+
+Phase 4 - Process institutionalization
+Tasks:
+- Update roadmap/backlog/system/test-coverage docs for mandatory release flow.
+- Add reusable pattern doc for other projects.
+- Record decision + outcome for this release pattern.
+Dependencies:
+- Phase 3 complete.
+End state:
+- Agentic release gate is documented as default development pattern.
 
 Validation plan:
 Unit tests:
-- New tool tests for `build_daily_summary` and `drain_due_reminders`.
-- Existing scheduler/summary/reminder tests remain green.
+- Reminder assumptions helper tests.
+- Recurrence CRUD and recurrence math tests.
+- Readable response/agent mock coverage for assumption confirmation and corrections.
 Integration tests:
-- `npm test` full suite.
+- Full `npm test` run.
 Smoke tests:
-- `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta up -d --build`
-- `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta logs --tail 200 openclaw-cron-sync`
-- `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta logs --tail 200 schoology-tool-api`
-- `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta logs --tail 200 openclaw-gateway`
+- `npm run stories:run`
+- `npm run stories:judge`
+- `npm run beta:reset-memory` (or direct script execution) for reset report artifact generation.
 Manual checks (if any):
-- Confirm cron jobs exist exactly once in gateway.
-- Confirm beta bot receives summary/reminder outputs from gateway-owned schedules.
-- Confirm scrape refresh runs without legacy scheduler service.
+- Review judge evidence JSON and per-story transcripts before UAT.
+- Confirm beta reset report metrics match between prod and beta snapshots.
 
 Rollback plan:
-- Revert migration commit(s), then rebuild legacy stack.
-- For beta: restore prior `docker-compose.beta-openclaw.yml` and restart stack.
-- For prod safety: no production compose changes in this scope.
+- Revert to last stable commit/image and rebuild containers.
+- Restore pre-release DB backup snapshot.
+- Validate one-time reminder baseline behavior before re-opening work.
 
 Open questions:
 - None for this execution slice.
 
 Notes:
-- 2026-02-16: Decision - beta-first, phased dual-run, manual acceptance gate.
-- 2026-02-16: Decision - gateway-native Telegram + gateway cron in target beta runtime.
-- 2026-02-16: Decision - keep Schoology Tool API sidecar for migration safety.
-- 2026-02-16: Decision - reduce Docker sprawl by reusing shared image tags in compose stacks; OpenClaw beta targets `schoology-beta-openclaw-unified:latest`.
+- 2026-02-22: Decision - recurring scope locked to daily/weekdays/weekly for this release.
+- 2026-02-22: Decision - create-then-confirm with assumptions + quick edit prompt is mandatory for reminder writes.
+- 2026-02-22: Decision - acceptance gate uses one GPT-5.2 judge run with evidence (no second pass).
