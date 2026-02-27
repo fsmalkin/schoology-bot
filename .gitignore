@@ -12,6 +12,7 @@ test-results/
 Thumbs.db
 openclaw_workspace/feature_requests.md
 openclaw_workspace/.git.disabled
+openclaw_workspace/.openclaw/
 openclaw_workspace/AGENTS.md
 openclaw_workspace/BOOTSTRAP.md
 openclaw_workspace/HEARTBEAT.md
