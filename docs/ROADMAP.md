@@ -34,6 +34,8 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 - Bug filing uses a draft+validate+submit skill (no empty issues).
 - Schoology "submitted but not graded" indicators are auto-archived (Ignored) in summaries/lists by default.
 - OpenClaw beta runtime uses gateway-native Telegram + cron, with `schoology-tool-api` retained as a parity sidecar.
+- Coexistence guardrail: Schoology stacks use explicit Docker Compose project names (`schoology-prod`, `schoology-openclaw-beta`) to avoid conflicts with other local OpenClaw projects.
+- Disaster-recovery automation uses scheduled backup + freshness checks with off-machine folder sync.
 - Agentic release gate is mandatory before UAT for reminder-impacting releases:
   - Reset beta from prod memory.
   - Run agentic story suite.
@@ -45,6 +47,7 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
   - Runtime migrated from laptop to local server and is running in Docker Compose with health checks.
   - OpenClaw beta one-gateway runtime is running from one shared image (`schoology-beta-openclaw-unified:latest`).
   - Docker image sprawl reduced by consolidating gateway/tool-api/cron/monitor/dashboard onto one image build.
+  - Recovery runbook and operations scripts added for start/backup/restore/freshness/task registration.
   - Login failure messaging now respects configured `SCHOLOGY_IDP` and avoids unnecessary provider-selection prompts.
   - Recurring reminder runtime support implemented across DB, tool runner, and reminder scheduler (`daily`, `weekdays`, `weekly`).
 - In progress:

@@ -212,16 +212,16 @@ export function buildDashboardSnapshot({
     quickCommands:
       getRuntimeStack(config) === "openclaw"
         ? [
-            "docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta up -d --build",
-            "docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta logs --tail 200 openclaw-gateway",
-            "docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta logs --tail 200 schoology-tool-api",
-            "docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta down",
+            "docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p schoology-openclaw-beta up -d --build",
+            "docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p schoology-openclaw-beta logs --tail 200 openclaw-gateway",
+            "docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p schoology-openclaw-beta logs --tail 200 schoology-tool-api",
+            "docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p schoology-openclaw-beta down",
           ]
         : [
-            "docker compose up -d --build",
-            "docker compose logs --tail 200 telegram-agent",
-            "docker compose logs --tail 200 schoology",
-            "docker compose down",
+            "docker compose -f docker-compose.yml -p schoology-prod up -d --build",
+            "docker compose -f docker-compose.yml -p schoology-prod logs --tail 200 telegram-agent",
+            "docker compose -f docker-compose.yml -p schoology-prod logs --tail 200 schoology",
+            "docker compose -f docker-compose.yml -p schoology-prod down",
           ],
     howItWorks:
       getRuntimeStack(config) === "openclaw"

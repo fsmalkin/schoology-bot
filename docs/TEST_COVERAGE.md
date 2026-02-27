@@ -33,6 +33,14 @@ Integration tests
 
 Smoke tests
 - Docker smoke script: `scripts/smoke_docker.ps1` for build + health check.
+- Ops DR scripts now include dry-run/manual smoke coverage:
+  - `scripts/start_schoology_stacks.ps1 -DryRun`
+  - `scripts/create_schoology_pre_cutover_snapshot.ps1 -DryRun`
+  - `scripts/backup_schoology_state.ps1 -DryRun`
+  - `scripts/run_schoology_restore_drill.ps1 -DryRun`
+  - `scripts/restore_schoology_state.ps1 -DryRun`
+  - `scripts/register_schoology_tasks.ps1 -DryRun`
+  - `scripts/check_schoology_backup_freshness.ps1` (status-file check)
 
 CLI checks
 - Manual CLI runs via `npm run agent:cli -- "..."` for basic flows.
@@ -40,6 +48,13 @@ CLI checks
   - `npm run beta:reset-memory`
   - `npm run stories:run`
   - `npm run stories:judge`
+- Recovery/operations scripts:
+  - `powershell -ExecutionPolicy Bypass -File scripts/start_schoology_stacks.ps1`
+  - `powershell -ExecutionPolicy Bypass -File scripts/create_schoology_pre_cutover_snapshot.ps1`
+  - `powershell -ExecutionPolicy Bypass -File scripts/backup_schoology_state.ps1`
+  - `powershell -ExecutionPolicy Bypass -File scripts/run_schoology_restore_drill.ps1 -Source local`
+  - `powershell -ExecutionPolicy Bypass -File scripts/restore_schoology_state.ps1 -Source local -Snapshot latest`
+  - `powershell -ExecutionPolicy Bypass -File scripts/register_schoology_tasks.ps1`
 
 ## Gaps and risks
 
@@ -67,6 +82,8 @@ OpenClaw stack
 Performance and reliability
 - No load or soak tests.
 - Network failure handling not stress tested.
+- Restore drill currently validates archive integrity/extractability, not full in-place runtime rollback.
+- Scheduled-task execution health is monitored via freshness status, not integration tests.
 
 ## Near-term additions (recommended)
 - Add a Telegram E2E test harness that runs against a test bot and test chat.

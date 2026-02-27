@@ -41,7 +41,7 @@ Schoology bot code in the repo root for comparison and migration planning.
 - Fallback: keep legacy `schoology + telegram-agent` stack for production until beta parity is confirmed.
 - Decision: consolidate beta OpenClaw Docker builds to a shared image tag to reduce duplicated image builds and operational sprawl.
 - Why: keeps one runtime artifact for gateway/tool-api/cron/dashboard while preserving separate service commands and healthchecks.
-- Decision: standardize the OpenClaw beta compose project name to `openclaw-beta`.
+- Decision: standardize the Schoology OpenClaw beta compose project name to `schoology-openclaw-beta`.
 - Why: avoids split runtimes from mixed `-p` names and keeps container/log commands deterministic.
 - Decision: when `SCHOLOGY_IDP` is configured, treat provider as fixed and avoid asking users to pick sign-in provider on refresh failures.
 - Why: reduces chat loops and routes troubleshooting toward credentials/session issues instead of redundant provider prompts.

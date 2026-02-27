@@ -366,12 +366,12 @@ export function createDashboardServer({ config, logger = console, htmlOverride =
   let interval = null;
   return {
     server,
-    start(port) {
+    start(port, host = "127.0.0.1") {
       return new Promise((resolve) => {
-        server.listen(port, () => {
+        server.listen(port, host, () => {
           writeHeartbeat({ port });
           interval = setInterval(() => writeHeartbeat({ port }), 30000);
-          logger.log(`[dashboard] listening on http://localhost:${port}`);
+          logger.log(`[dashboard] listening on http://${host}:${port}`);
           resolve();
         });
       });

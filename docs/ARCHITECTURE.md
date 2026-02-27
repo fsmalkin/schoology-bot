@@ -36,6 +36,7 @@ The system is a local-first automation that:
 - `data/storage.json`: Playwright session storage for login reuse.
 - `data/health/*.heartbeat.json`: service heartbeats for scheduler, telegram-agent, and dashboard.
 - `data/beta/health/*.heartbeat.json`: beta service heartbeats for schoology-tool-api and openclaw-gateway monitor.
+- `openclaw_workspace/`: Schoology-owned OpenClaw workspace state (kept isolated from Chasebot).
 
 ## Data Flow
 1. Scheduler triggers scrape -> Playwright logs in -> grades page parsed.
@@ -51,21 +52,23 @@ The system is a local-first automation that:
 
 ## Deployment
 - Local dev: `npm run start` and `npm run agent:telegram`.
-- Docker: `docker compose up -d --build` (three services: scheduler, agent, dashboard).
-- Legacy beta: `docker compose --env-file .env.beta -f docker-compose.beta.yml -p schoology-beta up -d --build` (run on demand).
-- OpenClaw beta: `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta up -d --build`.
+- Primary runtime: WSL2 + systemd (`schoology.target`) installed via `scripts/install_schoology_native_services.ps1`.
+- Native orchestration entrypoint: `scripts/start_schoology_stacks.ps1 -RuntimeMode native` (default).
+- Docker fallback: `scripts/start_schoology_stacks.ps1 -RuntimeMode docker`.
+- Legacy beta (`docker-compose.beta.yml`) is deprecated for routine operations.
 - Optional auto-update: `scripts/auto_update.ps1` to pull a branch and rebuild Docker (no CI/CD by default).
 - CI (optional): GitHub Actions runs `npm test` on PRs/pushes to main with live tests disabled.
 
 ## Beta/Prod Separation
 - Beta uses `.env.beta` with `DATA_DIR=data/beta`.
-- Separate Docker Compose stacks for beta (`schoology-beta` and `openclaw-beta` project names).
+- OpenClaw beta runtime remains separate from prod and reserves dedicated ports (`8788`, `18799`, `18800`); `18800` may be unused by current OpenClaw builds but stays reserved for coexistence.
+- Legacy beta (`schoology-beta`) remains available only for rollback/testing.
 - Promotion merges beta changes into main and rebuilds prod.
 
 ## Reliability
 - Single agent instance enforced via lock file.
 - Message batching to avoid duplicate responses.
-- Health checks and restart policies in Docker.
+- Health checks and restart policies in native systemd services.
 
 ## Future Enhancements
 - Context compaction and long-term chat memory.

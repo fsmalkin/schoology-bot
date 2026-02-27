@@ -36,7 +36,7 @@ This document records completed milestones and major capability deliveries.
 - Beta bot branch and separate env/data dir (`.env.beta`, `DATA_DIR=data/beta`).
 - Beta Docker Compose stack for safe testing.
 - OpenClaw beta one-gateway stack consolidated to one shared image (`schoology-beta-openclaw-unified:latest`).
-- OpenClaw beta project naming standardized to `openclaw-beta` for stable compose operations.
+- OpenClaw beta project naming standardized to `schoology-openclaw-beta` for stable compose operations.
 - Login failure messaging now respects configured `SCHOLOGY_IDP` to avoid repeated provider-selection prompts.
 - Promotion workflow from beta to production (merge + rebuild prod, stop beta).
 

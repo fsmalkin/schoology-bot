@@ -5,7 +5,13 @@ import path from "node:path";
 const gatewayUrl = String(process.env.OPENCLAW_GATEWAY_URL || "ws://openclaw-gateway:18789").trim();
 let gatewayToken = String(process.env.OPENCLAW_GATEWAY_TOKEN || "").trim();
 let gatewayTokenSource = gatewayToken ? "env" : "";
-const cliTimeoutMs = Number(process.env.OPENCLAW_CRON_CLI_TIMEOUT_MS || 15000);
+const stateDir = String(
+  process.env.OPENCLAW_STATE_DIR || process.env.CLAWDBOT_STATE_DIR || process.env.HOME || ""
+).trim();
+const configPath = path.join(stateDir || "/home/node/.openclaw", "openclaw.json");
+const deviceIdentityPath = path.join(stateDir || "/home/node/.openclaw", "identity", "device.json");
+const pairedDevicesPath = path.join(stateDir || "/home/node/.openclaw", "devices", "paired.json");
+const cliTimeoutMs = Number(process.env.OPENCLAW_CRON_CLI_TIMEOUT_MS || 60000);
 const timezone = String(process.env.TIMEZONE || "America/New_York").trim();
 const scrapeCron = String(process.env.SCRAPE_CRON || "0 6 * * *").trim();
 const sendCron = String(process.env.SEND_CRON || "0 7 * * *").trim();
@@ -33,9 +39,8 @@ if (!telegramTarget) {
 
 if (!gatewayToken) {
   try {
-    const cfgPath = path.join("/home/node/.openclaw", "openclaw.json");
-    if (fs.existsSync(cfgPath)) {
-      const parsed = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+    if (fs.existsSync(configPath)) {
+      const parsed = JSON.parse(fs.readFileSync(configPath, "utf8"));
       const candidate = String(parsed?.gateway?.auth?.token || "").trim();
       if (candidate) {
         gatewayToken = candidate;
@@ -47,9 +52,60 @@ if (!gatewayToken) {
   }
 }
 
+function loadPairedDeviceOperatorToken() {
+  try {
+    if (!fs.existsSync(pairedDevicesPath)) {
+      return "";
+    }
+    const paired = JSON.parse(fs.readFileSync(pairedDevicesPath, "utf8"));
+    if (!paired || typeof paired !== "object") {
+      return "";
+    }
+    let preferredDeviceId = "";
+    if (fs.existsSync(deviceIdentityPath)) {
+      const identity = JSON.parse(fs.readFileSync(deviceIdentityPath, "utf8"));
+      preferredDeviceId = String(identity?.deviceId || "").trim();
+    }
+    const entries = Object.values(paired);
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return "";
+    }
+    const preferred =
+      preferredDeviceId && paired[preferredDeviceId] ? paired[preferredDeviceId] : entries[0];
+    return String(preferred?.tokens?.operator?.token || "").trim();
+  } catch (err) {
+    return "";
+  }
+}
+
+function maybeSwitchToPairedDeviceToken(reasonText, force = false) {
+  const lower = String(reasonText || "").toLowerCase();
+  if (!force && !lower.includes("device token mismatch")) {
+    return false;
+  }
+  const fallbackToken = loadPairedDeviceOperatorToken();
+  if (!fallbackToken || fallbackToken === gatewayToken) {
+    return false;
+  }
+  gatewayToken = fallbackToken;
+  gatewayTokenSource = "paired-device";
+  console.log(
+    `[openclaw-cron-sync] switched gateway token source=${gatewayTokenSource} length=${gatewayToken.length}`
+  );
+  return true;
+}
+
+if (!gatewayToken) {
+  const fallbackToken = loadPairedDeviceOperatorToken();
+  if (fallbackToken) {
+    gatewayToken = fallbackToken;
+    gatewayTokenSource = "paired-device";
+  }
+}
+
 if (!gatewayToken) {
   console.error(
-    "[openclaw-cron-sync] missing gateway token. Set OPENCLAW_GATEWAY_TOKEN or configure gateway.auth.token in /home/node/.openclaw/openclaw.json."
+    "[openclaw-cron-sync] missing gateway token. Set OPENCLAW_GATEWAY_TOKEN or configure gateway.auth.token in openclaw.json."
   );
   process.exit(1);
 }
@@ -88,36 +144,81 @@ function parseJsonOutput(raw) {
   }
 }
 
-function runCli(args, { expectJson = true, allowFailure = false } = {}) {
-  const fullArgs = ["dist/index.js", ...args, "--url", gatewayUrl];
-  if (gatewayToken) {
-    fullArgs.push("--token", gatewayToken);
+function isRetryableGatewayError(detail, timedOut) {
+  if (timedOut) {
+    return true;
   }
-  if (expectJson) {
-    fullArgs.push("--json");
-  }
-  const result = spawnSync("node", fullArgs, {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout: cliTimeoutMs,
-    killSignal: "SIGKILL",
-  });
-  if (result.error && result.error.code === "ETIMEDOUT") {
-    if (!allowFailure) {
+  const lower = String(detail || "").toLowerCase();
+  return (
+    lower.includes("gateway closed (1006") ||
+    lower.includes("abnormal closure") ||
+    lower.includes("econnrefused") ||
+    lower.includes("gateway not connected")
+  );
+}
+
+function runCli(
+  args,
+  { expectJson = true, allowFailure = false, retries = 0, retryDelayMs = 3000 } = {}
+) {
+  const maxAttempts = Math.max(1, Number(retries || 0) + 1);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const fullArgs = ["dist/index.js", ...args, "--url", gatewayUrl];
+    if (gatewayToken) {
+      fullArgs.push("--token", gatewayToken);
+    }
+    if (expectJson) {
+      fullArgs.push("--json");
+    }
+    const result = spawnSync("node", fullArgs, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: cliTimeoutMs,
+      killSignal: "SIGKILL",
+    });
+    const timedOut = Boolean(result.error && result.error.code === "ETIMEDOUT");
+    const stderr = String(result.stderr || "").trim();
+    const stdout = String(result.stdout || "").trim();
+    const detail = stderr || stdout || (timedOut ? "command timed out" : "unknown error");
+
+    if (timedOut) {
+      if (allowFailure) {
+        return { ...result, status: result.status ?? 124 };
+      }
+      maybeSwitchToPairedDeviceToken(detail);
+      const canRetry = attempt < maxAttempts && isRetryableGatewayError(detail, true);
+      if (canRetry) {
+        console.log(
+          `[openclaw-cron-sync] retrying command (${attempt}/${maxAttempts}) after timeout: node ${fullArgs.join(
+            " "
+          )}`
+        );
+        sleepMs(retryDelayMs);
+        continue;
+      }
       throw new Error(
         `[openclaw-cron-sync] command timed out after ${cliTimeoutMs}ms: node ${fullArgs.join(" ")}`
       );
     }
-    return { ...result, status: result.status ?? 124 };
-  }
-  if (result.status !== 0 && !allowFailure) {
-    const stderr = String(result.stderr || "").trim();
-    const stdout = String(result.stdout || "").trim();
+
+    if (result.status === 0 || allowFailure) {
+      return result;
+    }
+
+    maybeSwitchToPairedDeviceToken(detail);
+    const canRetry = attempt < maxAttempts && isRetryableGatewayError(detail, false);
+    if (canRetry) {
+      console.log(
+        `[openclaw-cron-sync] retrying command (${attempt}/${maxAttempts}) after gateway error: ${detail}`
+      );
+      sleepMs(retryDelayMs);
+      continue;
+    }
     throw new Error(
-      `[openclaw-cron-sync] command failed (${result.status}): node ${fullArgs.join(" ")}\n${stderr || stdout}`
+      `[openclaw-cron-sync] command failed (${result.status}): node ${fullArgs.join(" ")}\n${detail}`
     );
   }
-  return result;
+  throw new Error("[openclaw-cron-sync] command retry loop exhausted unexpectedly.");
 }
 
 function waitForGateway(maxAttempts = 40, delayMs = 3000) {
@@ -129,9 +230,13 @@ function waitForGateway(maxAttempts = 40, delayMs = 3000) {
     }
     const stderr = String(res.stderr || "").trim();
     const stdout = String(res.stdout || "").trim();
+    const reason = stderr || stdout || "unknown error";
     console.log(
-      `[openclaw-cron-sync] gateway not ready (attempt ${attempt}/${maxAttempts}): ${stderr || stdout || "unknown error"}`
+      `[openclaw-cron-sync] gateway not ready (attempt ${attempt}/${maxAttempts}): ${reason}`
     );
+    if (!maybeSwitchToPairedDeviceToken(reason) && attempt >= 2) {
+      maybeSwitchToPairedDeviceToken(reason, true);
+    }
     if (attempt < maxAttempts) {
       sleepMs(delayMs);
     }
@@ -140,14 +245,18 @@ function waitForGateway(maxAttempts = 40, delayMs = 3000) {
 }
 
 function listJobs() {
-  const res = runCli(["cron", "list", "--all"], { expectJson: true });
+  const res = runCli(["cron", "list", "--all"], {
+    expectJson: true,
+    retries: 4,
+    retryDelayMs: 4000,
+  });
   const parsed = parseJsonOutput(res.stdout);
   const jobs = Array.isArray(parsed?.jobs) ? parsed.jobs : [];
   return jobs;
 }
 
 function removeJob(jobId) {
-  runCli(["cron", "rm", String(jobId)], { expectJson: true });
+  runCli(["cron", "rm", String(jobId)], { expectJson: true, retries: 4, retryDelayMs: 4000 });
 }
 
 function addManagedJobs() {
@@ -163,7 +272,7 @@ function addManagedJobs() {
       "Use schoology-tools. Call refresh_schoology once. If ok, reply exactly HEARTBEAT_OK. If not ok, reply with one short error line.",
       "--no-deliver",
     ]),
-    { expectJson: true }
+    { expectJson: true, retries: 4, retryDelayMs: 4000 }
   );
 
   runCli(
@@ -181,7 +290,7 @@ function addManagedJobs() {
       telegramTarget,
       "--best-effort-deliver",
     ]),
-    { expectJson: true }
+    { expectJson: true, retries: 4, retryDelayMs: 4000 }
   );
 
   runCli(
@@ -199,7 +308,7 @@ function addManagedJobs() {
       telegramTarget,
       "--best-effort-deliver",
     ]),
-    { expectJson: true }
+    { expectJson: true, retries: 4, retryDelayMs: 4000 }
   );
 }
 

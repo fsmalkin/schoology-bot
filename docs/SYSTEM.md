@@ -81,33 +81,34 @@ Key settings:
 - Agentic judge: `npm run stories:judge`
 - Beta reset from prod memory: `npm run beta:reset-memory`
 
-## Docker
-Image strategy:
-- Default stack reuses one shared image tag (`schoology-app:latest`) across scheduler, telegram-agent, and dashboard.
-- Legacy beta stack reuses one shared image tag (`schoology-beta-app:latest`) across scheduler and telegram-agent.
-- OpenClaw beta stack reuses one shared image tag (`schoology-beta-openclaw-unified:latest`) across gateway/tool-api/cron/monitor/dashboard.
-- OpenClaw beta dashboard is profile-gated (`dashboard`) and off by default.
-- Legacy beta should run on demand under a separate project name (`schoology-beta`) to avoid overlap with prod.
+## Runtime
+Primary runtime:
+- WSL2 + systemd (`schoology.target`) installed via `scripts/install_schoology_native_services.ps1`.
+- Native orchestration command: `powershell -ExecutionPolicy Bypass -File scripts/start_schoology_stacks.ps1 -RuntimeMode native`.
+- Native services:
+  - `schoology-prod-scheduler.service`
+  - `schoology-prod-telegram.service`
+  - `schoology-prod-dashboard.service`
+  - `schoology-beta-tool-api.service`
+  - `schoology-beta-gateway.service`
+  - `schoology-beta-monitor.service`
+  - `schoology-beta-dashboard.service`
+  - `schoology-beta-cron-sync.timer` (`OnBootSec=90s`, `OnUnitActiveSec=6h`)
 
-Default:
-- `docker compose up -d --build`
-- `docker compose logs --tail 200 telegram-agent`
-- `docker compose logs --tail 200 schoology`
-- `docker compose logs --tail 200 dashboard`
+Fallback runtime:
+- Docker remains supported via `scripts/start_schoology_stacks.ps1 -RuntimeMode docker`.
+- Legacy beta (`docker-compose.beta.yml`) is deprecated for routine operations.
 
-Beta (Legacy Telegram):
-- `docker compose --env-file .env.beta -f docker-compose.beta.yml -p schoology-beta up -d --build`
-- `docker compose --env-file .env.beta -f docker-compose.beta.yml -p schoology-beta logs --tail 200 schoology-beta`
-- `docker compose --env-file .env.beta -f docker-compose.beta.yml -p schoology-beta logs --tail 200 telegram-agent-beta`
-- `docker compose --env-file .env.beta -f docker-compose.beta.yml -p schoology-beta down`
-
-Beta (OpenClaw):
-- `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta up -d --build`
-- `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta logs --tail 200 openclaw-cron-sync`
-- `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta logs --tail 200 openclaw-gateway`
-- `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta logs --tail 200 schoology-tool-api`
-- `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta --profile dashboard up -d dashboard`
-- `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta logs --tail 200 dashboard` (when profile enabled)
+Recovery and DR:
+- `powershell -ExecutionPolicy Bypass -File scripts/install_schoology_native_services.ps1 -EnableNow`
+- `powershell -ExecutionPolicy Bypass -File scripts/start_schoology_stacks.ps1 -RuntimeMode native`
+- `powershell -ExecutionPolicy Bypass -File scripts/create_schoology_pre_cutover_snapshot.ps1`
+- `powershell -ExecutionPolicy Bypass -File scripts/backup_schoology_state.ps1`
+- `powershell -ExecutionPolicy Bypass -File scripts/backup_schoology_catalog_github.ps1`
+- `powershell -ExecutionPolicy Bypass -File scripts/run_schoology_restore_drill.ps1 -Source local`
+- `powershell -ExecutionPolicy Bypass -File scripts/restore_schoology_state.ps1 -Source local -Snapshot latest`
+- `powershell -ExecutionPolicy Bypass -File scripts/check_schoology_backup_freshness.ps1`
+- `powershell -ExecutionPolicy Bypass -File scripts/register_schoology_tasks.ps1`
 
 ## Known constraints
 - Recurring cadence is limited to `daily`, `weekdays`, `weekly`.
