@@ -1,6 +1,6 @@
 param(
   [string]$RepoRoot = "",
-  [ValidateSet("native", "docker")][string]$RuntimeMode = "native",
+  [ValidateSet("native", "docker")][string]$RuntimeMode = "docker",
   [string]$WslDistro = "Ubuntu-24.04",
   [string]$ProdProject = "schoology-prod",
   [string]$BetaProject = "schoology-openclaw-beta",
@@ -51,6 +51,240 @@ function Read-EnvMap($path) {
     $map[$name] = $value
   }
   return $map
+}
+
+function Get-ModelProviderFromReference([string]$ModelReference, [string]$DefaultProvider = "openai") {
+  if ([string]::IsNullOrWhiteSpace($ModelReference)) {
+    return $DefaultProvider.ToLowerInvariant()
+  }
+  $parts = $ModelReference.Split("/", 2)
+  $provider = ""
+  if ($parts.Count -gt 0) {
+    $provider = $parts[0].Trim().ToLowerInvariant()
+  }
+  if ([string]::IsNullOrWhiteSpace($provider)) {
+    return $DefaultProvider.ToLowerInvariant()
+  }
+  return $provider
+}
+
+function Get-BetaPrimaryModelReference([string]$RepoRootPath, [string]$DefaultModelReference = "openai/gpt-5.2") {
+  $configPath = Join-Path $RepoRootPath "data\openclaw-beta\openclaw.json"
+  if (-not (Test-Path $configPath)) {
+    return $DefaultModelReference
+  }
+  $candidate = ""
+  try {
+    $config = Get-Content -Raw $configPath | ConvertFrom-Json
+    if ($config -and $config.agents -and $config.agents.defaults -and $config.agents.defaults.model) {
+      $modelNode = $config.agents.defaults.model
+      if ($modelNode -is [string]) {
+        $candidate = [string]$modelNode
+      } elseif ($modelNode.PSObject.Properties.Name -contains "primary") {
+        $candidate = [string]$modelNode.primary
+      }
+    }
+  } catch {
+    Write-Step ("WARNING: failed reading beta model config at " + $configPath + ": " + $_.Exception.Message)
+    return $DefaultModelReference
+  }
+  if ([string]::IsNullOrWhiteSpace($candidate)) {
+    return $DefaultModelReference
+  }
+  return $candidate.Trim()
+}
+
+function Get-TelegramGroupChatIdsFromEnv([hashtable]$EnvMap) {
+  if (-not $EnvMap -or -not $EnvMap.ContainsKey("TELEGRAM_CHAT_IDS")) {
+    return @()
+  }
+  $raw = [string]$EnvMap["TELEGRAM_CHAT_IDS"]
+  if ([string]::IsNullOrWhiteSpace($raw)) {
+    return @()
+  }
+  return @(
+    $raw -split "[,;\s]+" |
+      ForEach-Object { $_.Trim() } |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -match "^-?\d+$" -and $_.StartsWith("-") } |
+      Select-Object -Unique
+  )
+}
+
+function Ensure-BetaGatewayMode([string]$RepoRootPath, [string]$Mode = "local") {
+  if ($DryRun -or $SkipBeta) {
+    return
+  }
+  $configPath = Join-Path $RepoRootPath "data\openclaw-beta\openclaw.json"
+  $targetMode = if ([string]::IsNullOrWhiteSpace($Mode)) { "local" } else { $Mode.Trim().ToLowerInvariant() }
+
+  $config = $null
+  if (Test-Path $configPath) {
+    try {
+      $config = Get-Content -Raw $configPath | ConvertFrom-Json
+    } catch {
+      throw ("Failed to parse beta OpenClaw config at " + $configPath + ": " + $_.Exception.Message)
+    }
+  } else {
+    $config = [pscustomobject]@{}
+  }
+
+  $gatewayConfig = $null
+  if ($config.PSObject.Properties.Name -contains "gateway" -and $config.gateway) {
+    $gatewayConfig = $config.gateway
+  } else {
+    $gatewayConfig = [pscustomobject]@{}
+    $config | Add-Member -NotePropertyName "gateway" -NotePropertyValue $gatewayConfig -Force
+  }
+
+  $currentMode = ""
+  if ($gatewayConfig.PSObject.Properties.Name -contains "mode" -and $gatewayConfig.mode) {
+    $currentMode = ([string]$gatewayConfig.mode).Trim()
+  }
+  if (-not [string]::IsNullOrWhiteSpace($currentMode)) {
+    Write-Step ("Beta gateway mode already configured: " + $currentMode)
+    return
+  }
+
+  $gatewayConfig | Add-Member -NotePropertyName "mode" -NotePropertyValue $targetMode -Force
+  ($config | ConvertTo-Json -Depth 20) | Set-Content -Path $configPath -Encoding UTF8
+  Write-Step ("Set beta OpenClaw gateway.mode to '" + $targetMode + "' in " + $configPath)
+}
+
+function Ensure-BetaTelegramGroupPolicy([string]$RepoRootPath, [hashtable]$BetaEnvMap) {
+  if ($DryRun -or $SkipBeta) {
+    return
+  }
+
+  $targetGroupIds = Get-TelegramGroupChatIdsFromEnv -EnvMap $BetaEnvMap
+  if ($targetGroupIds.Count -eq 0) {
+    Write-Step "WARNING: TELEGRAM_CHAT_IDS has no group chat IDs; skipped beta Telegram groupPolicy hardening."
+    return
+  }
+
+  $configPath = Join-Path $RepoRootPath "data\openclaw-beta\openclaw.json"
+  $config = $null
+  if (Test-Path $configPath) {
+    try {
+      $config = Get-Content -Raw $configPath | ConvertFrom-Json
+    } catch {
+      throw ("Failed to parse beta OpenClaw config at " + $configPath + ": " + $_.Exception.Message)
+    }
+  } else {
+    $config = [pscustomobject]@{}
+  }
+
+  $channelsConfig = $null
+  if ($config.PSObject.Properties.Name -contains "channels" -and $config.channels) {
+    $channelsConfig = $config.channels
+  } else {
+    $channelsConfig = [pscustomobject]@{}
+    $config | Add-Member -NotePropertyName "channels" -NotePropertyValue $channelsConfig -Force
+  }
+
+  $telegramConfig = $null
+  if ($channelsConfig.PSObject.Properties.Name -contains "telegram" -and $channelsConfig.telegram) {
+    $telegramConfig = $channelsConfig.telegram
+  } else {
+    $telegramConfig = [pscustomobject]@{}
+    $channelsConfig | Add-Member -NotePropertyName "telegram" -NotePropertyValue $telegramConfig -Force
+  }
+
+  $groupsConfig = $null
+  if ($telegramConfig.PSObject.Properties.Name -contains "groups" -and $telegramConfig.groups) {
+    $groupsConfig = $telegramConfig.groups
+  } else {
+    $groupsConfig = [pscustomobject]@{}
+    $telegramConfig | Add-Member -NotePropertyName "groups" -NotePropertyValue $groupsConfig -Force
+  }
+
+  $changed = $false
+  foreach ($groupId in $targetGroupIds) {
+    $groupConfig = $null
+    if ($groupsConfig.PSObject.Properties.Name -contains $groupId -and $groupsConfig.$groupId) {
+      $groupConfig = $groupsConfig.$groupId
+    } else {
+      $groupConfig = [pscustomobject]@{}
+      $groupsConfig | Add-Member -NotePropertyName $groupId -NotePropertyValue $groupConfig -Force
+      $changed = $true
+    }
+
+    $currentPolicy = ""
+    if ($groupConfig.PSObject.Properties.Name -contains "groupPolicy" -and $groupConfig.groupPolicy) {
+      $currentPolicy = ([string]$groupConfig.groupPolicy).Trim().ToLowerInvariant()
+    }
+    if ($currentPolicy -ne "open") {
+      $groupConfig | Add-Member -NotePropertyName "groupPolicy" -NotePropertyValue "open" -Force
+      $changed = $true
+      Write-Step ("Set beta Telegram groupPolicy=open for chat " + $groupId + ".")
+    }
+
+    if (-not ($groupConfig.PSObject.Properties.Name -contains "requireMention")) {
+      $groupConfig | Add-Member -NotePropertyName "requireMention" -NotePropertyValue $false -Force
+      $changed = $true
+    }
+  }
+
+  if ($changed) {
+    ($config | ConvertTo-Json -Depth 20) | Set-Content -Path $configPath -Encoding UTF8
+    Write-Step ("Updated beta Telegram group policy in " + $configPath)
+  } else {
+    Write-Step "Beta Telegram group policy already open for configured group chat IDs."
+  }
+}
+
+function Ensure-BetaAuthBootstrap([string]$RepoRootPath, [string]$RequiredProvider, [hashtable]$BetaEnvMap, [switch]$Required) {
+  if ($DryRun -or $SkipBeta) {
+    return $true
+  }
+  $provider = if ([string]::IsNullOrWhiteSpace($RequiredProvider)) { "openai" } else { $RequiredProvider.Trim().ToLowerInvariant() }
+  $agentDir = Join-Path $RepoRootPath "data\openclaw-beta\agents\main\agent"
+  $authStorePath = Join-Path $agentDir "auth-profiles.json"
+
+  if (-not (Test-Path $agentDir)) {
+    if ($DryRun) {
+      Write-Step ("DRY RUN: create beta agent dir " + $agentDir)
+    } else {
+      New-Item -ItemType Directory -Path $agentDir -Force | Out-Null
+    }
+  }
+
+  if (Test-Path $authStorePath) {
+    Write-Step ("Beta auth store already present: " + $authStorePath)
+    return $true
+  }
+
+  $profiles = [ordered]@{}
+  if ($provider -eq "openai") {
+    $openaiKey = ""
+    if ($BetaEnvMap -and $BetaEnvMap.ContainsKey("OPENAI_API_KEY")) {
+      $openaiKey = ([string]$BetaEnvMap["OPENAI_API_KEY"]).Trim()
+    }
+    if ([string]::IsNullOrWhiteSpace($openaiKey)) {
+      if ($Required) {
+        throw "Configured beta provider is openai but OPENAI_API_KEY is missing in .env.beta; cannot bootstrap auth-profiles.json."
+      }
+      Write-Step "WARNING: OPENAI_API_KEY missing in .env.beta; beta auth bootstrap skipped."
+      return $false
+    }
+    $profiles["openai:default"] = [ordered]@{
+      type = "api_key"
+      provider = "openai"
+      key = $openaiKey
+    }
+  }
+
+  $payload = [ordered]@{
+    version = 1
+    profiles = $profiles
+  }
+
+  if ($DryRun) {
+    Write-Step ("DRY RUN: create beta auth store " + $authStorePath)
+    return $true
+  }
+  ($payload | ConvertTo-Json -Depth 8) | Set-Content -Path $authStorePath -Encoding UTF8
+  Write-Step ("Bootstrapped beta auth store at " + $authStorePath + " for provider " + $provider + ".")
+  return $true
 }
 
 function Get-RequiredPorts() {
@@ -117,13 +351,17 @@ function Get-DockerCommandPath() {
   throw "docker executable was not found in PATH or standard install locations."
 }
 
-function Invoke-Docker([string[]]$DockerArgs) {
+function Invoke-Docker([string[]]$DockerArgs, [switch]$Quiet) {
   $display = "docker " + ($DockerArgs -join " ")
   if ($DryRun) {
-    Write-Step ("DRY RUN: " + $display)
+    if (-not $Quiet) {
+      Write-Step ("DRY RUN: " + $display)
+    }
     return ""
   }
-  Write-Step ("Running: " + $display)
+  if (-not $Quiet) {
+    Write-Step ("Running: " + $display)
+  }
   $dockerExe = Get-DockerCommandPath
   $previous = $ErrorActionPreference
   $output = $null
@@ -138,7 +376,7 @@ function Invoke-Docker([string[]]$DockerArgs) {
   if ($exitCode -ne 0) {
     throw "Docker command failed: $display`n$($output -join "`n")"
   }
-  if ($output) {
+  if ($output -and -not $Quiet) {
     $output | Out-Host
   }
   return ($output -join "`n")
@@ -200,6 +438,33 @@ function Wait-WslPortListening([int]$Port, [int]$TimeoutSeconds, [string]$Label,
     throw "$Label did not start listening on port $Port within $TimeoutSeconds seconds."
   }
   Write-Step ("WARNING: $Label is not listening on port $Port after $TimeoutSeconds seconds.")
+  return $false
+}
+
+function Test-LocalPortListening([int]$Port) {
+  $listener = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+    Where-Object { $_.LocalPort -eq $Port } |
+    Select-Object -First 1
+  return ($null -ne $listener)
+}
+
+function Wait-LocalPortListening([int]$Port, [int]$TimeoutSeconds, [string]$Label, [switch]$Required) {
+  if ($DryRun) {
+    Write-Step ("DRY RUN: wait for " + $Label + " on port " + $Port)
+    return $true
+  }
+  $deadline = (Get-Date).AddSeconds([Math]::Max(1, $TimeoutSeconds))
+  while ((Get-Date) -lt $deadline) {
+    if (Test-LocalPortListening -Port $Port) {
+      Write-Step ($Label + " listening on port " + $Port + ".")
+      return $true
+    }
+    Start-Sleep -Seconds 2
+  }
+  if ($Required) {
+    throw ($Label + " did not start listening on port " + $Port + " within " + $TimeoutSeconds + " seconds.")
+  }
+  Write-Step ("WARNING: " + $Label + " is not listening on port " + $Port + " after " + $TimeoutSeconds + " seconds.")
   return $false
 }
 
@@ -287,6 +552,74 @@ function Wait-WslJournalPattern([string]$UnitName, [string]$Pattern, [int]$Timeo
   return $false
 }
 
+function Wait-DockerComposeLogPattern(
+  [string]$ComposeFile,
+  [string]$EnvFile,
+  [string]$ProjectName,
+  [string]$ServiceName,
+  [string]$Pattern,
+  [int]$TimeoutSeconds,
+  [switch]$Required
+) {
+  if ($DryRun) {
+    Write-Step ("DRY RUN: wait for docker log pattern in " + $ServiceName + ": " + $Pattern)
+    return $true
+  }
+  $deadline = (Get-Date).AddSeconds([Math]::Max(1, $TimeoutSeconds))
+  while ((Get-Date) -lt $deadline) {
+    try {
+      $raw = Invoke-Docker -DockerArgs @(
+        "compose",
+        "--env-file",
+        $EnvFile,
+        "-f",
+        $ComposeFile,
+        "-p",
+        $ProjectName,
+        "logs",
+        "--no-color",
+        "--tail",
+        "250",
+        $ServiceName
+      ) -Quiet
+      if (-not [string]::IsNullOrWhiteSpace($raw) -and $raw.Contains($Pattern)) {
+        Write-Step ("Found docker readiness pattern for " + $ServiceName + ": " + $Pattern)
+        return $true
+      }
+    } catch {
+      # Ignore transient log-read failures while service settles.
+    }
+    Start-Sleep -Seconds 3
+  }
+  if ($Required) {
+    throw ("Did not observe readiness pattern for " + $ServiceName + " within " + $TimeoutSeconds + " seconds: " + $Pattern)
+  }
+  Write-Step ("WARNING: readiness pattern not observed for " + $ServiceName + ": " + $Pattern)
+  return $false
+}
+
+function Invoke-DockerWithRetry(
+  [string[]]$DockerArgs,
+  [int]$MaxAttempts = 8,
+  [int]$DelaySeconds = 4,
+  [string]$OperationLabel = "docker command"
+) {
+  $attempt = 1
+  while ($attempt -le [Math]::Max(1, $MaxAttempts)) {
+    try {
+      return Invoke-Docker -DockerArgs $DockerArgs -Quiet
+    } catch {
+      if ($attempt -ge $MaxAttempts) {
+        throw
+      }
+      Write-Step ("WARNING: " + $OperationLabel + " failed (attempt " + $attempt + "/" + $MaxAttempts + "). Retrying in " + $DelaySeconds + "s.")
+      Start-Sleep -Seconds ([Math]::Max(1, $DelaySeconds))
+    }
+    $attempt++
+  }
+  return ""
+}
+
 function Normalize-Path([string]$PathValue) {
   if ([string]::IsNullOrWhiteSpace($PathValue)) {
     return ""
@@ -355,17 +688,24 @@ function Write-CoexistenceValidationReport([string]$Phase, [string]$RepoRootPath
   }
 }
 
-function Assert-HttpHealth([string]$Url, [string]$Label) {
+function Assert-HttpHealth([string]$Url, [string]$Label, [int]$TimeoutSeconds = 180, [int]$IntervalSeconds = 3) {
   if ($DryRun) {
     Write-Step ("DRY RUN: health check " + $Url)
     return
   }
-  try {
-    $response = Invoke-RestMethod $Url -TimeoutSec 5
-    Write-Step ("$Label health ok: " + ($response | ConvertTo-Json -Compress))
-  } catch {
-    throw "$Label health check failed at ${Url}: $($_.Exception.Message)"
+  $deadline = (Get-Date).AddSeconds([Math]::Max(1, $TimeoutSeconds))
+  $lastError = ""
+  while ((Get-Date) -lt $deadline) {
+    try {
+      $response = Invoke-RestMethod $Url -TimeoutSec 8
+      Write-Step ("$Label health ok: " + ($response | ConvertTo-Json -Compress))
+      return
+    } catch {
+      $lastError = $_.Exception.Message
+      Start-Sleep -Seconds ([Math]::Max(1, $IntervalSeconds))
+    }
   }
+  throw "$Label health check failed at ${Url} within $TimeoutSeconds seconds: $lastError"
 }
 
 function Convert-WindowsPathToWsl([string]$WindowsPath) {
@@ -382,16 +722,57 @@ function Convert-WindowsPathToWsl([string]$WindowsPath) {
   return ($wslPath -split "`r?`n" | Select-Object -First 1).Trim()
 }
 
-function Assert-BetaModelAuthHealthy([string]$RepoRootPath, [switch]$Required) {
+function Assert-BetaModelAuthHealthy(
+  [string]$RepoRootPath,
+  [ValidateSet("native", "docker")][string]$RuntimeModeValue,
+  [string]$BetaProjectName,
+  [string]$RequiredProvider,
+  [switch]$Required
+) {
   if ($DryRun -or $SkipBeta) {
     return $true
   }
-  $repoWsl = Convert-WindowsPathToWsl -WindowsPath $RepoRootPath
-  $stateWsl = "$repoWsl/data/openclaw-beta"
-  $workspaceWsl = "$repoWsl/openclaw_workspace"
-  $envFileWsl = "$repoWsl/.env.beta.systemd"
-  $cmd = "set -a; source $envFileWsl 2>/dev/null || true; set +a; cd $repoWsl/vendor/openclaw && OPENCLAW_STATE_DIR=$stateWsl OPENCLAW_WORKSPACE_DIR=$workspaceWsl HOME=$stateWsl node dist/index.js models status --json"
-  $raw = Invoke-Wsl -Command $cmd -Quiet
+
+  $provider = if ([string]::IsNullOrWhiteSpace($RequiredProvider)) { "openai" } else { $RequiredProvider.Trim().ToLowerInvariant() }
+  $raw = ""
+  if ($RuntimeModeValue -eq "docker") {
+    $raw = Invoke-Docker -DockerArgs @(
+      "compose",
+      "--env-file",
+      ".env.beta",
+      "-f",
+      "docker-compose.beta-openclaw.yml",
+      "-p",
+      $BetaProjectName,
+      "exec",
+      "-T",
+      "openclaw-gateway",
+      "node",
+      "dist/index.js",
+      "models",
+      "status",
+      "--json"
+    ) -Quiet
+  } else {
+    $repoWsl = Convert-WindowsPathToWsl -WindowsPath $RepoRootPath
+    $stateWsl = "$repoWsl/data/openclaw-beta"
+    $workspaceWsl = "$repoWsl/openclaw_workspace"
+    $vendorWsl = "$repoWsl/vendor/openclaw"
+    $envFileSystemdWsl = "$repoWsl/.env.beta.systemd"
+    $envFileWsl = "$repoWsl/.env.beta"
+    $escapedEnvSystemd = Escape-BashSingleQuote $envFileSystemdWsl
+    $escapedEnv = Escape-BashSingleQuote $envFileWsl
+    $escapedVendor = Escape-BashSingleQuote $vendorWsl
+    $escapedState = Escape-BashSingleQuote $stateWsl
+    $escapedWorkspace = Escape-BashSingleQuote $workspaceWsl
+    $cmd = @(
+      "if [ -f '$escapedEnvSystemd' ]; then set -a; source '$escapedEnvSystemd' 2>/dev/null || true; set +a; elif [ -f '$escapedEnv' ]; then set -a; source '$escapedEnv' 2>/dev/null || true; set +a; fi",
+      "cd '$escapedVendor'",
+      "OPENCLAW_STATE_DIR='$escapedState' OPENCLAW_WORKSPACE_DIR='$escapedWorkspace' HOME='$escapedState' node dist/index.js models status --json"
+    ) -join "; "
+    $raw = Invoke-Wsl -Command $cmd -Quiet
+  }
+
   if ([string]::IsNullOrWhiteSpace($raw)) {
     throw "Beta model auth check returned empty output."
   }
@@ -400,18 +781,29 @@ function Assert-BetaModelAuthHealthy([string]$RepoRootPath, [switch]$Required) {
   } catch {
     throw "Beta model auth check did not return valid JSON."
   }
+
   $missingProviders = @()
   if ($status.auth -and $status.auth.missingProvidersInUse) {
-    $missingProviders = @($status.auth.missingProvidersInUse | ForEach-Object { [string]$_ })
+    $missingProviders = @(
+      $status.auth.missingProvidersInUse |
+      ForEach-Object { ([string]$_).Trim().ToLowerInvariant() } |
+      Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+      Sort-Object -Unique
+    )
   }
-  if ($missingProviders -contains "anthropic") {
+  if ($missingProviders -contains $provider) {
     if ($Required) {
-      throw "Beta model auth missing provider anthropic. Configure Schoology beta auth profile before UAT."
+      throw ("Beta model auth missing required provider " + $provider + " for configured primary model.")
     }
-    Write-Step "WARNING: Beta model auth missing provider anthropic."
+    Write-Step ("WARNING: Beta model auth missing required provider " + $provider + ".")
     return $false
   }
-  Write-Step ("Beta model auth check passed (missingProvidersInUse=" + ($missingProviders -join ",") + ").")
+
+  if ($missingProviders.Count -gt 0) {
+    Write-Step ("Beta model auth check passed for required provider " + $provider + "; other missing providers: " + ($missingProviders -join ",") + ".")
+  } else {
+    Write-Step ("Beta model auth check passed for required provider " + $provider + ".")
+  }
   return $true
 }
 
@@ -484,6 +876,15 @@ if ($betaEnv.ContainsKey("OPENCLAW_GATEWAY_TOKEN")) {
 }
 if ([string]::IsNullOrWhiteSpace($betaGatewayToken) -and -not $SkipBeta) {
   throw "OPENCLAW_GATEWAY_TOKEN is required in .env.beta"
+}
+
+$betaPrimaryModelReference = Get-BetaPrimaryModelReference -RepoRootPath $RepoRoot
+$betaPrimaryProvider = Get-ModelProviderFromReference -ModelReference $betaPrimaryModelReference
+Write-Step ("Beta primary model configured: " + $betaPrimaryModelReference + " (provider=" + $betaPrimaryProvider + ").")
+if (-not $SkipBeta) {
+  Ensure-BetaGatewayMode -RepoRootPath $RepoRoot -Mode "local"
+  Ensure-BetaTelegramGroupPolicy -RepoRootPath $RepoRoot -BetaEnvMap $betaEnv
+  $null = Ensure-BetaAuthBootstrap -RepoRootPath $RepoRoot -RequiredProvider $betaPrimaryProvider -BetaEnvMap $betaEnv -Required
 }
 
 if (-not $AllowSharedTelegramToken) {
@@ -615,7 +1016,7 @@ if ($RuntimeMode -eq "native") {
       if (-not $bridgeReady) {
         Write-Step "INFO: port 18800 is reserved for Schoology coexistence but may be unused on current OpenClaw builds."
       }
-      $null = Assert-BetaModelAuthHealthy -RepoRootPath $RepoRoot
+      $null = Assert-BetaModelAuthHealthy -RepoRootPath $RepoRoot -RuntimeModeValue "native" -BetaProjectName $BetaProject -RequiredProvider $betaPrimaryProvider -Required
     }
 
     if (-not $SkipProd) {
@@ -679,6 +1080,10 @@ if (-not $SkipBeta) {
   }
   Invoke-Docker -DockerArgs $betaUpArgs | Out-Null
 
+  if (-not $DryRun) {
+    $null = Wait-LocalPortListening -Port 18799 -TimeoutSeconds 180 -Label "Schoology OpenClaw gateway (docker pre-bootstrap)" -Required
+  }
+
   $stopCronArgs = @(
     "compose",
     "--env-file",
@@ -708,7 +1113,11 @@ if (-not $SkipBeta) {
     "-lc",
     $bootstrapCmd
   )
-  Invoke-Docker -DockerArgs $bootstrapArgs | Out-Null
+  try {
+    Invoke-DockerWithRetry -DockerArgs $bootstrapArgs -MaxAttempts 10 -DelaySeconds 5 -OperationLabel "Schoology beta cron bootstrap command" | Out-Null
+  } catch {
+    Write-Step ("WARNING: beta cron bootstrap command failed after retries; continuing startup. " + $_.Exception.Message)
+  }
 
   $startCronArgs = @(
     "compose",
@@ -723,6 +1132,25 @@ if (-not $SkipBeta) {
     "openclaw-cron-sync"
   )
   Invoke-Docker -DockerArgs $startCronArgs | Out-Null
+}
+
+if (-not $DryRun) {
+  if (-not $SkipBeta) {
+    $null = Wait-LocalPortListening -Port 18799 -TimeoutSeconds 300 -Label "Schoology OpenClaw gateway (docker)" -Required
+    $null = Wait-DockerComposeLogPattern -ComposeFile "docker-compose.beta-openclaw.yml" -EnvFile ".env.beta" -ProjectName $BetaProject -ServiceName "openclaw-gateway" -Pattern "starting provider (@schoology_beta_bot)" -TimeoutSeconds 240 -Required
+    $bridgeReady = Wait-LocalPortListening -Port 18800 -TimeoutSeconds 30 -Label "Schoology reserved beta bridge/derived port (docker)"
+    if (-not $bridgeReady) {
+      Write-Step "INFO: port 18800 is reserved for Schoology coexistence but may be unused on current OpenClaw builds."
+    }
+    $null = Assert-BetaModelAuthHealthy -RepoRootPath $RepoRoot -RuntimeModeValue "docker" -BetaProjectName $BetaProject -RequiredProvider $betaPrimaryProvider -Required
+  }
+
+  if (-not $SkipProd) {
+    Assert-HttpHealth -Url "http://127.0.0.1:8787/api/health" -Label "Prod dashboard"
+  }
+  if (-not $SkipBeta -and -not $SkipBetaDashboard) {
+    Assert-HttpHealth -Url "http://127.0.0.1:8788/api/health" -Label "Beta dashboard"
+  }
 }
 
 if (-not $SkipProd) {

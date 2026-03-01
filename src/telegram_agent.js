@@ -99,8 +99,27 @@ function acquireLock() {
         } else {
           try {
             process.kill(existing.pid, 0);
-            console.error(`Another agent instance is already running (pid ${existing.pid}).`);
-            process.exit(1);
+            // Guard against stale pid reuse by confirming this pid is actually another
+            // telegram agent process on Linux runtimes.
+            const isLinux = process.platform === "linux";
+            let isTelegramAgentProcess = true;
+            if (isLinux) {
+              try {
+                const cmdlinePath = `/proc/${existing.pid}/cmdline`;
+                if (fs.existsSync(cmdlinePath)) {
+                  const cmdline = fs.readFileSync(cmdlinePath, "utf8").replace(/\u0000/g, " ");
+                  isTelegramAgentProcess = cmdline.includes("telegram_agent.js");
+                }
+              } catch {
+                // If cmdline cannot be read, fall back to conservative behavior.
+                isTelegramAgentProcess = true;
+              }
+            }
+            if (isTelegramAgentProcess) {
+              console.error(`Another agent instance is already running (pid ${existing.pid}).`);
+              process.exit(1);
+            }
+            // Stale lock from unrelated pid reuse; allow startup.
           } catch (err) {
             // stale lock
           }
