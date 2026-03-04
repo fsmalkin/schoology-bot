@@ -10,21 +10,26 @@ It runs on your machine today and is ready to move to a server later.
 - Provides an agentic chat interface (GPT-5.2) to answer questions and update statuses.
 - Stores history, notes, reminders, tasks, and chat context locally.
 
-## Quick start
-1. Copy `.env.example` to `.env` and fill in values.
-2. Run `npm install`.
-3. Run `npm run start` to keep the scheduler running.
-
-## Docker quick start
+## Quick start (Docker unattended)
 1. Copy `.env.example` to `.env` and fill in values.
 2. Run `docker compose up -d --build`.
-3. Check logs with `docker compose logs -f`.
+3. Check logs with `docker compose logs --tail 200`.
 
 Note: Docker runs three services by default:
 - `schoology` (scheduler for scrape/send/reminders)
 - `telegram-agent` (chat agent)
 - `dashboard` (local health + operations page at `http://127.0.0.1:8787`)
 - Optional profile: `dashboard-tailscale` (publishes dashboard on your tailnet domain)
+
+## Supported runtime policy
+- Unattended runtime is Docker-only.
+- Scheduled startup tasks are registered with stored user password mode (non-interactive, works while logged off).
+- Docker mode removes startup fallback artifacts to avoid native/runtime drift.
+
+## Local quick commands (manual/debug only)
+1. Run `npm install`.
+2. Run `npm run scrape` (single scrape) or `npm run send` (single summary send).
+3. Run `npm run login:interactive` when Schoology auth/session needs refresh.
 
 ## Uptime and Updates (Docker)
 For higher uptime and safer updates, use Docker with auto-restart and health checks.
@@ -34,6 +39,15 @@ Common commands:
 - Check health: `docker compose ps`
 - Tail logs: `docker compose logs -f`
 - Stop: `docker compose down`
+
+## Windows task registration (non-interactive)
+Register Schoology tasks under your current user with stored password logon mode:
+
+`powershell -ExecutionPolicy Bypass -File scripts/register_schoology_tasks.ps1 -RuntimeMode docker -RunAsUser "$env:USERNAME" -RunAsPassword "<password>"`
+
+Validation command:
+
+`schtasks /Query /TN Schoology-StartStacks-OnBoot /V /FO LIST`
 
 ## Auto-Update (Optional)
 There is no CI/CD pipeline by default. If you want the machine to pull `main`
@@ -98,6 +112,10 @@ Notes:
 ## Debug
 Set `DEBUG_DUMP=true` in `.env` to save a screenshot and HTML snapshot to `data/` on failures.
 Login-failure alerts are rate-limited via `LOGIN_ALERT_COOLDOWN_MINUTES` (default `360`).
+Login retry behavior is controlled by:
+- `SCHOLOGY_LOGIN_ATTEMPTS` (default `2`)
+- `SCHOLOGY_LOGIN_RETRY_DELAY_MS` (default `1500`)
+- `LOGIN_DIAGNOSTIC_PATH` (default `data/login-diagnostic.json`)
 
 ## Interactive Login (First Time)
 If the login flow changes or is protected by Microsoft, run:
@@ -155,12 +173,8 @@ Tips:
 Place short, ASCII-only markdown files in `skills/` to extend the agent with local skills.
 These are loaded into the agent context on each run.
 
-## Beta Telegram Stack
-Use a separate bot for beta testing to avoid conflicts with prod.
-1. Create `.env.beta` and set `DATA_DIR="data/beta"` plus a new Telegram bot token and chat id.
-2. Run: `docker compose --env-file .env.beta -f docker-compose.beta.yml -p schoology-beta up -d --build`
-3. Compose builds one shared image tag (`schoology-beta-app:latest`) and runs both beta services from it.
-4. Stop beta when not needed: `docker compose --env-file .env.beta -f docker-compose.beta.yml -p schoology-beta down`
+## Legacy beta compose
+`docker-compose.beta.yml` is deprecated for routine operations and should not be used for normal Schoology unattended flow.
 
 ## Beta OpenClaw One-Gateway Stack
 Use this to evaluate gateway-native Telegram + gateway cron with Schoology tools exposed by `schoology-tool-api`.

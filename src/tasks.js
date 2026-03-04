@@ -97,8 +97,12 @@ async function maybeSendLoginAlert(config, state, error) {
     return;
   }
 
+  const diagnosticLine = error?.loginDiagnosticPath
+    ? `\nDiagnostic: ${error.loginDiagnosticPath}`
+    : "";
   const text =
-    "Schoology login failed or expired. Run `npm run login:interactive` to refresh the session, then retry.";
+    "Schoology login failed or expired. Run `npm run login:interactive` to refresh the session, then retry." +
+    diagnosticLine;
 
   try {
     await sendTelegramMessage(config, text);

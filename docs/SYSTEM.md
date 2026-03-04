@@ -62,6 +62,8 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
 ## Configuration (env)
 Key settings:
 - SCHOLOGY_USERNAME / SCHOLOGY_PASSWORD
+- SCHOLOGY_LOGIN_ATTEMPTS / SCHOLOGY_LOGIN_RETRY_DELAY_MS
+- LOGIN_DIAGNOSTIC_PATH
 - TIMEZONE (defaults to America/New_York)
 - SCRAPE_CRON / SEND_CRON / REMINDER_CRON
 - TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_IDS
@@ -82,33 +84,38 @@ Key settings:
 - Beta reset from prod memory: `npm run beta:reset-memory`
 
 ## Runtime
-Primary runtime:
-- WSL2 + systemd (`schoology.target`) installed via `scripts/install_schoology_native_services.ps1`.
-- Native orchestration command: `powershell -ExecutionPolicy Bypass -File scripts/start_schoology_stacks.ps1 -RuntimeMode native`.
-- Native services:
-  - `schoology-prod-scheduler.service`
-  - `schoology-prod-telegram.service`
-  - `schoology-prod-dashboard.service`
-  - `schoology-beta-tool-api.service`
-  - `schoology-beta-gateway.service`
-  - `schoology-beta-monitor.service`
-  - `schoology-beta-dashboard.service`
-  - `schoology-beta-cron-sync.timer` (`OnBootSec=90s`, `OnUnitActiveSec=6h`)
-
-Fallback runtime:
-- Docker remains supported via `scripts/start_schoology_stacks.ps1 -RuntimeMode docker`.
+Primary runtime (unattended):
+- Docker Compose only.
+- Start command: `powershell -ExecutionPolicy Bypass -File scripts/start_schoology_stacks.ps1 -RuntimeMode docker`.
+- Startup waits for Docker engine readiness before compose actions and retries until timeout with diagnostics.
 - Legacy beta (`docker-compose.beta.yml`) is deprecated for routine operations.
 
+Scheduled startup mode:
+- Register tasks with stored-password logon mode (`/RU` + `/RP`) so jobs run while logged off.
+- Command: `powershell -ExecutionPolicy Bypass -File scripts/register_schoology_tasks.ps1 -RuntimeMode docker -RunAsUser "$env:USERNAME" -RunAsPassword "<password>"`
+- Post-registration assertions enforce task logon type `Password`.
+
 Recovery and DR:
-- `powershell -ExecutionPolicy Bypass -File scripts/install_schoology_native_services.ps1 -EnableNow`
-- `powershell -ExecutionPolicy Bypass -File scripts/start_schoology_stacks.ps1 -RuntimeMode native`
-- `powershell -ExecutionPolicy Bypass -File scripts/create_schoology_pre_cutover_snapshot.ps1`
-- `powershell -ExecutionPolicy Bypass -File scripts/backup_schoology_state.ps1`
+- `powershell -ExecutionPolicy Bypass -File scripts/start_schoology_stacks.ps1 -RuntimeMode docker`
+- `powershell -ExecutionPolicy Bypass -File scripts/backup_schoology_state.ps1 -RuntimeMode docker`
 - `powershell -ExecutionPolicy Bypass -File scripts/backup_schoology_catalog_github.ps1`
 - `powershell -ExecutionPolicy Bypass -File scripts/run_schoology_restore_drill.ps1 -Source local`
-- `powershell -ExecutionPolicy Bypass -File scripts/restore_schoology_state.ps1 -Source local -Snapshot latest`
+- `powershell -ExecutionPolicy Bypass -File scripts/restore_schoology_state.ps1 -RuntimeMode docker -Source local -Snapshot latest`
 - `powershell -ExecutionPolicy Bypass -File scripts/check_schoology_backup_freshness.ps1`
-- `powershell -ExecutionPolicy Bypass -File scripts/register_schoology_tasks.ps1`
+- `powershell -ExecutionPolicy Bypass -File scripts/register_schoology_tasks.ps1 -RuntimeMode docker -RunAsUser "$env:USERNAME" -RunAsPassword "<password>"`
+
+## Decision + Outcome
+Decision:
+- Standardize unattended Schoology runtime on Docker only.
+- Standardize scheduled tasks on password logon mode (non-interactive).
+
+Outcome:
+- Single runtime path reduces startup drift and troubleshooting branches.
+- Tasks execute post-boot/logged-off without requiring interactive desktop logon.
+- Login failures now produce diagnostic artifacts and retry before alerting.
+
+Fallback:
+- If unattended task logon fails, run `scripts/start_schoology_stacks.ps1 -RuntimeMode docker` manually, then re-register tasks with a verified password.
 
 ## Known constraints
 - Recurring cadence is limited to `daily`, `weekdays`, `weekly`.

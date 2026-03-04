@@ -54,7 +54,15 @@ $requiredPaths = @(
   "data\beta\storage.json",
   "data\beta\agent.db",
   "data\openclaw-beta",
-  "openclaw_workspace"
+  "openclaw_workspace",
+  "db\agent.db.prod",
+  "db\agent.db.prod-wal",
+  "db\agent.db.prod-shm"
+)
+$requiredDbArtifacts = @(
+  "db\agent.db.prod",
+  "db\agent.db.prod-wal",
+  "db\agent.db.prod-shm"
 )
 
 if ($DryRun) {
@@ -65,39 +73,76 @@ if ($DryRun) {
 }
 
 $archiveHash = (Get-FileHash -Path $resolvedArchivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-$extractRoot = Join-Path $env:TEMP ("schoology-restore-drill-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
+$extractRoot = Join-Path $env:TEMP ("schoology-restore-drill-" + (Get-Date -Format "yyyyMMdd-HHmmss") + "-" + [Guid]::NewGuid().ToString("N").Substring(0, 8))
 New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
 
-$drillResult = $null
+$missingRequiredPaths = @()
+$manifestPresent = $false
+$manifestEntries = @()
+$manifestMissingPaths = @()
+$manifestHashMismatchPaths = @()
+$dbArtifactsPresent = @()
+$dbArtifactsMissing = @()
+$dbArtifactsZeroBytes = @()
+$manifestMissingRequiredDbArtifacts = @()
+$failureReasons = @()
+$fatalError = ""
+
 try {
   Expand-Archive -Path $resolvedArchivePath -DestinationPath $extractRoot -Force
   Write-Step ("Extracted archive: " + $resolvedArchivePath)
 
-  $missingRequiredPaths = @()
   foreach ($relative in $requiredPaths) {
     $path = Join-Path $extractRoot $relative
     if (-not (Test-Path $path)) {
       $missingRequiredPaths += $relative
     }
   }
+  if ($missingRequiredPaths.Count -gt 0) {
+    $failureReasons += ("Missing required paths: " + ($missingRequiredPaths -join ", "))
+  }
+
+  foreach ($artifact in $requiredDbArtifacts) {
+    $artifactPath = Join-Path $extractRoot $artifact
+    if (Test-Path $artifactPath) {
+      $dbArtifactsPresent += $artifact
+      try {
+        $bytes = [int64](Get-Item $artifactPath).Length
+        if ($bytes -le 0) {
+          $dbArtifactsZeroBytes += $artifact
+        }
+      } catch {
+        $dbArtifactsZeroBytes += $artifact
+      }
+    } else {
+      $dbArtifactsMissing += $artifact
+    }
+  }
+  if ($dbArtifactsMissing.Count -gt 0) {
+    $failureReasons += ("Incomplete prod DB bundle; missing artifacts: " + ($dbArtifactsMissing -join ", "))
+  }
+  if ($dbArtifactsZeroBytes.Count -gt 0) {
+    $failureReasons += ("Prod DB artifacts with zero bytes: " + ($dbArtifactsZeroBytes -join ", "))
+  }
 
   $manifestPath = Join-Path $extractRoot "manifest.json"
   $manifestPresent = Test-Path $manifestPath
-  $manifestEntries = @()
-  $manifestMissingPaths = @()
-  $manifestHashMismatchPaths = @()
+  $manifestEntryMap = @{}
   if ($manifestPresent) {
     try {
       $parsedManifest = Get-Content -Path $manifestPath -Raw | ConvertFrom-Json
       $manifestEntries = @($parsedManifest | ForEach-Object { $_ })
     } catch {
-      throw "manifest.json exists but is not valid JSON in archive: $resolvedArchivePath"
+      $failureReasons += "manifest.json exists but is not valid JSON."
+      $manifestEntries = @()
     }
     foreach ($entry in $manifestEntries) {
       $entryRelative = [string]$entry.path
       if ([string]::IsNullOrWhiteSpace($entryRelative)) {
         continue
       }
+      $normalizedEntryPath = ($entryRelative -replace "/", "\").TrimStart("\")
+      $manifestEntryMap[$normalizedEntryPath.ToLowerInvariant()] = $true
       $entryPath = Join-Path $extractRoot ($entryRelative -replace "/", "\")
       if (-not (Test-Path $entryPath)) {
         $manifestMissingPaths += $entryRelative
@@ -112,11 +157,30 @@ try {
         $manifestHashMismatchPaths += $entryRelative
       }
     }
-  } elseif (-not $AllowMissingManifest) {
-    throw "Archive is missing manifest.json. Use -AllowMissingManifest to bypass."
-  }
+    if ($manifestMissingPaths.Count -gt 0) {
+      $failureReasons += ("Manifest references missing files: " + ($manifestMissingPaths -join ", "))
+    }
+    if ($manifestHashMismatchPaths.Count -gt 0) {
+      $failureReasons += ("Manifest hash mismatches: " + ($manifestHashMismatchPaths -join ", "))
+    }
 
-  $ok = ($missingRequiredPaths.Count -eq 0) -and ($manifestMissingPaths.Count -eq 0) -and ($manifestHashMismatchPaths.Count -eq 0)
+    foreach ($dbArtifact in $requiredDbArtifacts) {
+      $normalizedDbArtifact = $dbArtifact.ToLowerInvariant()
+      if (-not $manifestEntryMap.ContainsKey($normalizedDbArtifact)) {
+        $manifestMissingRequiredDbArtifacts += $dbArtifact
+      }
+    }
+    if ($manifestMissingRequiredDbArtifacts.Count -gt 0) {
+      $failureReasons += ("Manifest missing required DB bundle entries: " + ($manifestMissingRequiredDbArtifacts -join ", "))
+    }
+  } elseif (-not $AllowMissingManifest) {
+    $failureReasons += "Archive is missing manifest.json."
+  }
+} catch {
+  $fatalError = $_.Exception.Message
+  $failureReasons += ("Restore drill fatal error: " + $fatalError)
+} finally {
+  $ok = ($failureReasons.Count -eq 0)
   $drillResult = [pscustomobject]@{
     generatedAt = (Get-Date).ToString("o")
     source = $Source
@@ -127,10 +191,17 @@ try {
     extractRoot = $extractRoot
     requiredPathsChecked = $requiredPaths
     missingRequiredPaths = $missingRequiredPaths
+    requiredDbArtifacts = $requiredDbArtifacts
+    dbArtifactsPresent = $dbArtifactsPresent
+    dbArtifactsMissing = $dbArtifactsMissing
+    dbArtifactsZeroBytes = $dbArtifactsZeroBytes
     manifestPresent = $manifestPresent
     manifestEntriesChecked = $manifestEntries.Count
     manifestMissingPaths = $manifestMissingPaths
     manifestHashMismatchPaths = $manifestHashMismatchPaths
+    manifestMissingRequiredDbArtifacts = $manifestMissingRequiredDbArtifacts
+    failureReasons = $failureReasons
+    fatalError = $fatalError
     ok = $ok
   }
 
@@ -138,15 +209,18 @@ try {
   $drillResult | ConvertTo-Json -Depth 8 | Set-Content -Path $OutputFile -Encoding UTF8
   Write-Step ("Wrote drill artifact: " + $OutputFile)
 
-  if (-not $ok) {
-    Write-Step "Restore drill failed integrity checks."
-    exit 1
-  }
-
-  Write-Step "Restore drill passed."
-  exit 0
-} finally {
   if (Test-Path $extractRoot) {
     Remove-Item -Path $extractRoot -Recurse -Force
   }
 }
+
+if ($drillResult.ok) {
+  Write-Step "Restore drill passed."
+  exit 0
+}
+
+Write-Step "Restore drill failed integrity checks."
+foreach ($reason in $drillResult.failureReasons) {
+  Write-Step ("Failure reason: " + $reason)
+}
+exit 1

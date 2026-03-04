@@ -1,0 +1,123 @@
+name: Intake Check
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  intake-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate intake evidence
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            if (!issue || issue.pull_request) {
+              core.info("Not an issue event.");
+              return;
+            }
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const body = issue.body || "";
+            const hasDuplicateHeading = /duplicate\s*check/i.test(body);
+            const hasRepoQuery = /repo\s*search\s*query/i.test(body) && /in:title,body|repo:/i.test(body);
+            const hasOrgQuery = /org\s*search\s*query/i.test(body) && /org:/i.test(body);
+            const candidateLinks = body.match(/https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/issues\/\d+/g) || [];
+            const intakeComplete = hasDuplicateHeading && hasRepoQuery && hasOrgQuery && candidateLinks.length > 0;
+
+            async function ensureLabel(name, color, description) {
+              try {
+                await github.rest.repos.createLabel({ owner, repo, name, color, description });
+              } catch (error) {
+                if (error.status !== 422) throw error;
+              }
+            }
+
+            await ensureLabel("needs-intake", "B60205", "Missing duplicate-check intake evidence");
+            await ensureLabel("possible-duplicate", "D4C5F9", "Potentially overlaps an existing issue");
+
+            const comments = await github.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number: issue.number,
+              per_page: 100,
+            });
+            const marker = "<!-- intake-check -->";
+            const existing = comments.data.find((c) => c.user?.type === "Bot" && c.body?.includes(marker));
+
+            if (intakeComplete) {
+              const labels = issue.labels.map((l) => (typeof l === "string" ? l : l.name));
+              if (labels.includes("needs-intake")) {
+                await github.rest.issues.removeLabel({ owner, repo, issue_number: issue.number, name: "needs-intake" });
+              }
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner,
+                  repo,
+                  comment_id: existing.id,
+                  body: `${marker}\nIntake check passed. Duplicate-check evidence is present.`,
+                });
+              }
+              core.info("Intake evidence present.");
+              return;
+            }
+
+            const labels = issue.labels.map((l) => (typeof l === "string" ? l : l.name));
+            if (!labels.includes("needs-intake")) {
+              await github.rest.issues.addLabels({ owner, repo, issue_number: issue.number, labels: ["needs-intake"] });
+            }
+
+            const tokens = (issue.title || "")
+              .toLowerCase()
+              .replace(/[^a-z0-9\s-]/g, " ")
+              .split(/\s+/)
+              .filter((t) => t.length >= 3)
+              .slice(0, 6);
+            const queryTerms = tokens.length > 0 ? tokens.join(" ") : "bug feature";
+            const query = `${queryTerms} repo:${owner}/${repo} is:issue`;
+
+            let suggestions = [];
+            try {
+              const search = await github.rest.search.issuesAndPullRequests({
+                q: query,
+                per_page: 5,
+              });
+              suggestions = (search.data.items || []).filter((item) => item.number !== issue.number);
+            } catch (error) {
+              core.warning(`Issue search failed: ${error.message}`);
+            }
+
+            const suggestionLines = suggestions.length > 0
+              ? suggestions.map((s) => `- ${s.html_url}`).join("\n")
+              : "- No close title matches found automatically.";
+
+            const guidance = `${marker}
+            Intake is incomplete. Add duplicate-check evidence before this item can move to Ready.
+
+            Required in the issue body:
+            - Duplicate Check section
+            - Repo search query with evidence
+            - Org search query with evidence
+            - Candidate issue links with Exact/Probable/None classification
+            - Intake decision (reuse vs new)
+
+            Suggested commands:
+            - \\`gh issue list --repo fsmalkin/${repo} --state all --search "<terms> in:title,body sort:updated-desc" --limit 30\\`
+            - \\`gh search issues "<terms> org:fsmalkin is:issue sort:updated-desc" --limit 30\\`
+
+            Likely related issues:
+            ${suggestionLines}`.replace(/^\s{12}/gm, "");
+
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: guidance });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number: issue.number, body: guidance });
+            }
+
+            core.setFailed("Missing duplicate-check intake evidence.");

@@ -14,6 +14,8 @@ Unit tests
 - Reminder normalization edge-cases (model-supplied time override, unsupported-cadence warning when recurrence is pre-normalized, and date-cue preservation while defaulting time).
 - Refresh login-failure messaging when `SCHOLOGY_IDP` is already configured (avoids redundant provider prompts).
 - Login-failure Telegram alert throttling (first alert, cooldown suppression, changed-error resend, post-success resend).
+- Assignment identity canonicalization (`assignment:<id>`) and legacy-key merge behavior.
+- Assignment identity migration v6 (backfill `assignment_id`, dedupe by ID, and reference relink for notes/tasks).
 - Dashboard health/data builders (heartbeat + snapshot shaping).
 - Time parsing and timezone formatting (local labels, shorthand).
 - Reminder rollovers (one-time + recurring cadence next-run math, DST wall-clock checks).
@@ -39,7 +41,7 @@ Smoke tests
   - `scripts/backup_schoology_state.ps1 -DryRun`
   - `scripts/run_schoology_restore_drill.ps1 -DryRun`
   - `scripts/restore_schoology_state.ps1 -DryRun`
-  - `scripts/register_schoology_tasks.ps1 -DryRun`
+  - `scripts/register_schoology_tasks.ps1 -DryRun -RunAsPassword "<password>"`
   - `scripts/check_schoology_backup_freshness.ps1` (status-file check)
 
 CLI checks
@@ -49,12 +51,12 @@ CLI checks
   - `npm run stories:run`
   - `npm run stories:judge`
 - Recovery/operations scripts:
-  - `powershell -ExecutionPolicy Bypass -File scripts/start_schoology_stacks.ps1`
+  - `powershell -ExecutionPolicy Bypass -File scripts/start_schoology_stacks.ps1 -RuntimeMode docker`
   - `powershell -ExecutionPolicy Bypass -File scripts/create_schoology_pre_cutover_snapshot.ps1`
-  - `powershell -ExecutionPolicy Bypass -File scripts/backup_schoology_state.ps1`
+  - `powershell -ExecutionPolicy Bypass -File scripts/backup_schoology_state.ps1 -RuntimeMode docker`
   - `powershell -ExecutionPolicy Bypass -File scripts/run_schoology_restore_drill.ps1 -Source local`
-  - `powershell -ExecutionPolicy Bypass -File scripts/restore_schoology_state.ps1 -Source local -Snapshot latest`
-  - `powershell -ExecutionPolicy Bypass -File scripts/register_schoology_tasks.ps1`
+  - `powershell -ExecutionPolicy Bypass -File scripts/restore_schoology_state.ps1 -RuntimeMode docker -Source local -Snapshot latest`
+  - `powershell -ExecutionPolicy Bypass -File scripts/register_schoology_tasks.ps1 -RuntimeMode docker -RunAsPassword "<password>"`
 
 ## Gaps and risks
 
@@ -82,7 +84,7 @@ OpenClaw stack
 Performance and reliability
 - No load or soak tests.
 - Network failure handling not stress tested.
-- Restore drill currently validates archive integrity/extractability, not full in-place runtime rollback.
+- Restore drill validates snapshot integrity and SQLite bundle completeness, but not full in-place runtime rollback.
 - Scheduled-task execution health is monitored via freshness status, not integration tests.
 
 ## Near-term additions (recommended)

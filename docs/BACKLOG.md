@@ -48,8 +48,12 @@ This file tracks active and proposed work items with GitHub issue linkage.
 ## Planning Governance
 - Canonical backlog lives on `main`.
 - Branch-specific backlog items (e.g., OpenClaw beta experiments) should be kept in branch docs and merged only after validation.
+- Intake first: duplicate-check evidence is required before creating/adding work items.
+- Active execution state lives on the GitHub Project `FSM Engineering Board`; this backlog stays strategic.
+- Cross-thread handoff also updates `docs/WORKLOG.md`.
 
 ## Recently Completed
 1. Local server migration off laptop runtime
    - Status: Completed (2026-02-18)
    - Outcome: Production runtime now runs on local server Docker with persistent data and health checks.
+

@@ -1,103 +1,45 @@
 # Schoology Recovery and DR Runbook
 
-Purpose: restore `schoology-bot` runtime on a rebuilt Windows machine with a native WSL/systemd runtime, and keep backups current with coexistence-safe naming.
+Purpose: restore and operate `schoology-bot` on Windows using a Docker-only unattended runtime with predictable startup and backup/restore behavior.
 
-## Canonical naming
-1. Legacy beta: `docker-compose.beta.yml` (`schoology-beta` + `telegram-agent-beta`) - deprecated for routine operations.
-2. Schoology OpenClaw beta: native equivalent of `docker-compose.beta-openclaw.yml` (`gateway`, `tool-api`, `monitor`, `cron-sync`, optional dashboard).
-3. Chasebot OpenClaw: separate stack in `D:\dev\openclaw` only.
+## Canonical runtime
+1. Primary stack: `docker-compose.yml` (`schoology`, `telegram-agent`, `dashboard`).
+2. Beta OpenClaw stack: `docker-compose.beta-openclaw.yml` (`openclaw-gateway`, `schoology-tool-api`, `openclaw-cron-sync`, optional dashboard).
+3. Legacy `docker-compose.beta.yml` is deprecated for routine operations.
 
 ## Coexistence contract
-Schoology and Chasebot OpenClaw run on the same machine, but must remain isolated.
+Schoology and Chasebot OpenClaw can share one host, but state and ports must stay isolated.
 
-Schoology ports:
+Schoology reserved ports:
 1. `8787` prod dashboard
 2. `8788` beta dashboard
 3. `18799` beta gateway
-4. `18800` beta reserved bridge/derived port (reserved to avoid collisions; listener may be absent on current OpenClaw builds)
+4. `18800` reserved bridge/derived port
 
 Chasebot reference ports:
 1. `19789`, `19790`
 2. `19889`, `19890`
 
-Never run Schoology operations that target `docker-compose.beta.yml` unless explicitly approved for rollback.
+## Prerequisites (host)
+Install Docker Desktop and ensure it can start on boot.
 
-## One-time pre-cutover snapshot
-Before native cutover, capture an immutable snapshot:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\create_schoology_pre_cutover_snapshot.ps1
-```
-
-Snapshot contents:
-1. `data\`
-2. `openclaw_workspace\`
-3. `.env`, `.env.beta`
-4. `scripts\`
-5. exported scheduled task XML definitions (`Schoology-*` by default)
-6. SHA-256 manifest + summary metadata
-
-## Prerequisites (host + WSL)
-PowerShell (elevated where required):
+Recommended host checks:
 
 ```powershell
-wsl --install --no-distribution
-winget install -e --id OpenJS.NodeJS.LTS
-winget install -e --id Docker.DockerDesktop
-winget install -e --id Google.GoogleDrive
+docker version
+docker info
 ```
 
-`%USERPROFILE%\.wslconfig` baseline:
-
-```ini
-[wsl2]
-memory=8GB
-processors=6
-swap=2GB
-localhostForwarding=true
-vmIdleTimeout=3600000
-
-[experimental]
-autoMemoryReclaim=gradual
-```
-
-WSL distro must have systemd enabled (`/etc/wsl.conf`):
-
-```ini
-[boot]
-systemd=true
-```
-
-## Native runtime installation
+## Start stacks (Docker-only)
 From `D:\dev\schoology-bot`:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\install_schoology_native_services.ps1 -EnableNow
-```
-
-This installs:
-1. `schoology.target`
-2. Prod services (`schoology-prod-scheduler`, `schoology-prod-telegram`, `schoology-prod-dashboard`)
-3. Beta services (`schoology-beta-tool-api`, `schoology-beta-gateway`, `schoology-beta-monitor`, `schoology-beta-dashboard`)
-4. `schoology-beta-cron-sync.service` + `schoology-beta-cron-sync.timer` (`OnBootSec=90s`, `OnUnitActiveSec=6h`)
-5. sanitized systemd env files (`.env.systemd`, `.env.beta.systemd`) to avoid BOM/encoding parsing issues
-
-## Start stacks (preferred)
-Use helper script (native default):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start_schoology_stacks.ps1
-```
-
-Useful overrides:
-
-```powershell
-# explicit native mode
-powershell -ExecutionPolicy Bypass -File .\scripts\start_schoology_stacks.ps1 -RuntimeMode native
-
-# docker fallback mode
 powershell -ExecutionPolicy Bypass -File .\scripts\start_schoology_stacks.ps1 -RuntimeMode docker
 ```
+
+Notes:
+1. Startup waits for Docker engine readiness before compose actions.
+2. If Docker is not ready yet, script retries until timeout and includes diagnostics in error output.
 
 Health checks:
 
@@ -106,87 +48,85 @@ Invoke-RestMethod http://127.0.0.1:8787/api/health
 Invoke-RestMethod http://127.0.0.1:8788/api/health
 ```
 
-Native status checks:
-
-```powershell
-wsl -d Ubuntu-24.04 -- bash -lc "systemctl status schoology.target --no-pager"
-wsl -d Ubuntu-24.04 -- bash -lc "systemctl list-timers schoology-beta-cron-sync.timer --no-pager"
-```
-
 ## Backup workflow
-Daily backup script (native default):
+Daily backup command:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\backup_schoology_state.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\backup_schoology_state.ps1 -RuntimeMode docker
 ```
 
-Catalog backup script (GitHub metadata only, no secrets/state payload):
+Catalog backup command:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\backup_schoology_catalog_github.ps1
 ```
 
 Default backup locations:
-1. Local snapshots and archives: `D:\backups\schoology\local`
-2. Off-machine sync target: `D:\backups\schoology\sync` (Google Drive)
-3. Freshness status marker: `D:\backups\schoology\local\backup-status\last-success.json`
+1. Local snapshots/archives: `D:\backups\schoology\local`
+2. Sync target: `D:\backups\schoology\sync`
+3. Freshness marker: `D:\backups\schoology\local\backup-status\last-success.json`
 
-Backed up data:
-1. `data/state.json`
-2. `data/storage.json`
-3. `data/agent.db`
-4. `data/beta/state.json`
-5. `data/beta/storage.json`
-6. `data/beta/agent.db`
-7. `data/openclaw-beta/`
-8. `openclaw_workspace/`
-9. `db/agent.db.prod` snapshot
-10. checksum manifest
+Archive includes:
+1. `data/state.json`, `data/storage.json`, `data/agent.db`
+2. `data/beta/state.json`, `data/beta/storage.json`, `data/beta/agent.db`
+3. `data/openclaw-beta/`, `openclaw_workspace/`
+4. Prod DB SQLite bundle: `db/agent.db.prod`, `db/agent.db.prod-wal`, `db/agent.db.prod-shm`
+5. `manifest.json` checksums
 
 ## Restore workflow
 Restore latest local archive:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\restore_schoology_state.ps1 -RuntimeMode native -Source local -Snapshot latest
+powershell -ExecutionPolicy Bypass -File .\scripts\restore_schoology_state.ps1 -RuntimeMode docker -Source local -Snapshot latest
 ```
 
 Restore synced archive:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\restore_schoology_state.ps1 -RuntimeMode native -Source sync -Snapshot schoology-backup-YYYYMMDD-HHMMSS.zip
+powershell -ExecutionPolicy Bypass -File .\scripts\restore_schoology_state.ps1 -RuntimeMode docker -Source sync -Snapshot schoology-backup-YYYYMMDD-HHMMSS.zip
 ```
 
 Restore behavior:
-1. Stops Schoology runtime
-2. Restores state/data/openclaw directories
-3. Restores prod DB snapshot
-4. Restarts runtime and checks dashboards
+1. Stops compose stacks.
+2. Restores state/data/openclaw directories.
+3. Restores prod DB bundle into Docker volume.
+4. Restarts stacks and runs health checks.
 
-Monthly restore-drill integrity check (non-destructive):
+## Restore drill (required)
+Run non-destructive integrity drill:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\run_schoology_restore_drill.ps1 -Source local
 ```
 
-Drill artifact:
+Artifact:
 1. `D:\backups\schoology\local\backup-status\restore-drill.json`
 
-## Task scheduler registration
-Register tasks:
+Drill failure conditions:
+1. Missing required snapshot paths.
+2. Missing or partial prod DB bundle (`db/agent.db.prod*`).
+3. Manifest missing entries, missing files, or checksum mismatch.
+
+## Task Scheduler registration (non-interactive)
+Register Schoology tasks for logged-off execution:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\register_schoology_tasks.ps1 -RuntimeMode native
+powershell -ExecutionPolicy Bypass -File .\scripts\register_schoology_tasks.ps1 -RuntimeMode docker -RunAsUser "$env:USERNAME" -RunAsPassword "<password>"
 ```
 
-Task names:
-1. `Schoology-Backup-Daily`
-2. `Schoology-Backup-FreshnessHourly`
-3. `Schoology-Backup-Catalog-Daily`
-4. `Schoology-RestoreDrill-Monthly`
-5. `Schoology-StartStacks-OnBoot`
-6. `Schoology-StartStacks-OnLogon`
+Validation:
 
-Freshness check:
+```powershell
+schtasks /Query /TN Schoology-StartStacks-OnBoot /V /FO LIST
+```
+
+Expected:
+1. Task logon mode is password-based, not `Interactive only`.
+2. Startup fallback artifact is absent in Docker mode:
+   `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Schoology-StartStacks-OnLogon.cmd`
+
+## Freshness check
+Run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\check_schoology_backup_freshness.ps1
@@ -197,11 +137,16 @@ Exit behavior:
 2. `1`: stale
 3. `2`: status file missing/invalid
 
-## Smoke checklist
-1. Prod dashboard health endpoint responds.
-2. Beta dashboard health endpoint responds.
-3. Beta gateway listens on `18799`; `18800` remains reserved for Schoology port ownership.
-4. Prod and beta Telegram bots respond in intended chats.
-5. Backup archive appears in local and sync roots.
-6. Freshness check returns `0` after backup.
-7. Restore drill artifact reports `ok=true`.
+## Decision + Outcome
+Decision:
+1. Docker-only unattended runtime.
+2. Scheduled tasks use password logon mode for non-interactive startup.
+
+Outcome:
+1. One operational runtime path.
+2. Reliable post-boot/logged-off task execution.
+3. Restore drill now fails fast for incomplete SQLite snapshots.
+
+Fallback:
+1. If unattended startup fails, run `scripts/start_schoology_stacks.ps1 -RuntimeMode docker` manually.
+2. Re-register tasks with a verified `-RunAsPassword` value.

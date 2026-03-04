@@ -3,7 +3,7 @@ import path from "path";
 import Database from "better-sqlite3";
 import { getManualStatusCategory, normalizeManualStatus } from "./statuses.js";
 import { nowIso, parseSchoologyDate } from "./time.js";
-import { loadState } from "./storage.js";
+import { extractAssignmentId, loadState } from "./storage.js";
 
 let dbInstance = null;
 
@@ -168,6 +168,7 @@ function initDb(db) {
       status TEXT,
       score TEXT,
       url TEXT,
+      assignment_id TEXT,
       raw_text TEXT,
       first_seen_at TEXT,
       last_seen_at TEXT,
@@ -287,6 +288,273 @@ function ensureTaskIndexes(db) {
     db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_kind_status ON tasks(kind, status);");
   } catch (err) {
     // Column may not exist on older DBs until migration completes; ignore.
+  }
+}
+
+function parseIsoMs(value) {
+  const t = Date.parse(String(value || ""));
+  return Number.isFinite(t) ? t : null;
+}
+
+function pickLatestDateString(...values) {
+  let best = null;
+  let bestMs = null;
+  for (const value of values) {
+    if (!value) continue;
+    const ms = parseIsoMs(value);
+    if (ms === null) continue;
+    if (bestMs === null || ms > bestMs) {
+      best = value;
+      bestMs = ms;
+    }
+  }
+  return best;
+}
+
+function pickEarliestDateString(...values) {
+  let best = null;
+  let bestMs = null;
+  for (const value of values) {
+    if (!value) continue;
+    const ms = parseIsoMs(value);
+    if (ms === null) continue;
+    if (bestMs === null || ms < bestMs) {
+      best = value;
+      bestMs = ms;
+    }
+  }
+  return best;
+}
+
+function normalizeAssignmentKeyForId(assignmentId, fallbackKey = "") {
+  const id = String(assignmentId || "").trim();
+  if (!id) return String(fallbackKey || "").trim();
+  return `assignment:${id}`;
+}
+
+function ensureAssignmentIdentityColumns(db) {
+  const tableExists = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='assignments'")
+    .get();
+  if (!tableExists) return;
+  const columns = db.prepare("PRAGMA table_info(assignments)").all().map((row) => row.name);
+  if (!columns.includes("assignment_id")) {
+    db.exec("ALTER TABLE assignments ADD COLUMN assignment_id TEXT");
+  }
+}
+
+function ensureAssignmentIdentityIndex(db) {
+  db.exec("CREATE INDEX IF NOT EXISTS idx_assignments_assignment_id ON assignments(assignment_id)");
+}
+
+function relinkAssignmentReferences(db, fromKey, toKey) {
+  if (!fromKey || !toKey || fromKey === toKey) return;
+  db.prepare("UPDATE assignment_notes SET assignment_key = @to WHERE assignment_key = @from").run({
+    from: fromKey,
+    to: toKey,
+  });
+  db.prepare("UPDATE tasks SET assignment_key = @to WHERE assignment_key = @from").run({
+    from: fromKey,
+    to: toKey,
+  });
+  const remindersTable = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='reminders'")
+    .get();
+  if (remindersTable) {
+    db.prepare("UPDATE reminders SET assignment_key = @to WHERE assignment_key = @from").run({
+      from: fromKey,
+      to: toKey,
+    });
+  }
+}
+
+function choosePreferredAssignmentRow(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  const canonicalA = normalizeAssignmentKeyForId(a.assignmentId, "") === a.key;
+  const canonicalB = normalizeAssignmentKeyForId(b.assignmentId, "") === b.key;
+  if (canonicalA !== canonicalB) return canonicalA ? a : b;
+  const aSeen = parseIsoMs(a.lastSeenAt || a.firstSeenAt || "");
+  const bSeen = parseIsoMs(b.lastSeenAt || b.firstSeenAt || "");
+  if (aSeen !== null && bSeen !== null && aSeen !== bSeen) return aSeen > bSeen ? a : b;
+  if (aSeen !== null && bSeen === null) return a;
+  if (bSeen !== null && aSeen === null) return b;
+  return a;
+}
+
+function mergeAssignmentRows(preferred, duplicate) {
+  const newest = choosePreferredAssignmentRow(preferred, duplicate);
+  const older = newest === preferred ? duplicate : preferred;
+  const keepAutoIgnored = (newest.autoIgnored || 0) === 1 || (older.autoIgnored || 0) === 1;
+  return {
+    key: preferred.key,
+    assignment_id: preferred.assignmentId || duplicate.assignmentId || "",
+    course: newest.course || older.course || "",
+    title: newest.title || older.title || "",
+    due_date: newest.dueDate || older.dueDate || "",
+    status: newest.status || older.status || "",
+    score: newest.score || older.score || "",
+    url: newest.url || older.url || "",
+    raw_text: newest.rawText || older.rawText || "",
+    first_seen_at: pickEarliestDateString(preferred.firstSeenAt, duplicate.firstSeenAt) || newest.firstSeenAt || "",
+    last_seen_at: pickLatestDateString(preferred.lastSeenAt, duplicate.lastSeenAt) || newest.lastSeenAt || "",
+    last_missing_at: pickLatestDateString(preferred.lastMissingAt, duplicate.lastMissingAt),
+    resolved_at: pickLatestDateString(preferred.resolvedAt, duplicate.resolvedAt),
+    is_missing:
+      (choosePreferredAssignmentRow(
+        { key: preferred.key, assignmentId: preferred.assignmentId, lastSeenAt: preferred.lastSeenAt, firstSeenAt: preferred.firstSeenAt },
+        { key: duplicate.key, assignmentId: duplicate.assignmentId, lastSeenAt: duplicate.lastSeenAt, firstSeenAt: duplicate.firstSeenAt }
+      ) === preferred
+        ? preferred.isMissing
+        : duplicate.isMissing) || 0,
+    manual_status: preferred.manualStatus || duplicate.manualStatus || null,
+    manual_status_updated_at:
+      pickLatestDateString(preferred.manualStatusUpdatedAt, duplicate.manualStatusUpdatedAt) || null,
+    auto_ignored: keepAutoIgnored ? 1 : 0,
+    auto_ignore_reason:
+      newest.autoIgnoreReason ||
+      older.autoIgnoreReason ||
+      (keepAutoIgnored ? "merged-duplicate" : null),
+    auto_ignored_at: pickLatestDateString(preferred.autoIgnoredAt, duplicate.autoIgnoredAt) || null,
+  };
+}
+
+function dedupeAssignmentGroup(db, assignmentId) {
+  const id = String(assignmentId || "").trim();
+  if (!id) return;
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        key,
+        assignment_id AS assignmentId,
+        course,
+        title,
+        due_date AS dueDate,
+        status,
+        score,
+        url,
+        raw_text AS rawText,
+        first_seen_at AS firstSeenAt,
+        last_seen_at AS lastSeenAt,
+        last_missing_at AS lastMissingAt,
+        resolved_at AS resolvedAt,
+        is_missing AS isMissing,
+        manual_status AS manualStatus,
+        manual_status_updated_at AS manualStatusUpdatedAt,
+        auto_ignored AS autoIgnored,
+        auto_ignore_reason AS autoIgnoreReason,
+        auto_ignored_at AS autoIgnoredAt
+      FROM assignments
+      WHERE assignment_id = @id
+      ORDER BY key
+    `
+    )
+    .all({ id });
+  if (rows.length <= 1) return;
+
+  const canonicalKey = normalizeAssignmentKeyForId(id, rows[0].key);
+  let winner =
+    rows.find((row) => row.key === canonicalKey) ||
+    rows.reduce((best, row) => choosePreferredAssignmentRow(best, row), null);
+  const winnerKey = winner?.key || rows[0].key;
+
+  const updateAssignment = db.prepare(
+    `
+    UPDATE assignments
+    SET assignment_id = @assignment_id,
+        course = @course,
+        title = @title,
+        due_date = @due_date,
+        status = @status,
+        score = @score,
+        url = @url,
+        raw_text = @raw_text,
+        first_seen_at = @first_seen_at,
+        last_seen_at = @last_seen_at,
+        last_missing_at = @last_missing_at,
+        resolved_at = @resolved_at,
+        is_missing = @is_missing,
+        manual_status = @manual_status,
+        manual_status_updated_at = @manual_status_updated_at,
+        auto_ignored = @auto_ignored,
+        auto_ignore_reason = @auto_ignore_reason,
+        auto_ignored_at = @auto_ignored_at
+    WHERE key = @key
+  `
+  );
+
+  for (const row of rows) {
+    if (row.key === winnerKey) continue;
+    const merged = mergeAssignmentRows(winner, row);
+    relinkAssignmentReferences(db, row.key, winnerKey);
+    updateAssignment.run({ ...merged, key: winnerKey });
+    db.prepare("DELETE FROM assignments WHERE key = ?").run(row.key);
+    winner = db
+      .prepare(
+        `
+        SELECT
+          key,
+          assignment_id AS assignmentId,
+          course,
+          title,
+          due_date AS dueDate,
+          status,
+          score,
+          url,
+          raw_text AS rawText,
+          first_seen_at AS firstSeenAt,
+          last_seen_at AS lastSeenAt,
+          last_missing_at AS lastMissingAt,
+          resolved_at AS resolvedAt,
+          is_missing AS isMissing,
+          manual_status AS manualStatus,
+          manual_status_updated_at AS manualStatusUpdatedAt,
+          auto_ignored AS autoIgnored,
+          auto_ignore_reason AS autoIgnoreReason,
+          auto_ignored_at AS autoIgnoredAt
+        FROM assignments
+        WHERE key = ?
+      `
+      )
+      .get(winnerKey);
+  }
+
+  if (winnerKey !== canonicalKey) {
+    const canonicalExists = db.prepare("SELECT key FROM assignments WHERE key = ?").get(canonicalKey);
+    if (canonicalExists) {
+      relinkAssignmentReferences(db, winnerKey, canonicalKey);
+      db.prepare("DELETE FROM assignments WHERE key = ?").run(winnerKey);
+    } else {
+      db.prepare("UPDATE assignments SET key = ? WHERE key = ?").run(canonicalKey, winnerKey);
+      relinkAssignmentReferences(db, winnerKey, canonicalKey);
+    }
+  }
+}
+
+function migrateAssignmentIdentity(db) {
+  ensureAssignmentIdentityColumns(db);
+  ensureAssignmentIdentityIndex(db);
+
+  const rows = db
+    .prepare("SELECT key, url, assignment_id AS assignmentId FROM assignments")
+    .all();
+  const setAssignmentId = db.prepare(
+    "UPDATE assignments SET assignment_id = @assignment_id WHERE key = @key"
+  );
+  const ids = new Set();
+  for (const row of rows) {
+    const currentId = String(row.assignmentId || "").trim();
+    const derivedId = currentId || extractAssignmentId(row.url || "");
+    if (!derivedId) continue;
+    if (currentId !== derivedId) {
+      setAssignmentId.run({ key: row.key, assignment_id: derivedId });
+    }
+    ids.add(derivedId);
+  }
+
+  for (const assignmentId of ids) {
+    dedupeAssignmentGroup(db, assignmentId);
   }
 }
 
@@ -429,6 +697,13 @@ function runMigrations(db) {
         migrateRemindersToTasks(db);
       },
     },
+    {
+      version: 6,
+      name: "assignment-identity-canonicalization",
+      apply: () => {
+        migrateAssignmentIdentity(db);
+      },
+    },
   ];
 
   const currentVersion = getSchemaVersion(db);
@@ -547,12 +822,13 @@ export function clearPendingAction(db, chatId) {
 
 export function syncAssignmentsFromState(db, state) {
   if (!state?.assignments) return;
+  migrateAssignmentIdentity(db);
   const upsert = db.prepare(`
     INSERT INTO assignments (
-      key, course, title, due_date, status, score, url, raw_text,
+      key, course, title, due_date, status, score, url, assignment_id, raw_text,
       first_seen_at, last_seen_at, last_missing_at, resolved_at, is_missing
     ) VALUES (
-      @key, @course, @title, @due_date, @status, @score, @url, @raw_text,
+      @key, @course, @title, @due_date, @status, @score, @url, @assignment_id, @raw_text,
       @first_seen_at, @last_seen_at, @last_missing_at, @resolved_at, @is_missing
     )
     ON CONFLICT(key) DO UPDATE SET
@@ -562,6 +838,7 @@ export function syncAssignmentsFromState(db, state) {
       status = excluded.status,
       score = excluded.score,
       url = excluded.url,
+      assignment_id = excluded.assignment_id,
       raw_text = excluded.raw_text,
       last_seen_at = excluded.last_seen_at,
       last_missing_at = excluded.last_missing_at,
@@ -570,26 +847,39 @@ export function syncAssignmentsFromState(db, state) {
   `);
 
   const tx = db.transaction((items) => {
+    const ids = new Set();
     for (const item of items) {
       upsert.run(item);
+      const assignmentId = String(item.assignment_id || "").trim();
+      if (assignmentId) ids.add(assignmentId);
+    }
+    for (const assignmentId of ids) {
+      dedupeAssignmentGroup(db, assignmentId);
     }
   });
 
-  const rows = Object.values(state.assignments).map((item) => ({
-    key: item.key,
-    course: item.course || "",
-    title: item.title || "",
-    due_date: item.dueDate || "",
-    status: item.status || "",
-    score: item.score || "",
-    url: item.url || "",
-    raw_text: item.rawText || "",
-    first_seen_at: item.firstSeenAt || "",
-    last_seen_at: item.lastSeenAt || "",
-    last_missing_at: item.lastMissingAt || "",
-    resolved_at: item.resolvedAt || "",
-    is_missing: item.isMissing ? 1 : 0,
-  }));
+  const rows = Object.values(state.assignments).map((item) => {
+    const assignmentId = extractAssignmentId(item.url || "") || String(item.assignmentId || "").trim();
+    const key =
+      normalizeAssignmentKeyForId(assignmentId, item.key || "") ||
+      String(item.key || "").trim();
+    return {
+      key,
+      assignment_id: assignmentId || null,
+      course: item.course || "",
+      title: item.title || "",
+      due_date: item.dueDate || "",
+      status: item.status || "",
+      score: item.score || "",
+      url: item.url || "",
+      raw_text: item.rawText || "",
+      first_seen_at: item.firstSeenAt || "",
+      last_seen_at: item.lastSeenAt || "",
+      last_missing_at: item.lastMissingAt || "",
+      resolved_at: item.resolvedAt || "",
+      is_missing: item.isMissing ? 1 : 0,
+    };
+  });
 
   tx(rows);
 }
@@ -638,6 +928,7 @@ export function listAssignments(db, options = {}) {
       `
       SELECT
         key,
+        assignment_id AS assignmentId,
         course,
         title,
         due_date AS dueDate,
@@ -884,6 +1175,7 @@ export function findAssignments(db, options = {}) {
     .prepare(
       `
       SELECT key, course, title, due_date AS dueDate, status, manual_status AS manualStatus
+             , assignment_id AS assignmentId
       FROM assignments
       ${where}
       ORDER BY LOWER(course), due_date, LOWER(title)

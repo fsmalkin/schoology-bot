@@ -52,6 +52,8 @@ const config = {
     studentName: env("STUDENT_NAME", ""),
     idp: env("SCHOLOGY_IDP", "auto"),
     ssoSchool: env("SCHOLOGY_SSO_SCHOOL", "Baltimore County Public Schools"),
+    loginAttempts: numEnv("SCHOLOGY_LOGIN_ATTEMPTS", 2),
+    loginRetryDelayMs: numEnv("SCHOLOGY_LOGIN_RETRY_DELAY_MS", 1500),
   },
   schedule: {
     timezone: env("TIMEZONE", "America/New_York"),
@@ -132,6 +134,7 @@ const config = {
     storagePath: env("STORAGE_PATH", path.join(dataDir, "storage.json")),
     debugHtmlPath: env("DEBUG_HTML_PATH", path.join(dataDir, "debug.html")),
     debugScreenshotPath: env("DEBUG_SCREENSHOT_PATH", path.join(dataDir, "debug.png")),
+    loginDiagnosticPath: env("LOGIN_DIAGNOSTIC_PATH", path.join(dataDir, "login-diagnostic.json")),
     agentDbPath: env("AGENT_DB_PATH", path.join(dataDir, "agent.db")),
     bugLogPath: env("BUG_LOG_PATH", path.join(dataDir, "bugs.log")),
   },

@@ -59,3 +59,40 @@ Codex owns Docker operations for this repo. Do not ask the user to restart servi
 ## Rollback
 - Revert to previous image by rebuilding from last committed state:
   `git checkout .` then `docker compose up -d --build`
+
+## Central Work Tracking and Intake (2026-03-02)
+
+### Goal mapping and roadmap alignment
+- Before starting non-trivial work, map the request to a high-level goal and roadmap location (epic -> slice -> task).
+- If mapping is unclear, propose 2-3 plausible interpretations and obtain the smallest decision needed.
+- If work appears off-goal, propose backlog placement and proceed only with explicit detour approval.
+
+### Intake and duplicate check (required before create/add)
+- Normalize each report into: problem, surface, expected, actual, env, evidence.
+- Run duplicate checks before creating or adding a work item:
+  - `gh issue list --repo fsmalkin/<repo> --state all --search "<terms> in:title,body sort:updated-desc" --limit 30`
+  - `gh search issues "<terms> org:fsmalkin is:issue sort:updated-desc" --limit 30`
+- Apply match rubric:
+  - Exact: same failure mode or feature gap in the same subsystem owner.
+  - Probable: same symptom family but root cause is not confirmed.
+  - None: no meaningful overlap.
+- Exact -> reuse existing issue. Probable -> create only if needed and label `possible-duplicate`. None -> create new issue.
+- Record intake evidence under `Duplicate Check` in the issue body (queries + candidate links + decision).
+
+### Central tracking and handoff
+- Active execution source of truth is the GitHub Project `FSM Engineering Board`.
+- Track one issue per deliverable.
+- At every pause/completion, update both:
+  - issue comment handoff (Done, Next, Blockers)
+  - repo worklog entry (`Timestamp ET | Issue | Goal | Done | Next | Blockers | Validation run | Thread link`)
+
+### Validation policy (simulated-first + CLI UAT)
+- Maximize simulated validation before asking for manual checks.
+- For complex/agentic flows, run CLI UAT scenarios with commands and outcomes before human UAT.
+- PRs for complex/agentic flows must include CLI UAT evidence.
+
+### Documentation upkeep and retros
+- Update plans and system documentation regularly during active work, not only at the end.
+- After each completed work item, suggest at least one retro item or workflow/backlog improvement.
+- For behavior changes, record a brief Decision + Outcome note with fallback.
+

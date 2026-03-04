@@ -8,6 +8,7 @@ param(
   [string]$DailyCatalogTime = "03:00",
   [string]$MonthlyRestoreDrillTime = "04:00",
   [string]$RunAsUser = $env:USERNAME,
+  [object]$RunAsPassword = $null,
   [switch]$RunHighest,
   [switch]$DisableStartupFallback,
   [switch]$DryRun
@@ -19,9 +20,43 @@ function Write-Step($message) {
   Write-Host ("[schoology-tasks] " + $message)
 }
 
-function Install-StartupFallback($repoRoot, $runtimeMode, $wslDistro) {
+function Convert-ToPlainPassword([object]$PasswordInput) {
+  if ($null -eq $PasswordInput) {
+    return ""
+  }
+  if ($PasswordInput -is [System.Security.SecureString]) {
+    $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($PasswordInput)
+    try {
+      return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
+    } finally {
+      [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
+    }
+  }
+  return [string]$PasswordInput
+}
+
+function Get-StartupFallbackPath {
   $startupDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup"
-  $startupCmd = Join-Path $startupDir "Schoology-StartStacks-OnLogon.cmd"
+  return (Join-Path $startupDir "Schoology-StartStacks-OnLogon.cmd")
+}
+
+function Remove-StartupFallback {
+  $startupCmd = Get-StartupFallbackPath
+  if ($DryRun) {
+    Write-Step ("DRY RUN: remove startup fallback if present " + $startupCmd)
+    return
+  }
+  if (Test-Path $startupCmd) {
+    Remove-Item -Path $startupCmd -Force
+    Write-Step ("Removed startup fallback: " + $startupCmd)
+  } else {
+    Write-Step "Startup fallback already absent."
+  }
+}
+
+function Install-StartupFallback($repoRoot, $runtimeMode, $wslDistro) {
+  $startupDir = Split-Path -Parent (Get-StartupFallbackPath)
+  $startupCmd = Get-StartupFallbackPath
   $startScript = Join-Path $repoRoot "scripts\start_schoology_stacks.ps1"
   $keepAliveArg = if ($runtimeMode -eq "native") { " -KeepAlive" } else { "" }
   $contents = @(
@@ -38,8 +73,22 @@ function Install-StartupFallback($repoRoot, $runtimeMode, $wslDistro) {
   Write-Step ("Installed startup fallback: " + $startupCmd)
 }
 
+function Format-SchtasksArgsForDisplay([string[]]$TaskArgs) {
+  $masked = @()
+  for ($i = 0; $i -lt $TaskArgs.Count; $i++) {
+    $arg = [string]$TaskArgs[$i]
+    $masked += $arg
+    if ($arg.ToUpperInvariant() -eq "/RP" -and ($i + 1) -lt $TaskArgs.Count) {
+      $i++
+      $masked += "<redacted>"
+    }
+  }
+  return $masked
+}
+
 function Invoke-Schtasks([string[]]$TaskArgs) {
-  $display = "schtasks " + ($TaskArgs -join " ")
+  $displayArgs = Format-SchtasksArgsForDisplay -TaskArgs $TaskArgs
+  $display = "schtasks " + ($displayArgs -join " ")
   if ($DryRun) {
     Write-Step ("DRY RUN: " + $display)
     return
@@ -67,10 +116,27 @@ function Assert-TaskRegistered([string]$TaskName) {
   Write-Step ("Task validated: " + $TaskName + " state=" + $task.State + " lastRun=" + $info.LastRunTime + " nextRun=" + $info.NextRunTime)
 }
 
+function Assert-TaskPasswordLogon([string]$TaskName) {
+  if ($DryRun) {
+    Write-Step ("DRY RUN: validate password logon mode for task " + $TaskName)
+    return
+  }
+  $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+  if (-not $task) {
+    throw "Cannot validate logon mode; task is missing: $TaskName"
+  }
+  $logonType = [string]$task.Principal.LogonType
+  if ($logonType -ne "Password") {
+    throw "Task $TaskName has logon mode '$logonType'; expected 'Password' for non-interactive execution."
+  }
+  Write-Step ("Task logon mode validated: " + $TaskName + " logonType=" + $logonType)
+}
+
 if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
   $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 }
 $RepoRoot = (Resolve-Path $RepoRoot).Path
+$resolvedRunAsPassword = Convert-ToPlainPassword -PasswordInput $RunAsPassword
 
 $backupScript = Join-Path $RepoRoot "scripts\backup_schoology_state.ps1"
 $freshnessScript = Join-Path $RepoRoot "scripts\check_schoology_backup_freshness.ps1"
@@ -97,18 +163,24 @@ if ($RunHighest) {
 }
 $ruArgs = @()
 if (-not [string]::IsNullOrWhiteSpace($RunAsUser)) {
-  $ruArgs = @("/RU", $RunAsUser)
+  if ([string]::IsNullOrWhiteSpace($resolvedRunAsPassword)) {
+    throw "RunAsPassword is required when RunAsUser is specified so tasks run non-interactively."
+  }
+  $ruArgs = @("/RU", $RunAsUser, "/RP", $resolvedRunAsPassword)
 }
 
 $backupCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$backupScript`" -RepoRoot `"$RepoRoot`" -RuntimeMode $RuntimeMode -BackupLocalRoot `"$BackupLocalRoot`" -BackupSyncRoot `"$BackupSyncRoot`""
 $freshnessStatusPath = Join-Path $BackupLocalRoot "backup-status\last-success.json"
 $freshnessCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$freshnessScript`" -StatusFile `"$freshnessStatusPath`" -MaxAgeHours 24"
 $startKeepAliveArg = if ($RuntimeMode -eq "native") { " -KeepAlive" } else { "" }
-$startCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$startScript`" -RepoRoot `"$RepoRoot`" -RuntimeMode $RuntimeMode -WslDistro `"$WslDistro`"$startKeepAliveArg"
+$startSkipPortCheckArg = if ($RuntimeMode -eq "docker") { " -SkipPortCheck" } else { "" }
+$startCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$startScript`" -RepoRoot `"$RepoRoot`" -RuntimeMode $RuntimeMode -WslDistro `"$WslDistro`"$startKeepAliveArg$startSkipPortCheckArg"
 $catalogCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$catalogScript`""
 $restoreDrillCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$restoreDrillScript`" -Source local"
 
-if (-not $DisableStartupFallback) {
+if ($DisableStartupFallback -or $RuntimeMode -eq "docker") {
+  Remove-StartupFallback
+} else {
   Install-StartupFallback -repoRoot $RepoRoot -runtimeMode $RuntimeMode -wslDistro $WslDistro
 }
 
@@ -190,13 +262,12 @@ Invoke-Schtasks -TaskArgs (@(
     "/F"
   ) + $ruArgs + $rlArgs)
 
-Invoke-Schtasks -TaskArgs @("/Query", "/TN", $taskBackup)
-Invoke-Schtasks -TaskArgs @("/Query", "/TN", $taskFreshness)
-Invoke-Schtasks -TaskArgs @("/Query", "/TN", $taskCatalog)
-Invoke-Schtasks -TaskArgs @("/Query", "/TN", $taskRestoreDrill)
-Invoke-Schtasks -TaskArgs @("/Query", "/TN", $taskStartBoot)
-Invoke-Schtasks -TaskArgs @("/Query", "/TN", $taskStartLogon)
-Assert-TaskRegistered -TaskName $taskStartBoot
-Assert-TaskRegistered -TaskName $taskStartLogon
+foreach ($taskName in @($taskBackup, $taskFreshness, $taskCatalog, $taskRestoreDrill, $taskStartBoot, $taskStartLogon)) {
+  Invoke-Schtasks -TaskArgs @("/Query", "/TN", $taskName, "/V", "/FO", "LIST")
+  Assert-TaskRegistered -TaskName $taskName
+  if (-not [string]::IsNullOrWhiteSpace($RunAsUser)) {
+    Assert-TaskPasswordLogon -TaskName $taskName
+  }
+}
 
 Write-Step "Done."

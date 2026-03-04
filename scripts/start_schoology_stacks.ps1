@@ -4,6 +4,8 @@ param(
   [string]$WslDistro = "Ubuntu-24.04",
   [string]$ProdProject = "schoology-prod",
   [string]$BetaProject = "schoology-openclaw-beta",
+  [int]$DockerReadyTimeoutSeconds = 180,
+  [int]$DockerReadyRetrySeconds = 5,
   [switch]$NoBuild,
   [switch]$SkipBetaDashboard,
   [switch]$SkipProd,
@@ -380,6 +382,76 @@ function Invoke-Docker([string[]]$DockerArgs, [switch]$Quiet) {
     $output | Out-Host
   }
   return ($output -join "`n")
+}
+
+function Get-DockerEngineDiagnostics([string]$LastErrorMessage) {
+  $parts = @()
+  try {
+    $dockerExe = Get-DockerCommandPath
+    $parts += ("dockerExe=" + $dockerExe)
+  } catch {
+    $parts += ("dockerExeMissing=" + $_.Exception.Message)
+  }
+
+  $service = Get-Service -Name "com.docker.service" -ErrorAction SilentlyContinue
+  if ($service) {
+    $parts += ("dockerServiceStatus=" + $service.Status)
+    $parts += ("dockerServiceStartType=" + $service.StartType)
+  } else {
+    $parts += "dockerServiceStatus=not-found"
+  }
+
+  $processes = Get-Process -ErrorAction SilentlyContinue |
+    Where-Object { $_.ProcessName -like "Docker*" } |
+    Select-Object -ExpandProperty ProcessName -Unique
+  if ($processes) {
+    $parts += ("dockerProcesses=" + ($processes -join ","))
+  } else {
+    $parts += "dockerProcesses=none"
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($LastErrorMessage)) {
+    $headline = ($LastErrorMessage -split "`r?`n" | Select-Object -First 1)
+    $parts += ("lastError=" + $headline)
+  }
+
+  return ($parts -join "; ")
+}
+
+function Wait-DockerEngineReady(
+  [int]$TimeoutSeconds,
+  [int]$RetrySeconds
+) {
+  if ($DryRun) {
+    Write-Step ("DRY RUN: wait for Docker engine readiness timeout=" + $TimeoutSeconds + "s retry=" + $RetrySeconds + "s")
+    return
+  }
+
+  $timeout = [Math]::Max(1, $TimeoutSeconds)
+  $retry = [Math]::Max(1, $RetrySeconds)
+  $deadline = (Get-Date).AddSeconds($timeout)
+  $attempt = 0
+  $lastError = ""
+  while ((Get-Date) -lt $deadline) {
+    $attempt++
+    try {
+      $versionRaw = Invoke-Docker -DockerArgs @("version", "--format", "{{.Server.Version}}") -Quiet
+      $serverVersion = ($versionRaw -split "`r?`n" | Select-Object -First 1).Trim()
+      if ([string]::IsNullOrWhiteSpace($serverVersion)) {
+        $serverVersion = "unknown"
+      }
+      Write-Step ("Docker engine ready (attempt " + $attempt + ", serverVersion=" + $serverVersion + ").")
+      return
+    } catch {
+      $lastError = $_.Exception.Message
+      $headline = ($lastError -split "`r?`n" | Select-Object -First 1)
+      Write-Step ("Waiting for Docker engine (attempt " + $attempt + "): " + $headline)
+      Start-Sleep -Seconds $retry
+    }
+  }
+
+  $diagnostics = Get-DockerEngineDiagnostics -LastErrorMessage $lastError
+  throw ("Docker engine was not ready within " + $timeout + " seconds. Diagnostics: " + $diagnostics)
 }
 
 function Invoke-Wsl([string]$Command, [switch]$Quiet) {
@@ -1041,6 +1113,9 @@ if (-not (Test-Path "docker-compose.yml")) {
 }
 if (-not (Test-Path "docker-compose.beta-openclaw.yml")) {
   throw "Missing docker-compose.beta-openclaw.yml in $RepoRoot"
+}
+if (-not $SkipProd -or -not $SkipBeta) {
+  Wait-DockerEngineReady -TimeoutSeconds $DockerReadyTimeoutSeconds -RetrySeconds $DockerReadyRetrySeconds
 }
 
 if (-not $SkipProd) {

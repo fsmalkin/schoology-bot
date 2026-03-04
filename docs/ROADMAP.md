@@ -90,3 +90,9 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 - `main` is the canonical planning source of truth (`docs/ROADMAP.md` + `docs/BACKLOG.md`).
 - Feature branches may carry temporary planning edits during execution, but must reconcile to `main` before promotion.
 - Beta/OpenClaw branch notes that are branch-specific should live under `docs/openclaw/`.
+
+## Execution Tracking Canon (2026-03-02)
+- Execution status, intake state, and handoffs are tracked on the GitHub Project `FSM Engineering Board`.
+- This roadmap remains strategic (goals, priorities, and direction), not the live execution board.
+- Repo-local handoff ledger: `docs/WORKLOG.md`.
+

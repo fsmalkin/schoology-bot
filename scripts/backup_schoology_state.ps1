@@ -125,6 +125,45 @@ function Copy-DirectoryIfExists($repoRoot, $snapshotRoot, $relativePath) {
   return $true
 }
 
+function Copy-SqliteBundleIfExists($sourceMainPath, $targetMainPath) {
+  if (-not (Test-Path $sourceMainPath)) {
+    return $false
+  }
+
+  $artifacts = @(
+    [pscustomobject]@{ Source = $sourceMainPath; Target = $targetMainPath; Label = "main" },
+    [pscustomobject]@{ Source = ($sourceMainPath + "-wal"); Target = ($targetMainPath + "-wal"); Label = "wal" },
+    [pscustomobject]@{ Source = ($sourceMainPath + "-shm"); Target = ($targetMainPath + "-shm"); Label = "shm" }
+  )
+
+  foreach ($artifact in $artifacts) {
+    if (-not (Test-Path $artifact.Source)) {
+      continue
+    }
+    Ensure-Directory (Split-Path -Parent $artifact.Target)
+    if ($DryRun) {
+      Write-Step ("DRY RUN: copy sqlite " + $artifact.Label + " " + $artifact.Source + " -> " + $artifact.Target)
+      continue
+    }
+    Copy-Item -Path $artifact.Source -Destination $artifact.Target -Force
+    Write-Step ("Copied sqlite " + $artifact.Label + " snapshot: " + $artifact.Target)
+  }
+
+  return $true
+}
+
+function Warn-IfSuspiciousSqliteSnapshot($mainPath) {
+  if (-not (Test-Path $mainPath)) {
+    return
+  }
+  $mainBytes = (Get-Item $mainPath).Length
+  $walPath = $mainPath + "-wal"
+  $walBytes = if (Test-Path $walPath) { (Get-Item $walPath).Length } else { 0 }
+  if ($mainBytes -le 4096 -and $walBytes -eq 0) {
+    Write-Step ("WARNING: SQLite snapshot at " + $mainPath + " is only " + $mainBytes + " bytes with no WAL payload. This may be an incomplete backup.")
+  }
+}
+
 function Build-Manifest($snapshotRoot) {
   $files = Get-ChildItem -Path $snapshotRoot -Recurse -File | Sort-Object FullName
   $entries = @()
@@ -193,9 +232,13 @@ $filePaths = @(
   "data\state.json",
   "data\storage.json",
   "data\agent.db",
+  "data\agent.db-wal",
+  "data\agent.db-shm",
   "data\beta\state.json",
   "data\beta\storage.json",
-  "data\beta\agent.db"
+  "data\beta\agent.db",
+  "data\beta\agent.db-wal",
+  "data\beta\agent.db-shm"
 )
 foreach ($relative in $filePaths) {
   if (Copy-FileIfExists -repoRoot $RepoRoot -snapshotRoot $snapshotRoot -relativePath $relative) {
@@ -217,17 +260,13 @@ $dbExported = $false
 $dbSource = ""
 if ($RuntimeMode -eq "native") {
   $nativeDb = Join-Path $RepoRoot "data\agent.db"
-  if (Test-Path $nativeDb) {
-    if ($DryRun) {
-      Write-Step ("DRY RUN: copy native DB " + $nativeDb + " -> " + $snapshotDbFile)
-      $dbExported = $true
-      $dbSource = "native-file"
-    } else {
-      Copy-Item -Path $nativeDb -Destination $snapshotDbFile -Force
-      Write-Step "Copied prod agent DB from native file data\agent.db."
-      $dbExported = $true
-      $dbSource = "native-file"
+  if (Copy-SqliteBundleIfExists -sourceMainPath $nativeDb -targetMainPath $snapshotDbFile) {
+    if (-not $DryRun) {
+      Warn-IfSuspiciousSqliteSnapshot -mainPath $snapshotDbFile
     }
+    $dbExported = $true
+    $dbSource = "native-file"
+    Write-Step "Copied prod agent DB bundle from native file data\agent.db."
   } elseif ($allowMissingDb) {
     Write-Step "WARNING: native DB file data\agent.db not found; continuing due to allow-missing flag."
     $dbSource = "native-file-missing"
@@ -246,7 +285,7 @@ if ($RuntimeMode -eq "native") {
       "alpine:3.20",
       "sh",
       "-lc",
-      "if [ -f /from/agent.db ]; then cp /from/agent.db /out/agent.db.prod; fi"
+      "if [ -f /from/agent.db ]; then cp /from/agent.db /out/agent.db.prod; fi; if [ -f /from/agent.db-wal ]; then cp /from/agent.db-wal /out/agent.db.prod-wal; fi; if [ -f /from/agent.db-shm ]; then cp /from/agent.db-shm /out/agent.db.prod-shm; fi"
     ) | Out-Null
     $dbExported = $true
     $dbSource = "docker-volume"
@@ -263,7 +302,7 @@ if ($RuntimeMode -eq "native") {
         "alpine:3.20",
         "sh",
         "-lc",
-        "if [ -f /from/agent.db ]; then cp /from/agent.db /out/agent.db.prod; fi"
+        "if [ -f /from/agent.db ]; then cp /from/agent.db /out/agent.db.prod; fi; if [ -f /from/agent.db-wal ]; then cp /from/agent.db-wal /out/agent.db.prod-wal; fi; if [ -f /from/agent.db-shm ]; then cp /from/agent.db-shm /out/agent.db.prod-shm; fi"
       ) | Out-Null
       $exportAttempted = $true
     } catch {
@@ -279,6 +318,7 @@ if ($RuntimeMode -eq "native") {
       $dbExported = $true
       $dbSource = "docker-volume"
       Write-Step "Exported prod agent DB from Docker volume."
+      Warn-IfSuspiciousSqliteSnapshot -mainPath $snapshotDbFile
     } elseif ($allowMissingDb) {
       $dbSource = "docker-volume-missing"
       Write-Step "WARNING: Prod DB snapshot not present; continuing due to allow-missing flag."

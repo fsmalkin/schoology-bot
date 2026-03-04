@@ -1,0 +1,88 @@
+name: Tracking Check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  tracking-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR tracking requirements
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            if (!pr) {
+              core.info("Not a pull request event.");
+              return;
+            }
+
+            const labels = (pr.labels || []).map((l) => l.name);
+            if (labels.includes("tracking-exempt")) {
+              core.notice("tracking-exempt label present; skipping enforcement.");
+              return;
+            }
+
+            const body = pr.body || "";
+            const errors = [];
+
+            function escapeRegex(str) {
+              return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            }
+
+            function section(name) {
+              const re = new RegExp(`##\\s*${escapeRegex(name)}\\s*\\n([\\s\\S]*?)(?=\\n##\\s|$)`, "i");
+              const m = body.match(re);
+              return m ? m[1].trim() : "";
+            }
+
+            function emptyOrPlaceholder(value) {
+              if (!value || value.trim().length === 0) return true;
+              return /(\bTBD\b|\bTODO\b|\bN\/A\b|\bNA\b|^[-*]\s*$)/im.test(value);
+            }
+
+            const workItem = section("Work Item");
+            const roadmap = section("Roadmap Alignment");
+            const handoff = section("Handoff");
+            const validation = section("Validation Evidence");
+            const complex = section("Complex Agentic Flow");
+            const cliUat = section("CLI UAT Evidence");
+
+            if (emptyOrPlaceholder(workItem)) errors.push("Missing Work Item section content.");
+            if (emptyOrPlaceholder(roadmap)) errors.push("Missing Roadmap Alignment section content.");
+            if (emptyOrPlaceholder(handoff)) errors.push("Missing Handoff section content.");
+            if (emptyOrPlaceholder(validation)) errors.push("Missing Validation Evidence section content.");
+            if (emptyOrPlaceholder(complex)) errors.push("Missing Complex Agentic Flow selection.");
+
+            if (workItem && !/(https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/issues\/\d+|#\d+)/i.test(workItem)) {
+              errors.push("Work Item must link to an issue URL or #issue reference.");
+            }
+
+            if (handoff && (!/next\s*:/i.test(handoff) || !/blocker/i.test(handoff))) {
+              errors.push("Handoff must include both 'Next:' and 'Blockers:' lines.");
+            }
+
+            const complexMatch = complex.match(/selection\s*:\s*(yes|no)/i);
+            if (!complexMatch) {
+              errors.push("Complex Agentic Flow must include 'Selection: Yes' or 'Selection: No'.");
+            }
+
+            const isComplex = complexMatch && complexMatch[1].toLowerCase() === "yes";
+            if (isComplex) {
+              if (emptyOrPlaceholder(cliUat)) {
+                errors.push("CLI UAT Evidence is required when Complex Agentic Flow is Yes.");
+              } else if (!/`[^`]+`|^\s*\-\s*command\s*:/im.test(cliUat)) {
+                errors.push("CLI UAT Evidence must include concrete command(s). Use backticks for commands.");
+              }
+            }
+
+            if (errors.length > 0) {
+              core.setFailed(errors.join("\n"));
+            } else {
+              core.info("Tracking check passed.");
+            }

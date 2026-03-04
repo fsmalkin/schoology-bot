@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Tracking Setup
+    url: https://github.com/fsmalkin/chasebox/blob/main/docs/central-tracking-setup.md
+    about: Intake and central board workflow setup guide.

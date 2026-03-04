@@ -1,0 +1,117 @@
+name: Work Item
+description: Track a deliverable with roadmap alignment, duplicate-check intake, and validation plan.
+title: "[work] "
+labels:
+  - work-item
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for one deliverable per issue.
+
+        Intake is mandatory before a new item is created or added:
+        1. Normalize the report (problem, surface, expected, actual, env, evidence).
+        2. Run repo and org duplicate searches.
+        3. Classify matches (Exact, Probable, None).
+        4. Reuse an existing issue for Exact matches.
+  - type: input
+    id: goal
+    attributes:
+      label: Goal
+      description: Top-level objective this work supports.
+      placeholder: Improve reliability of reminder delivery
+    validations:
+      required: true
+  - type: textarea
+    id: roadmap
+    attributes:
+      label: Roadmap placement
+      description: Epic -> Slice -> Task
+      placeholder: |
+        Epic:
+        Slice:
+        Task:
+    validations:
+      required: true
+  - type: textarea
+    id: definition_of_done
+    attributes:
+      label: Definition of done
+      description: Observable acceptance criteria.
+    validations:
+      required: true
+  - type: textarea
+    id: validation_plan
+    attributes:
+      label: Validation plan
+      description: Include simulated validation and tests/commands.
+    validations:
+      required: true
+  - type: dropdown
+    id: complex_agentic_flow
+    attributes:
+      label: Complex/agentic flow
+      description: Set to Yes for multi-step agent/tool flows requiring CLI UAT evidence.
+      options:
+        - No
+        - Yes
+    validations:
+      required: true
+  - type: textarea
+    id: cli_uat_plan
+    attributes:
+      label: CLI UAT plan (when complex/agentic)
+      description: Commands and expected outcomes for CLI UAT scenarios.
+      placeholder: |
+        Scenario 1 command:
+        Expected outcome:
+
+        Scenario 2 command:
+        Expected outcome:
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        ## Duplicate Check
+  - type: textarea
+    id: repo_search_query
+    attributes:
+      label: Repo search query
+      description: Required repo-level duplicate search command/query.
+      placeholder: gh issue list --repo fsmalkin/<repo> --state all --search "<terms> in:title,body sort:updated-desc" --limit 30
+    validations:
+      required: true
+  - type: textarea
+    id: org_search_query
+    attributes:
+      label: Org search query
+      description: Required org-level duplicate search command/query.
+      placeholder: gh search issues "<terms> org:fsmalkin is:issue sort:updated-desc" --limit 30
+    validations:
+      required: true
+  - type: textarea
+    id: duplicate_candidates
+    attributes:
+      label: Candidate issues and match rubric
+      description: Link candidate issues and classify each as Exact, Probable, or None.
+      placeholder: |
+        - https://github.com/fsmalkin/<repo>/issues/123 - Probable
+        - https://github.com/fsmalkin/<repo>/issues/88 - None
+    validations:
+      required: true
+  - type: textarea
+    id: intake_decision
+    attributes:
+      label: Intake decision
+      description: State whether to reuse existing issue or create a new one.
+      placeholder: Exact match found in #123, reusing existing issue.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Optional implementation notes, constraints, or artifacts.
+    validations:
+      required: false

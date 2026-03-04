@@ -181,6 +181,43 @@ function Restore-DirectoryIfExists($extractRoot, $repoRoot, $relativePath) {
   Write-Step ("Restored directory: " + $relativePath)
 }
 
+function Restore-SqliteBundleIfExists($sourceMainPath, $targetMainPath) {
+  if (-not (Test-Path $sourceMainPath)) {
+    return $false
+  }
+
+  $mainDir = Split-Path -Parent $targetMainPath
+  if ($DryRun) {
+    Write-Step ("DRY RUN: restore sqlite main " + $sourceMainPath + " -> " + $targetMainPath)
+  } else {
+    New-Item -ItemType Directory -Path $mainDir -Force | Out-Null
+    Copy-Item -Path $sourceMainPath -Destination $targetMainPath -Force
+    Write-Step ("Restored sqlite main: " + $targetMainPath)
+  }
+
+  foreach ($suffix in @("-wal", "-shm")) {
+    $source = $sourceMainPath + $suffix
+    $target = $targetMainPath + $suffix
+    if ($DryRun) {
+      if (Test-Path $source) {
+        Write-Step ("DRY RUN: restore sqlite companion " + $source + " -> " + $target)
+      } else {
+        Write-Step ("DRY RUN: remove stale sqlite companion if present " + $target)
+      }
+      continue
+    }
+    if (Test-Path $source) {
+      Copy-Item -Path $source -Destination $target -Force
+      Write-Step ("Restored sqlite companion: " + $target)
+    } elseif (Test-Path $target) {
+      Remove-Item -Path $target -Force
+      Write-Step ("Removed stale sqlite companion: " + $target)
+    }
+  }
+
+  return $true
+}
+
 if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
   $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 }
@@ -219,9 +256,13 @@ $restoreFiles = @(
   "data\state.json",
   "data\storage.json",
   "data\agent.db",
+  "data\agent.db-wal",
+  "data\agent.db-shm",
   "data\beta\state.json",
   "data\beta\storage.json",
-  "data\beta\agent.db"
+  "data\beta\agent.db",
+  "data\beta\agent.db-wal",
+  "data\beta\agent.db-shm"
 )
 foreach ($relative in $restoreFiles) {
   Restore-FileIfExists -extractRoot $extractRoot -repoRoot $RepoRoot -relativePath $relative
@@ -236,9 +277,8 @@ if ($DryRun) {
   if (Test-Path $dbSnapshot) {
     if ($RuntimeMode -eq "native") {
       $nativeDbTarget = Join-Path $RepoRoot "data\agent.db"
-      New-Item -ItemType Directory -Path (Split-Path -Parent $nativeDbTarget) -Force | Out-Null
-      Copy-Item -Path $dbSnapshot -Destination $nativeDbTarget -Force
-      Write-Step "Restored prod DB into native file data\agent.db."
+      [void](Restore-SqliteBundleIfExists -sourceMainPath $dbSnapshot -targetMainPath $nativeDbTarget)
+      Write-Step "Restored prod DB bundle into native files under data\agent.db."
     } else {
       Invoke-Docker -DockerArgs @(
         "run",
@@ -250,9 +290,9 @@ if ($DryRun) {
         "alpine:3.20",
         "sh",
         "-lc",
-        "cp /from/agent.db.prod /to/agent.db"
+        "cp /from/agent.db.prod /to/agent.db && if [ -f /from/agent.db.prod-wal ]; then cp /from/agent.db.prod-wal /to/agent.db-wal; else rm -f /to/agent.db-wal; fi && if [ -f /from/agent.db.prod-shm ]; then cp /from/agent.db.prod-shm /to/agent.db-shm; else rm -f /to/agent.db-shm; fi"
       ) | Out-Null
-      Write-Step "Restored prod DB into Docker volume."
+      Write-Step "Restored prod DB bundle into Docker volume."
     }
   } elseif ($AllowMissingDbSnapshot) {
     Write-Step "WARNING: archive has no db/agent.db.prod; skipping DB restore due to -AllowMissingDbSnapshot."

@@ -560,46 +560,134 @@ async function dumpDebug(page, config) {
   }
 }
 
+export function isRetryableLoginError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return (
+    message.includes("login failed") ||
+    message.includes("login required") ||
+    message.includes("login flow not recognized")
+  );
+}
+
+function visibleLoginSelectorsSnapshot(page) {
+  if (!page) return {};
+  return page
+    .evaluate(() => {
+      const selectors = [
+        "input#edit-name",
+        "input#edit-mail",
+        "input#edit-school",
+        "input#signInName",
+        "input[name='loginfmt']",
+        "#AzureADBCPSOrgExchange",
+        "#MicrosoftAccountExchange",
+        "#idSIButton9",
+      ];
+      const output = {};
+      for (const selector of selectors) {
+        const el = document.querySelector(selector);
+        if (!el) {
+          output[selector] = false;
+          continue;
+        }
+        const style = window.getComputedStyle(el);
+        output[selector] = style.display !== "none" && style.visibility !== "hidden";
+      }
+      return output;
+    })
+    .catch(() => ({}));
+}
+
+async function writeLoginDiagnostic(config, page, error, { attempt, maxAttempts, usedStorageState }) {
+  try {
+    ensureDir(config.paths.dataDir);
+    const payload = {
+      generatedAt: new Date().toISOString(),
+      attempt,
+      maxAttempts,
+      usedStorageState,
+      idp: config?.schoology?.idp || "auto",
+      loginUrl: config?.schoology?.loginUrl || "",
+      gradesUrl: config?.schoology?.gradesUrl || "",
+      pageUrl: page?.url?.() || "",
+      error: String(error?.message || error || ""),
+      visibleSelectors: await visibleLoginSelectorsSnapshot(page),
+      storagePath: config?.paths?.storagePath || "",
+      storagePathExists: Boolean(config?.paths?.storagePath && fs.existsSync(config.paths.storagePath)),
+    };
+    fs.writeFileSync(config.paths.loginDiagnosticPath, JSON.stringify(payload, null, 2), "utf8");
+    return config.paths.loginDiagnosticPath;
+  } catch {
+    return "";
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function scrapeMissingAssignments(config) {
   ensureDir(config.paths.dataDir);
 
+  const maxAttempts = Math.max(1, Number(config?.schoology?.loginAttempts || 2));
+  const retryDelayMs = Math.max(0, Number(config?.schoology?.loginRetryDelayMs || 1500));
   const storageExists = fs.existsSync(config.paths.storagePath);
-  const contextOptions = storageExists ? { storageState: config.paths.storagePath } : {};
+  let lastError = null;
 
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext(contextOptions);
-  const page = await context.newPage();
-  page.setDefaultTimeout(30000);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const useStorageState = storageExists && attempt === 1;
+    const contextOptions = useStorageState ? { storageState: config.paths.storagePath } : {};
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext(contextOptions);
+    const page = await context.newPage();
+    page.setDefaultTimeout(30000);
 
-  try {
-    await ensureLoggedIn(page, config);
-    await selectStudentIfNeeded(page, config.schoology.studentName);
-    await page.waitForLoadState("networkidle");
+    try {
+      await ensureLoggedIn(page, config);
+      await selectStudentIfNeeded(page, config.schoology.studentName);
+      await page.waitForLoadState("networkidle");
 
-    const assignments = await extractAssignments(page);
+      const assignments = await extractAssignments(page);
+      await context.storageState({ path: config.paths.storagePath });
 
-    await context.storageState({ path: config.paths.storagePath });
+      if (assignments.length === 0) {
+        await dumpDebug(page, config);
+      }
 
-    if (assignments.length === 0) {
+      return assignments.map((a) => ({
+        course: normalizeText(a.course || ""),
+        title: normalizeText(a.title || ""),
+        dueDate: normalizeText(a.dueDate || ""),
+        status: a.status || "Missing",
+        score: normalizeText(a.score || ""),
+        url: a.url || "",
+        rawText: normalizeText(a.rawText || ""),
+        isMissing: Boolean(a.isMissing),
+      }));
+    } catch (err) {
       await dumpDebug(page, config);
+      const diagnosticPath = await writeLoginDiagnostic(config, page, err, {
+        attempt,
+        maxAttempts,
+        usedStorageState: useStorageState,
+      });
+      if (diagnosticPath) {
+        err.loginDiagnosticPath = diagnosticPath;
+      }
+      lastError = err;
+      if (!isRetryableLoginError(err) || attempt >= maxAttempts) {
+        throw err;
+      }
+      await sleep(retryDelayMs);
+    } finally {
+      await browser.close();
     }
-
-    return assignments.map((a) => ({
-      course: normalizeText(a.course || ""),
-      title: normalizeText(a.title || ""),
-      dueDate: normalizeText(a.dueDate || ""),
-      status: a.status || "Missing",
-      score: normalizeText(a.score || ""),
-      url: a.url || "",
-      rawText: normalizeText(a.rawText || ""),
-      isMissing: Boolean(a.isMissing),
-    }));
-  } catch (err) {
-    await dumpDebug(page, config);
-    throw err;
-  } finally {
-    await browser.close();
   }
+
+  if (lastError) {
+    throw lastError;
+  }
+  throw new Error("Scrape failed without a captured error.");
 }
 
 export async function extractMissingAssignmentsFromHtml(html) {
