@@ -15,6 +15,11 @@ Codex owns Docker operations for this repo. Do not ask the user to restart servi
 - Stop services:
   `docker compose down`
 
+## Beta reset operations
+- Use `npm run beta:reset-memory` to refresh beta from prod.
+- Beta reset targets the active OpenClaw beta runtime (`schoology-openclaw-beta`, `data/beta/*`).
+- Treat `docker-compose.beta.yml` / `schoology-beta` as rollback-only unless a task explicitly calls for legacy beta.
+
 ## Agent usage
 - Prefer running the app via Docker Compose services (`schoology`, `telegram-agent`, `dashboard`).
 - When investigating issues, check Docker logs first, then `data/agent.log` if needed.
