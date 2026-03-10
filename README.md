@@ -18,7 +18,7 @@ It runs on your machine today and is ready to move to a server later.
 Note: Docker runs three services by default:
 - `schoology` (scheduler for scrape/send/reminders)
 - `telegram-agent` (chat agent)
-- `dashboard` (local health + operations page at `http://127.0.0.1:8787`)
+- `dashboard` (local parent-first dashboard at `http://127.0.0.1:8787`)
 - Optional profile: `dashboard-tailscale` (publishes dashboard on your tailnet domain)
 
 ## Supported runtime policy
@@ -71,19 +71,22 @@ You can run this on a schedule via Windows Task Scheduler if desired.
 - `npm run run-once` scrapes and sends immediately.
 - `npm run agent:telegram` starts the Telegram agent (chat).
 - `npm run agent:cli -- "What is missing today?"` runs a local chat query.
-- `npm run dashboard` starts a local health dashboard.
+- `npm run dashboard` starts the local dashboard.
 
 ## Dashboard (Bookmark This)
-Use the dashboard to quickly check health and remind yourself how the bot works:
+Use the dashboard to manage work first and inspect runtime health second:
 - URL: `http://127.0.0.1:8787`
 - API: `http://127.0.0.1:8787/api/health`
 
 What it shows:
-- Scheduler and Telegram agent heartbeat status.
-- Last scrape and last summary send times.
-- Actionable/waiting/ignored assignment counts.
-- Pending/overdue/today/upcoming task counts.
-- Quick Docker commands and docs pointers.
+- `Home`
+  - A parent-first after-school plan with one dominant `Needs Attention Tonight` section, quieter `Waiting on School` and `Coming Up` sections, and a collapsed `Handled for Now`.
+  - A compact summary ribbon for `Tonight`, `Waiting`, and `Next reminder`.
+  - Mixed assignment and follow-up cards where the card itself opens a right-side review drawer.
+- `All Schoolwork`
+  - Search, one scope filter, a grouped list for `Needs attention` and `Waiting on school`, a collapsed `Handled for now` section, and opt-in bulk selection.
+- `Admin`
+  - Service heartbeat status, scrape/summary freshness, assignment/follow-up health counts, quick Docker commands, and docs pointers.
 
 If you run with Docker Compose, the dashboard service starts automatically.
 If you run locally without Docker, use `npm run dashboard`.

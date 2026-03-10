@@ -17,6 +17,8 @@ Unit tests
 - Assignment identity canonicalization (`assignment:<id>`) and legacy-key merge behavior.
 - Assignment identity migration v6 (backfill `assignment_id`, dedupe by ID, and reference relink for notes/tasks).
 - Dashboard health/data builders (heartbeat + snapshot shaping).
+- Dashboard parent-home and schoolwork data builders (home section classification, parent-facing labels, assignment notes preview, reminder summary, and task-only filtering).
+- Dashboard browser smoke coverage for click-to-open cards, the minimal card surface, collapsed drawer sections, explicit assignment status saves, backdrop/escape close behavior, and bulk-mode reveal.
 - Time parsing and timezone formatting (local labels, shorthand).
 - Reminder rollovers (one-time + recurring cadence next-run math, DST wall-clock checks).
 - Bug filing guardrails (no empty body).
@@ -29,7 +31,8 @@ Integration tests
 - OpenAI live plan tests (tool planning and schema format).
 - Live API simulation using dummy data.
 - Reminder delivery flow (runReminders with mocked Telegram sender).
-- Dashboard HTTP integration (page + `/api/health` endpoint).
+- Dashboard HTTP integration (page/assets, `GET /api/home`, read APIs, same-origin write guard, and assignment/task mutation routes).
+- Dashboard browser smoke (`tests/dashboard_ui_smoke.test.js`) for the card-first interaction model.
 - Agentic story suite runner (`scripts/run_agentic_story_suite.mjs`) for chat-only release stories.
 - Single-pass acceptance judge (`scripts/judge_agentic_story_suite.mjs`) producing strict JSON evidence.
 

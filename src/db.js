@@ -344,6 +344,10 @@ function ensureAssignmentIdentityColumns(db) {
 }
 
 function ensureAssignmentIdentityIndex(db) {
+  const tableExists = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='assignments'")
+    .get();
+  if (!tableExists) return;
   db.exec("CREATE INDEX IF NOT EXISTS idx_assignments_assignment_id ON assignments(assignment_id)");
 }
 
@@ -533,6 +537,10 @@ function dedupeAssignmentGroup(db, assignmentId) {
 }
 
 function migrateAssignmentIdentity(db) {
+  const tableExists = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='assignments'")
+    .get();
+  if (!tableExists) return;
   ensureAssignmentIdentityColumns(db);
   ensureAssignmentIdentityIndex(db);
 

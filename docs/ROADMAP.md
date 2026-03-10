@@ -43,7 +43,7 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
   - Run one GPT-5.2 judge pass and review evidence.
   - Then execute user UAT.
 
-## Status Snapshot (2026-02-22)
+## Status Snapshot (2026-03-05)
 - Delivered:
   - Runtime migrated from laptop to local server and is running in Docker Compose with health checks.
   - OpenClaw beta one-gateway runtime is running from one shared image (`schoology-beta-openclaw-unified:latest`).
@@ -52,6 +52,7 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
   - Recovery runbook and operations scripts added for start/backup/restore/freshness/task registration.
   - Login failure messaging now respects configured `SCHOLOGY_IDP` and avoids unnecessary provider-selection prompts.
   - Recurring reminder runtime support implemented across DB, tool runner, and reminder scheduler (`daily`, `weekdays`, `weekly`).
+  - Dashboard now has a parent-first `Home / All Schoolwork / Admin` UI with click-to-open cards, a right-side review drawer, opt-in bulk assignment updates, and tucked-away runtime health.
 - In progress:
   - Agentic story suite run and single-pass GPT-5.2 judge evidence review before UAT.
   - Production rollout checklist and cutover validation for recurring reminder release.
@@ -74,7 +75,6 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 1. Convert action-oriented notes into reminders with user confirmation.
 2. Unified single Task model (Option B).
 3. Daily cost summary.
-4. Local admin UI for status/notes/reminders.
 
 ## Standard Release Flow (Mandatory for Reminder-Scope Changes)
 1. Run beta reset from prod memory and keep report artifact.

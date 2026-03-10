@@ -30,6 +30,7 @@ import {
   parseReminderTime,
 } from "./time.js";
 import { applyReminderAssumptions } from "./reminder_assumptions.js";
+import { addLocalReminderFields, addLocalReminderFieldsToList } from "./reminder_view.js";
 
 export const TOOL_NAMES = [
   "list_assignments",
@@ -73,59 +74,6 @@ export function applyManualStatusPolicy(rows) {
     kept.push({ ...row, reason: "Custom status" });
   }
   return { cleared, kept };
-}
-
-function addLocalReminderFields(item, timeZone) {
-  const recurrenceCheck = normalizeRecurrenceKind(item?.recurrenceKind, { allowNull: true });
-  const recurrenceKind = recurrenceCheck.ok ? recurrenceCheck.value || "none" : "none";
-  const recurrenceLabel =
-    recurrenceKind === "daily"
-      ? "Daily"
-      : recurrenceKind === "weekdays"
-      ? "Weekdays"
-      : recurrenceKind === "weekly"
-      ? "Weekly"
-      : "One-time";
-  if (!item || !item.remindAt) {
-    return {
-      ...item,
-      remindAtUtc: item?.remindAt || null,
-      remindAtLocal: null,
-      remindAtLabel: null,
-      remindAtTz: timeZone,
-      recurrenceKind,
-      recurrenceLabel,
-    };
-  }
-  const parsed = new Date(item.remindAt);
-  if (!Number.isFinite(parsed.getTime())) {
-    return {
-      ...item,
-      remindAtUtc: item?.remindAt || null,
-      remindAtLocal: null,
-      remindAtLabel: null,
-      remindAtTz: timeZone,
-      recurrenceKind,
-      recurrenceLabel,
-    };
-  }
-  const localIso = formatIsoWithOffset(parsed, timeZone);
-  const utcIso = parsed.toISOString().replace(".000Z", "Z");
-  return {
-    ...item,
-    remindAtUtc: utcIso,
-    remindAt: localIso,
-    remindAtLocal: formatDateTime(parsed, timeZone),
-    remindAtLabel: formatDateTimeLabel(parsed, timeZone),
-    remindAtTz: timeZone,
-    recurrenceKind,
-    recurrenceLabel,
-  };
-}
-
-function addLocalReminderFieldsToList(items, timeZone) {
-  if (!Array.isArray(items)) return [];
-  return items.map((item) => addLocalReminderFields(item, timeZone));
 }
 
 function assumptionFromTimeParse(note, remindAt, timeZone) {

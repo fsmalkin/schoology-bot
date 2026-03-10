@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Schoology Dashboard</title>
+  <link rel="stylesheet" href="/assets/dashboard.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Schoology Bot</p>
+        <h1>School nights, without the scramble.</h1>
+        <p class="hero-subtitle" id="heroSubtitle">Loading tonight's plan...</p>
+      </div>
+
+      <div class="hero-actions">
+        <nav class="primary-nav" id="primaryViews" aria-label="Dashboard views"></nav>
+        <div class="hero-toolbox">
+          <button type="button" class="ghost-button" data-action="refresh-current">Refresh view</button>
+          <button type="button" class="ghost-button utility-button" id="adminViewButton" data-action="switch-view" data-view="admin">
+            Admin
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <section id="flash" class="flash-slot" aria-live="polite"></section>
+
+    <main class="layout">
+      <section class="content-column">
+        <section class="panel view-panel" data-view-panel="home">
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Tonight</p>
+              <h2>Home</h2>
+            </div>
+            <div class="control-cluster">
+              <button type="button" class="ghost-button" data-action="refresh-assignments">Refresh Schoology</button>
+              <button type="button" class="solid-button" data-action="new-task">Add follow-up</button>
+            </div>
+          </div>
+          <div id="homePane" class="workspace-pane"></div>
+        </section>
+
+        <section class="panel view-panel" data-view-panel="schoolwork" hidden>
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">All assignments</p>
+              <h2>All Schoolwork</h2>
+            </div>
+            <button type="button" class="ghost-button" data-action="refresh-assignments">Refresh Schoology</button>
+          </div>
+          <div id="schoolworkPane" class="workspace-pane"></div>
+        </section>
+
+        <section class="panel view-panel" data-view-panel="admin" hidden>
+          <div class="panel-header">
+            <div>
+              <p class="panel-kicker">Utility</p>
+              <h2>Admin</h2>
+            </div>
+            <button type="button" class="ghost-button" data-action="refresh-admin">Refresh health</button>
+          </div>
+          <div id="adminPane" class="workspace-pane"></div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <button
+    type="button"
+    class="drawer-backdrop"
+    id="drawerBackdrop"
+    data-action="close-drawer"
+    data-open="false"
+    aria-label="Close review drawer"
+    aria-hidden="true"
+  ></button>
+
+  <aside
+    class="drawer"
+    id="detailDrawer"
+    role="dialog"
+    aria-modal="true"
+    aria-live="polite"
+    aria-hidden="true"
+    data-open="false"
+  >
+    <div class="drawer-shell">
+      <div class="drawer-content" id="drawerContent"></div>
+    </div>
+  </aside>
+
+  <script type="module" src="/assets/dashboard.js"></script>
+</body>
+</html>

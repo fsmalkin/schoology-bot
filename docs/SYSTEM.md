@@ -40,8 +40,9 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
      - missing recurring time defaults to 7:00 AM / 4:30 PM / 9:00 PM ET by cue type,
      - unsupported cadence falls back to weekly with explicit warning.
 5) Dashboard
-   - Reads state.json, SQLite, and heartbeat files.
-   - Shows service freshness + assignment/task health at a glance.
+   - `Home` reads SQLite to build a parent-first after-school plan with clickable assignment and follow-up cards.
+   - `All Schoolwork` reads SQLite for card-based assignment management, opt-in bulk status updates, notes, and reminders.
+   - `Admin` reads state.json, SQLite, and heartbeat files for service freshness + assignment/follow-up health.
 
 ## Data and logs
 - data/state.json

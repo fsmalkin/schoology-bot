@@ -103,139 +103,128 @@ Notes:
 ---
 
 Title:
-Recurring Reminders Release (Agent-Mediated + GPT-5.2 Story Gate)
+Card-First Parent Dashboard Redesign
 
 Last updated:
-2026-02-22
+2026-03-08
 
 Goal:
-- Ship recurring reminders end-to-end for assignment-linked and personal reminders, with agent-mediated assumptions and a single GPT-5.2 acceptance-judge pass before user UAT.
+- Keep the parent-first dashboard structure, but simplify the interaction model so cards are for scanning/opening and the right-side review drawer is the single place where assignment and follow-up edits happen.
 
 Scope:
 In scope:
-- Recurrence support for `daily`, `weekdays`, `weekly`.
-- Reminder data model unification on `tasks` (including assignment reminders).
-- Agent-mediated inference for recurring cadence/time defaults and create-then-confirm messaging.
-- Beta reset from prod memory flow for `schoology-beta`.
-- Agentic story suite execution and single-pass GPT-5.2 judge artifacts.
-- Process institutionalization updates in roadmap/pattern docs.
+- Keep the existing dashboard service and URL.
+- Add parent-first `Home`, `All Schoolwork`, and tucked-away `Admin` experiences.
+- Add `GET /api/home` plus updated metadata for the new navigation/copy model.
+- Keep assignment/follow-up reads, detail drawer, and deterministic write APIs.
+- Replace button-heavy card rails with click-to-open cards and a slide-out review drawer.
+- Rebuild `All Schoolwork` as a card board with opt-in bulk selection instead of a table-driven quick-action surface.
+- Add a dashboard-scoped write API for assignment/task actions using deterministic tool execution.
+- Refactor the dashboard into static HTML/CSS/JS assets served by the existing Node server.
+- Update docs and test coverage for the new dashboard surface.
 Out of scope:
-- Monthly/custom recurrence execution.
-- Auto-cancel enhancement #10.
-- UI redesign.
+- Web chat UI inside the dashboard.
+- Bug/feature filing UI.
+- A new auth layer for the dashboard.
+- New frontend build tooling or SPA framework adoption.
 
 Constraints and assumptions:
 - Runtime timezone defaults to `America/New_York`.
-- External `openclaw-beta` runtime from other workspace is untouched.
-- Legacy one-time rollover behavior is preserved.
-- Missing cadence on explicit recurring asks defaults to `weekdays`.
-- Missing recurring time defaults:
-  - 7:00 AM ET for morning/school-start cues.
-  - 4:30 PM ET for check-in/follow-up cues.
-  - 9:00 PM ET fallback.
-- Judge policy is exactly one GPT-5.2 run with evidence artifacts.
+- Dashboard remains local-first and keeps the current trust model.
+- Write routes must add same-origin plus custom-header JSON checks.
+- Notes remain append-only in UI.
+- Assignment reminders continue to replace the active pending reminder by default.
+- Scope stays one child for now; no multi-child household model is added.
+- Existing deterministic tool behavior remains the source of truth for dashboard writes.
+- Assignment card faces should not contain ambiguous mutating buttons.
 
 Risks and mitigations:
 Risk:
-- Recurrence defaults create unintended reminders.
+- Dashboard UI diverges from chat behavior for writes.
 Impact:
-- User trust regression and incorrect scheduling.
+- Users see inconsistent assignment/task behavior across surfaces.
 Mitigation:
-- Explicit assumption evidence in tool output + response confirmation with one-step correction examples.
+- Route dashboard writes through `runToolByName` instead of duplicating business logic.
 
 Risk:
-- Reminder migration regresses existing assignment reminder behavior.
+- Parent-friendly copy and home bucketing drift away from real DB/tool state.
 Impact:
-- Legacy reminders may duplicate or disappear.
+- Parents see inconsistent labels or unexpected section placement.
 Mitigation:
-- Migration test coverage for pending legacy reminders -> tasks and duplicate protection.
+- Keep storage/tool semantics unchanged and add tests for home section classification and label mapping.
 
 Risk:
-- Beta reset procedure accidentally impacts non-target runtime.
+- New dashboard write surface becomes too permissive.
 Impact:
-- Operational disruption in other workspace.
+- Cross-site or non-dashboard POSTs can mutate local data.
 Mitigation:
-- Script hard-codes `schoology-beta` compose project and only prod/beta DB volumes.
-
-Risk:
-- Story gate drift between heuristic checks and judge verdict.
-Impact:
-- Unclear acceptance signal.
-Mitigation:
-- Preserve transcripts + tool snapshots per story and require judge evidence snippets per verdict.
+- Enforce a dashboard-specific tool allowlist and same-origin/custom-header request checks.
 
 Plan:
-Phase 1 - Data and runtime core
+Phase 1 - Parent read models
 Tasks:
-- Add recurrence fields to task schema and migration path.
-- Migrate pending legacy `reminders` rows into `tasks` (`kind='assignment'`).
-- Repoint assignment reminder CRUD operations to tasks.
-- Make reminder runner recurrence-aware with timezone-safe next-run math.
+- Add parent-home data shaping for `Needs Attention Tonight`, `Coming Up`, `Waiting on School`, and `Handled for Now`.
+- Re-map assignment display labels to parent-facing wording without changing stored status values.
+- Keep `All Schoolwork` reads separate from `Admin` health snapshot shaping.
 Dependencies:
-- Existing DB migration framework and task runner.
+- Existing DB/read models, status handling, and reminder/task tool behavior.
 End state:
-- Assignment and personal reminders share one recurring-capable task model.
+- Backend can serve a parent-home payload plus schoolwork/admin data without going through chat planning.
 
-Phase 2 - Agent mediation and capability updates
+Phase 2 - Server and UI delivery
 Tasks:
-- Expand tool schemas for recurrence fields.
-- Add inference helpers for cadence/time defaults and unsupported cadence fallback.
-- Inject assumptions into reminder tool calls and output payloads.
-- Update readable confirmation responses to include:
-  - what was assumed,
-  - what was created/updated,
-  - one-step correction examples.
-- Update capabilities/guardrails to support recurring scope and fallback policy.
+- Add `GET /api/home`.
+- Replace the Workbench shell with `Home / All Schoolwork / Admin`.
+- Make `Home` and `All Schoolwork` card-first surfaces where clicking a card opens the drawer.
+- Convert the drawer into a fixed right-side slide-out with backdrop, keyboard close, and focus return.
+- Move assignment status changes, note saves, reminder saves, and follow-up edits into the drawer with explicit submit buttons.
+- Rebuild `All Schoolwork` as grouped card lanes plus opt-in bulk selection.
+- Add `POST /api/tools/run` with dashboard-scoped allowlist and request hardening.
 Dependencies:
 - Phase 1 complete.
 End state:
-- Agent proactively handles recurring reminders with explicit assumption confirmation.
+- Dashboard serves a parent-first planning UI with explicit card-open behavior, calmer card surfaces, and a single editing drawer while preserving full assignment management and Admin health visibility.
 
-Phase 3 - Validation automation and beta reset SOP
+Phase 3 - Validation and docs
 Tasks:
-- Add/expand tests for migration, recurrence math, inference behavior, and mock conversation correction flow.
-- Add `scripts/reset_beta_from_prod_memory.ps1` with verification report artifacts.
-- Add `scripts/run_agentic_story_suite.mjs` for chat-only story execution with transcript/tool snapshot artifacts.
-- Add `scripts/judge_agentic_story_suite.mjs` for single-pass GPT-5.2 judge JSON output.
+- Add unit/data tests for home section classification, parent-facing labels, and reminder/task filtering.
+- Add server integration tests for assets, `GET /api/home`, read APIs, write guardrails, and mutations.
+- Update README, dashboard docs, system docs, and test coverage docs.
 Dependencies:
 - Phase 1 and Phase 2 complete.
 End state:
-- Repeatable pre-UAT gate with artifacts and beta reset reproducibility.
-
-Phase 4 - Process institutionalization
-Tasks:
-- Update roadmap/backlog/system/test-coverage docs for mandatory release flow.
-- Add reusable pattern doc for other projects.
-- Record decision + outcome for this release pattern.
-Dependencies:
-- Phase 3 complete.
-End state:
-- Agentic release gate is documented as default development pattern.
+- Feature is documented and regression coverage exists for both parent-home shaping and HTTP behavior.
 
 Validation plan:
 Unit tests:
-- Reminder assumptions helper tests.
-- Recurrence CRUD and recurrence math tests.
-- Readable response/agent mock coverage for assumption confirmation and corrections.
+- Parent-home and schoolwork data shaping tests.
+- Reminder/time label tests shared with existing task/reminder behavior.
 Integration tests:
+- Dashboard HTTP tests for assets, `GET /api/home`, read APIs, write guardrails, and assignment/task mutations.
+- Dashboard browser smoke test for click-to-open cards, drawer close behavior, explicit status save, and bulk-mode reveal.
 - Full `npm test` run.
 Smoke tests:
-- `npm run stories:run`
-- `npm run stories:judge`
-- `npm run beta:reset-memory` (or direct script execution) for reset report artifact generation.
+- `docker compose up -d --build`
 Manual checks (if any):
-- Review judge evidence JSON and per-story transcripts before UAT.
-- Confirm beta reset report metrics match between prod and beta snapshots.
+- Open `http://127.0.0.1:8787` and verify:
+  - `Home` loads by default.
+  - Clicking a card clearly opens the right-side review drawer.
+  - No default assignment card button appears to mutate data directly.
+  - `All Schoolwork` search/filter/bulk status flows work in card mode.
+  - `Admin` still shows health/commands/docs.
 
 Rollback plan:
 - Revert to last stable commit/image and rebuild containers.
-- Restore pre-release DB backup snapshot.
-- Validate one-time reminder baseline behavior before re-opening work.
+- Rebuild the dashboard service from the last known-good commit.
+- Validate `/api/health` and the dashboard page load before resuming work.
 
 Open questions:
-- None for this execution slice.
+- None.
 
 Notes:
-- 2026-02-22: Decision - recurring scope locked to daily/weekdays/weekly for this release.
-- 2026-02-22: Decision - create-then-confirm with assumptions + quick edit prompt is mandatory for reminder writes.
-- 2026-02-22: Decision - acceptance gate uses one GPT-5.2 judge run with evidence (no second pass).
+- 2026-03-05: Decision - keep the dashboard in plain static assets served by the current Node server; no new frontend toolchain.
+- 2026-03-05: Decision - dashboard writes must reuse deterministic tool execution and remain limited to assignment/task actions.
+- 2026-03-06: Decision - replace the Workbench UI with a parent-first `Home / All Schoolwork / Admin` experience rather than iterating the operator mental model.
+- 2026-03-06: Decision - `Submitted` is a dashboard-local composite action (note + waiting-on-teacher status) built on existing deterministic tool calls.
+- 2026-03-07: Decision - remove on-card assignment quick actions and make the review drawer the single editing surface so parents do not have to guess which buttons write immediately.
+- 2026-03-08: Decision - collapse secondary home sections, convert `All Schoolwork` from a board to one grouped list, and keep only one editable drawer section open at a time to reduce visual noise.
