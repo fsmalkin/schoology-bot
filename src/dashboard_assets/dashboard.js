@@ -167,6 +167,32 @@ function toolHeaders() {
   };
 }
 
+function setRefreshButtonsBusy(busy) {
+  document.querySelectorAll('[data-action="refresh-assignments"]').forEach((node) => {
+    if (!(node instanceof HTMLButtonElement)) return;
+    if (!node.dataset.defaultLabel) {
+      node.dataset.defaultLabel = node.textContent || "Refresh Schoology";
+    }
+    node.disabled = busy;
+    node.textContent = busy ? "Refreshing..." : node.dataset.defaultLabel;
+  });
+}
+
+function refreshSuccessMessage(output) {
+  const segments = [];
+  if (Number.isFinite(Number(output?.actionableCount))) {
+    segments.push(`${Number(output.actionableCount)} need attention`);
+  }
+  if (Number.isFinite(Number(output?.pendingCount))) {
+    segments.push(`${Number(output.pendingCount)} waiting on school`);
+  }
+  if (Number.isFinite(Number(output?.ignoredCount))) {
+    segments.push(`${Number(output.ignoredCount)} handled for now`);
+  }
+  if (segments.length === 0) return "Schoology refresh finished.";
+  return `Refresh complete. ${segments.join(", ")}.`;
+}
+
 async function runTool(tool, args) {
   const payload = await fetchJson("/api/tools/run", {
     method: "POST",
@@ -1286,19 +1312,25 @@ async function toggleTaskStatus(id, nextStatus) {
 }
 
 async function refreshSchoology() {
-  const output = await runTool("refresh_schoology", {});
-  if (output.ok === false) {
-    showFlash(output.error || "Schoology refresh failed.", "error");
-    return;
-  }
-  showFlash("Schoology refresh finished.", "success");
-  await Promise.all([loadHome(), loadAssignments(), loadHealth(), loadTasks()]);
-  if (state.drawer.kind === "assignment" && state.drawer.key) {
-    await openAssignmentDrawer(state.drawer.key, {
-      focus: state.drawer.focus || null,
-      section: state.drawer.section || "status",
-      openerId: state.drawer.returnFocusId || null,
-    });
+  setRefreshButtonsBusy(true);
+  showFlash("Refreshing Schoology...", "info");
+  try {
+    const output = await runTool("refresh_schoology", {});
+    if (output.ok === false) {
+      showFlash(output.error || "Schoology refresh failed.", "error");
+      return;
+    }
+    await Promise.all([loadHome(), loadAssignments(), loadHealth(), loadTasks()]);
+    if (state.drawer.kind === "assignment" && state.drawer.key) {
+      await openAssignmentDrawer(state.drawer.key, {
+        focus: state.drawer.focus || null,
+        section: state.drawer.section || "status",
+        openerId: state.drawer.returnFocusId || null,
+      });
+    }
+    showFlash(refreshSuccessMessage(output), "success");
+  } finally {
+    setRefreshButtonsBusy(false);
   }
 }
 

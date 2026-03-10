@@ -18,7 +18,7 @@ Unit tests
 - Assignment identity migration v6 (backfill `assignment_id`, dedupe by ID, and reference relink for notes/tasks).
 - Dashboard health/data builders (heartbeat + snapshot shaping).
 - Dashboard parent-home and schoolwork data builders (home section classification, parent-facing labels, assignment notes preview, reminder summary, and task-only filtering).
-- Dashboard browser smoke coverage for click-to-open cards, the minimal card surface, collapsed drawer sections, explicit assignment status saves, backdrop/escape close behavior, and bulk-mode reveal.
+- Dashboard browser smoke coverage for click-to-open cards, the minimal card surface, collapsed drawer sections, explicit assignment status saves, visible Schoology refresh busy/success feedback, backdrop/escape close behavior, and bulk-mode reveal.
 - Time parsing and timezone formatting (local labels, shorthand).
 - Reminder rollovers (one-time + recurring cadence next-run math, DST wall-clock checks).
 - Bug filing guardrails (no empty body).

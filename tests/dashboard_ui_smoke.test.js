@@ -6,6 +6,7 @@ import path from "node:path";
 import { chromium } from "playwright";
 import { closeDb, getDb } from "../src/db.js";
 import { createDashboardServer } from "../src/dashboard_server.js";
+import { runToolByName } from "../src/tool_runner.js";
 
 function makeConfig(tempDir) {
   return {
@@ -91,7 +92,15 @@ test("dashboard card interactions open the review drawer and keep writes explici
   seedAssignments(db);
   seedTasks(db);
 
-  const server = createDashboardServer({ config, logger: { log: () => {} } });
+  const toolExecutor = async (toolDb, tool, args, context) => {
+    if (tool === "refresh_schoology") {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      return { ok: true, actionableCount: 1, pendingCount: 1, ignoredCount: 0 };
+    }
+    return runToolByName(toolDb, tool, args, context);
+  };
+
+  const server = createDashboardServer({ config, logger: { log: () => {} }, toolExecutor });
   let browser;
   try {
     browser = await launchChromiumOrSkip(t);
@@ -107,6 +116,12 @@ test("dashboard card interactions open the review drawer and keep writes explici
 
     await page.waitForSelector("text=Needs Attention Tonight");
     await page.waitForSelector("text=Waiting on School");
+
+    const refreshButton = page.locator('[data-view-panel="home"] [data-action="refresh-assignments"]').first();
+    await refreshButton.click();
+    await page.waitForSelector("text=Refreshing Schoology...");
+    await page.waitForSelector("text=Refresh complete. 1 need attention, 1 waiting on school, 0 handled for now.");
+    assert.equal((await refreshButton.textContent())?.trim(), "Refresh Schoology");
 
     const assignmentCards = page.locator('[data-surface-card="assignment"]');
     assert.ok((await assignmentCards.count()) > 0);
