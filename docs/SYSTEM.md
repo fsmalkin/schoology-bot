@@ -22,6 +22,7 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
 ## Core flows
 1) Scrape
    - Playwright login -> grades page -> parse missing assignments.
+   - Treat title text like `(Graded: 1/10)` as descriptive only; do not use it by itself as proof that the current student's item is graded or resolved.
    - Updates state.json and syncs into SQLite.
 2) Summary send
    - Builds DB-backed summary (actionable + pending; archived hidden by default).
@@ -121,6 +122,7 @@ Fallback:
 ## Known constraints
 - Recurring cadence is limited to `daily`, `weekdays`, `weekly`.
 - Schoology login is session-based; interactive login required when session expires.
+- Schoology title text can be ambiguous: `(Graded: <date>)` may reflect assignment-level/class-level grading context, not the current student's final status.
 - Production Telegram bot should be single-instance to avoid duplicate messages.
 - Release gate for reminder-scope changes is mandatory before UAT:
   - beta reset from prod memory,

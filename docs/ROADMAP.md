@@ -33,6 +33,7 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 - Pending actions are stored per chat to complete multi-step confirmations.
 - Bug filing uses a draft+validate+submit skill (no empty issues).
 - Schoology "submitted but not graded" indicators are auto-archived (Ignored) in summaries/lists by default.
+- Schoology title text like `(Graded: <date>)` is treated as descriptive only; it does not, by itself, prove the current student's assignment is graded or resolved.
 - OpenClaw beta runtime uses gateway-native Telegram + cron, with `schoology-tool-api` retained as a parity sidecar.
 - Coexistence guardrail: Schoology stacks use explicit Docker Compose project names (`schoology-prod`, `schoology-openclaw-beta`) to avoid conflicts with other local OpenClaw projects.
 - Beta reset command (`npm run beta:reset-memory`) targets the active OpenClaw beta runtime (`schoology-openclaw-beta`, `data/beta/*`); legacy beta compose is rollback-only.

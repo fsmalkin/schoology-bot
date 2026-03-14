@@ -90,6 +90,7 @@ If `Home` or `All Schoolwork` looks stale or wrong:
    - `docker compose -f docker-compose.yml -p schoology-prod logs --tail 200 schoology`
    - `docker compose -f docker-compose.yml -p schoology-prod logs --tail 200 telegram-agent`
 3. Confirm `data/state.json` and `data/agent.db` are updating.
+4. If a card title includes `(Graded: <date>)` but still shows `Needs attention`, do not assume the item is resolved. The dashboard follows current missing/submission signals, because that title text can be assignment-level context rather than a confirmed per-student grade.
 
 If `Admin` shows stale/down services:
 1. Check service logs for your runtime mode:

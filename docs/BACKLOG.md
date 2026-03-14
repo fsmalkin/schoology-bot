@@ -19,6 +19,7 @@ This file tracks active and proposed work items with GitHub issue linkage.
 4. #15 Detail-page fallback for ambiguous submission status
    - Status: Open
    - Outcome target: Submission state classification remains accurate when list view is ambiguous.
+   - Known ambiguity: title suffixes like `(Graded: <date>)` may describe assignment-level timing and are not reliable proof that the current student's work is graded/resolved.
 5. #10 Auto-cancel reminders for inactive/resolved assignments
    - Status: Open
    - Outcome target: Assignment-linked reminders do not fire after item becomes inactive.
