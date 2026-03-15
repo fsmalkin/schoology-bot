@@ -23,3 +23,5 @@ openclaw_workspace/USER.md
 openclaw_workspace/memory/
 openclaw_workspace/*.json5
 artifacts/
+.claude/
+docs/dashboard-preview.html
