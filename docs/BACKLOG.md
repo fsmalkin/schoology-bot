@@ -13,28 +13,48 @@ This file tracks active and proposed work items with GitHub issue linkage.
 2. OpenClaw beta UAT and production promotion readiness
    - Status: In progress
    - Outcome target: Confirm parity for refresh/chat/reminders and complete a low-risk production cutover checklist.
-3. #14 DB-backed context compaction and long-thread memory
+3. Dashboard Phase 1 — foundation polish
+   - Status: In progress
+   - Design reference: `docs/DASHBOARD_DESIGN.md` Phase 1
+   - Items:
+     a. Confirm sidebar nav selections work after Docker rebuild (2026-03-15)
+     b. Course color stripes on assignment rows (left border, hashed from course name)
+     c. Mobile bottom tab bar (replaces hidden sidebar on ≤ 860px)
+     d. System status dot in Tonight right column (green/amber/red, links to system panel)
+4. #14 DB-backed context compaction and long-thread memory
    - Status: Open
    - Outcome target: Long chats retain critical context with bounded token use.
-4. #15 Detail-page fallback for ambiguous submission status
+5. #15 Detail-page fallback for ambiguous submission status
    - Status: Open
    - Outcome target: Submission state classification remains accurate when list view is ambiguous.
    - Known ambiguity: title suffixes like `(Graded: <date>)` may describe assignment-level timing and are not reliable proof that the current student's work is graded/resolved.
-5. #10 Auto-cancel reminders for inactive/resolved assignments
+6. #10 Auto-cancel reminders for inactive/resolved assignments
    - Status: Open
    - Outcome target: Assignment-linked reminders do not fire after item becomes inactive.
 
 ## P2 (Planned)
-1. OpenClaw upstream sync SOP
+1. Dashboard Phase 2 — This Week view
+   - Status: Not yet filed
+   - Design reference: `docs/DASHBOARD_DESIGN.md` Phase 2
+   - Outcome target: 7-day calendar strip + day-lane assignment grouping. Prev/next week navigation. Uses existing `dueDateYmd` from `/api/home`.
+2. Dashboard Phase 3 — System panel demotion
+   - Status: Not yet filed
+   - Design reference: `docs/DASHBOARD_DESIGN.md` Phase 3
+   - Outcome target: System Health becomes a slide-in panel (like the drawer) rather than a full nav view. Triggered by status dot click or sidebar "System" item.
+3. Dashboard Phase 4 — Command palette (⌘K)
+   - Status: Not yet filed
+   - Design reference: `docs/DASHBOARD_DESIGN.md` Phase 4
+   - Outcome target: ⌘K opens a floating command launcher with fuzzy assignment search and shortcut commands (refresh, add task, go to week).
+4. OpenClaw upstream sync SOP
    - Status: Not yet filed
    - Outcome target: Repeatable update cadence with verification checklist.
-2. Scheduled auto-update task decision
+5. Scheduled auto-update task decision
    - Status: Not yet filed
    - Outcome target: Decide manual-only vs scheduled update path.
-3. Agents SDK evaluation
+6. Agents SDK evaluation
    - Status: Not yet filed
    - Outcome target: Decision memo on staying with current architecture vs adopting SDK.
-4. Cross-project rollout of the agentic release pattern
+7. Cross-project rollout of the agentic release pattern
    - Status: Not yet filed
    - Outcome target: Reuse beta reset + story gate + judge evidence flow in other repos as a standard release template.
 

@@ -55,28 +55,34 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
   - Recurring reminder runtime support implemented across DB, tool runner, and reminder scheduler (`daily`, `weekdays`, `weekly`).
   - Dashboard redesigned with dark sidebar nav, 4-card metric row, and 2-column home layout (assignment sections + right-col panels). Replaces the hero/tab-bar shell. Section labels updated for clarity (`Tonight's Assignments`, `Waiting on Teacher`).
   - Schoology title derivation: assignments with no link title now derive a clean display name from the raw Schoology row text.
+  - Full dashboard design plan written (`docs/DASHBOARD_DESIGN.md`): user stories, navigation architecture, view designs, interaction patterns, mobile layout, and implementation phases.
 - In progress:
   - Agentic story suite run and single-pass GPT-5.2 judge evidence review before UAT.
   - Production rollout checklist and cutover validation for recurring reminder release.
+  - Dashboard Phase 1 polish: sidebar nav fix, course color stripes, mobile bottom tab bar.
 
 ## Active Queue (P1)
 1. Recurring reminders release gate completion (beta reset, story suite, GPT-5.2 judge evidence, UAT, prod rollout).
 2. OpenClaw beta UAT and production promotion readiness.
-3. DB-backed context compaction and long-thread memory (#14).
-4. Detail-page fallback for ambiguous submission status (#15).
-5. Auto-cancel assignment reminders when assignment becomes inactive/resolved (#10).
-6. Finalize OpenClaw upstream sync SOP (what to pull, how to validate, when to promote).
+3. Dashboard Phase 1: sidebar nav fix, course color stripes, mobile bottom tab bar, system status dot in right column.
+4. DB-backed context compaction and long-thread memory (#14).
+5. Detail-page fallback for ambiguous submission status (#15).
+6. Auto-cancel assignment reminders when assignment becomes inactive/resolved (#10).
 
 ## Ready Next (P2)
-1. OpenClaw upstream sync SOP (what to pull, how to validate, when to promote).
-2. Scheduled auto-update task decision (Windows Task Scheduler).
-3. Agents SDK evaluation versus current direct Responses architecture.
-4. Extend the agentic release pattern to other projects and templates.
+1. Dashboard Phase 2: This Week view (calendar strip + day-lane layout).
+2. Dashboard Phase 3: System panel demotion — slide-in panel instead of full nav view.
+3. Dashboard Phase 4: Command palette (⌘K).
+4. OpenClaw upstream sync SOP (what to pull, how to validate, when to promote).
+5. Scheduled auto-update task decision (Windows Task Scheduler).
+6. Agents SDK evaluation versus current direct Responses architecture.
+7. Extend the agentic release pattern to other projects and templates.
 
 ## Later (P3)
-1. Convert action-oriented notes into reminders with user confirmation.
-2. Unified single Task model (Option B).
-3. Daily cost summary.
+1. Dashboard Phase 5: polish — course color hashing, micro-animations, keyboard nav (G-codes), mobile drawer slide-up.
+2. Convert action-oriented notes into reminders with user confirmation.
+3. Unified single Task model (Option B).
+4. Daily cost summary.
 
 ## Standard Release Flow (Mandatory for Reminder-Scope Changes)
 1. Run beta reset from prod memory and keep report artifact.
