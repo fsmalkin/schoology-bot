@@ -340,10 +340,8 @@ function taskSurfaceId(id) {
 function updateNavBadges() {
   const home = document.getElementById("navBadgeHome");
   const schoolwork = document.getElementById("navBadgeSchoolwork");
-  const tasks = document.getElementById("navBadgeTasks");
   if (home) home.textContent = state.home?.summary?.tonightCount > 0 ? String(state.home.summary.tonightCount) : "";
   if (schoolwork) schoolwork.textContent = state.assignments?.summary?.total > 0 ? String(state.assignments.summary.total) : "";
-  if (tasks) tasks.textContent = state.tasks?.summary?.pending > 0 ? String(state.tasks.summary.pending) : "";
 }
 
 function syncNavActive() {
