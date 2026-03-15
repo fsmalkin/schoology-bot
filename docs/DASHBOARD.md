@@ -8,17 +8,18 @@ Purpose: local-first parent dashboard for managing one child's schoolwork after 
 - Optional Tailscale URL: `https://<TAILSCALE_DASHBOARD_HOSTNAME>.<tailnet>.ts.net`
 
 ## What it displays
-- `Home`
-  - One dominant `Needs Attention Tonight` section above the fold.
-  - Quieter secondary sections for `Waiting on School` and `Coming Up`, plus a collapsed `Handled for Now`.
-  - A compact summary ribbon with `Tonight`, `Waiting`, and `Next reminder`.
-  - Mixed assignment and personal follow-up cards so the parent sees one plan.
+- `Home` (Tonight's Plan)
+  - Dark sidebar nav with logo, section labels, and nav badges for unread counts.
+  - Topbar breadcrumb showing the current view.
+  - Metric row: four stat cards — Action Required, Pending Tasks, Services, Last Sync.
+  - Two-column layout: left panel shows assignment sections (Overdue, Due Tonight / Soon, Waiting on Teacher, Coming Up) with a progress bar; right column shows Assignment Overview, Follow-up Tasks, System Health, and Schedule.
+  - Page-header greeting with today's date and a summary subtitle.
 - `All Schoolwork`
   - Search plus one scope filter, followed by a single grouped list for `Needs attention`, `Waiting on school`, and `Handled for now`.
   - `Handled for now` stays collapsed until expanded.
   - Bulk status updates are available only after turning on `Bulk select`.
   - Shared review drawer for status saves, note history, reminder edit/delete, and follow-up edits.
-- `Admin`
+- `System Health` (Admin)
   - Service health for legacy or OpenClaw runtime.
   - Last scrape and summary freshness.
   - Assignment/follow-up snapshot counts.

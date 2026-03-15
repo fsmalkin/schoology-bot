@@ -45,6 +45,8 @@ This file tracks active and proposed work items with GitHub issue linkage.
 4. #11 Closed: beta skill smoke check for empty issue handling.
 5. #12 Closed: weekend daily schedule update enhancement.
 6. #13 Completed in code: capability registry + planner/agent guardrails.
+7. Dashboard redesign (2026-03-15): sidebar nav, metric row, 2-column home layout shipped to prod. All 111 tests pass.
+8. Schoology title derivation (2026-03-15): clean display names for no-link Schoology rows shipped to prod.
 
 ## Planning Governance
 - Canonical backlog lives on `main`.

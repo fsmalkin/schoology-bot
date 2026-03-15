@@ -40,6 +40,12 @@ This document records completed milestones and major capability deliveries.
 - Login failure messaging now respects configured `SCHOLOGY_IDP` to avoid repeated provider-selection prompts.
 - Promotion workflow from beta to production (merge + rebuild prod, stop beta).
 
+## Dashboard UX
+- Dashboard redesigned with dark sidebar nav, topbar breadcrumb, 4-card metric row (Action Required, Pending Tasks, Services, Last Sync), and a 2-column `dashboard-grid` layout replacing the old hero/tab-bar shell.
+- Home view sections renamed for clarity: "Tonight's Assignments" (was "Needs Attention Tonight"), "Waiting on Teacher" (was "Waiting on School").
+- Assignment rows replace old card grid for the home view; `All Schoolwork` retains dense card list.
+- Schoology title derivation fallback: assignments with no link title now derive a clean display name from the raw Schoology row text instead of showing raw fallback strings.
+
 ## Tests
 - Offline unit and E2E tests using fixtures (no live Schoology dependency).
 - Reminder CRUD and rollover tests.
