@@ -96,3 +96,49 @@ export function normalizeAscii(text) {
     .replace(/\u2026/g, "...")
     .replace(/\u00A0/g, " ");
 }
+
+function normalizeCompactText(text) {
+  return String(text ?? "").replace(/\s+/g, " ").trim();
+}
+
+function cleanSchoologyTitleCandidate(text) {
+  return normalizeCompactText(text)
+    .replace(/\s*Note:\s*.*$/i, "")
+    .replace(/[\s.:-]*(assignment|test-quiz|external-tool-link|discussion)$/i, "")
+    .trim();
+}
+
+function earliestMatchIndex(text, patterns) {
+  let earliest = -1;
+  for (const pattern of patterns) {
+    const match = pattern.exec(text);
+    if (!match) continue;
+    if (earliest === -1 || match.index < earliest) {
+      earliest = match.index;
+    }
+  }
+  return earliest;
+}
+
+export function deriveSchoologyAssignmentTitle({ title = "", titleText = "", rawText = "" } = {}) {
+  const directTitle = cleanSchoologyTitleCandidate(title);
+  if (directTitle) return directTitle;
+
+  const visibleTitle = cleanSchoologyTitleCandidate(titleText);
+  if (visibleTitle) return visibleTitle;
+
+  const normalizedRawText = normalizeCompactText(rawText);
+  if (!normalizedRawText) return "";
+
+  const cutoff = earliestMatchIndex(normalizedRawText, [
+    /\s*Note:\s*/i,
+    /\s*(assignment|test-quiz|external-tool-link|discussion)\s+Due\b/i,
+    /\s+Due\s+\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/i,
+    /\s+Comment:\s*/i,
+    /\s+No comment\b/i,
+    /\s+Offered\/Received accommodation\b/i,
+    /\s+\d+\s*\/\s*\d+\b/i,
+  ]);
+
+  return cleanSchoologyTitleCandidate(cutoff >= 0 ? normalizedRawText.slice(0, cutoff) : normalizedRawText);
+}

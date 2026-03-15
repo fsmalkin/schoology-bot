@@ -54,3 +54,31 @@ test("extractMissingAssignmentsFromHtml marks grade-pending submissions as await
   assert.equal(items[0].status, "Submitted, awaiting grade");
   assert.equal(items[0].isMissing, true);
 });
+
+test("extractMissingAssignmentsFromHtml falls back to visible row title when no assignment link exists", async () => {
+  const html = `
+    <div class="gradebook-course">
+      <div class="gradebook-course-title">Language Arts GT/AA MS7: Sec 003 A PER02</div>
+      <table>
+        <tr class="report-row item-row">
+          <td class="item-title">
+            <div>L3: Figurative Language and Multiple Themes</div>
+            <div>Note: This material is not available within Schoology</div>
+          </td>
+          <td class="due-date">Due 2/11/26</td>
+          <td class="grade-column">
+            <span class="exception-text">Missing</span>
+            <span class="awarded-grade">0</span>
+          </td>
+          <td class="comment-column">
+            <div class="comment">Comment: Missing, present during instruction.</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
+  const items = await extractMissingAssignmentsFromHtml(html);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].title, "L3: Figurative Language and Multiple Themes");
+  assert.equal(items[0].dueDate, "2/11/26");
+});

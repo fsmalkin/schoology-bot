@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
+import { deriveSchoologyAssignmentTitle } from "./text_utils.js";
 
 function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) {
@@ -46,16 +47,17 @@ function minDateValue(...values) {
 function normalizeAssignmentShape(key, item = {}) {
   const assignmentId = extractAssignmentId(item.url || "") || item.assignmentId || "";
   const normalizedKey = assignmentId ? `assignment:${assignmentId}` : key;
+  const rawText = item.rawText || "";
   return {
     key: normalizedKey,
     assignmentId,
     course: item.course || "",
-    title: item.title || "",
+    title: deriveSchoologyAssignmentTitle({ title: item.title || "", rawText }),
     dueDate: item.dueDate || "",
     status: item.status || "",
     score: item.score || "",
     url: item.url || "",
-    rawText: item.rawText || "",
+    rawText,
     firstSeenAt: item.firstSeenAt || "",
     lastSeenAt: item.lastSeenAt || "",
     isMissing: item.isMissing === true,
@@ -185,16 +187,20 @@ export function updateStateWithScrape(state, scrapeAt, assignments) {
     const isMissing = item.isMissing === true;
     const wasMissing = existing.isMissing === true;
     const resolvedAt = !isMissing && wasMissing ? scrapeAt : existing.resolvedAt || null;
+    const rawText = item.rawText || existing.rawText || "";
     const updated = {
       key,
       assignmentId,
       course: item.course || existing.course || "",
-      title: item.title || existing.title || "",
+      title: deriveSchoologyAssignmentTitle({
+        title: item.title || existing.title || "",
+        rawText,
+      }),
       dueDate: item.dueDate || existing.dueDate || "",
       status: item.status || existing.status || "",
       score: item.score || existing.score || "",
       url: item.url || existing.url || "",
-      rawText: item.rawText || existing.rawText || "",
+      rawText,
       firstSeenAt,
       lastSeenAt: scrapeAt,
       isMissing,

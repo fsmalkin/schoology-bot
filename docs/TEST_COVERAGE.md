@@ -16,8 +16,9 @@ Unit tests
 - Login-failure Telegram alert throttling (first alert, cooldown suppression, changed-error resend, post-success resend).
 - Assignment identity canonicalization (`assignment:<id>`) and legacy-key merge behavior.
 - Assignment identity migration v6 (backfill `assignment_id`, dedupe by ID, and reference relink for notes/tasks).
+- Schoology scraper title fallback for rows that have visible text but no assignment link (`Note: This material is not available within Schoology` shape).
 - Dashboard health/data builders (heartbeat + snapshot shaping).
-- Dashboard parent-home and schoolwork data builders (home section classification, parent-facing labels, assignment notes preview, reminder summary, and task-only filtering).
+- Dashboard parent-home and schoolwork data builders (home section classification, parent-facing labels, assignment notes preview, reminder summary, task-only filtering, and raw-text title fallback when stored titles are blank).
 - Dashboard browser smoke coverage for click-to-open cards, the minimal card surface, collapsed drawer sections, explicit assignment status saves, visible Schoology refresh busy/success feedback, backdrop/escape close behavior, and bulk-mode reveal.
 - Time parsing and timezone formatting (local labels, shorthand).
 - Reminder rollovers (one-time + recurring cadence next-run math, DST wall-clock checks).

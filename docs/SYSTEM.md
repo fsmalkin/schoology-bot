@@ -23,6 +23,7 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
 1) Scrape
    - Playwright login -> grades page -> parse missing assignments.
    - Treat title text like `(Graded: 1/10)` as descriptive only; do not use it by itself as proof that the current student's item is graded or resolved.
+   - If Schoology renders a gradebook row without an assignment link, fall back to the visible row title/raw row text so dashboard and reminder flows still show a usable title.
    - Updates state.json and syncs into SQLite.
 2) Summary send
    - Builds DB-backed summary (actionable + pending; archived hidden by default).

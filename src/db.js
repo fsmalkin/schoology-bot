@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import { getManualStatusCategory, normalizeManualStatus } from "./statuses.js";
 import { nowIso, parseSchoologyDate } from "./time.js";
 import { extractAssignmentId, loadState } from "./storage.js";
+import { deriveSchoologyAssignmentTitle } from "./text_utils.js";
 
 let dbInstance = null;
 
@@ -332,6 +333,25 @@ function normalizeAssignmentKeyForId(assignmentId, fallbackKey = "") {
   return `assignment:${id}`;
 }
 
+function withDerivedAssignmentTitle(row) {
+  if (!row) return row;
+  return {
+    ...row,
+    title: deriveSchoologyAssignmentTitle({
+      title: row.title || "",
+      rawText: row.rawText || "",
+    }),
+  };
+}
+
+function buildAssignmentTaskTitle(row) {
+  const assignment = withDerivedAssignmentTitle(row);
+  const course = String(assignment?.course || "").trim();
+  const title = String(assignment?.title || "").trim();
+  if (course && title) return `${course} - ${title}`;
+  return title || course || "Assignment reminder";
+}
+
 function ensureAssignmentIdentityColumns(db) {
   const tableExists = db
     .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='assignments'")
@@ -588,7 +608,7 @@ function migrateRemindersToTasks(db) {
   if (!pending.length) return;
 
   const lookupAssignment = assignmentsTable
-    ? db.prepare("SELECT course, title FROM assignments WHERE key = ?")
+    ? db.prepare("SELECT course, title, raw_text AS rawText FROM assignments WHERE key = ?")
     : null;
   const insertTask = db.prepare(
     `
@@ -634,8 +654,8 @@ function migrateRemindersToTasks(db) {
       db.prepare("DELETE FROM reminders WHERE id = ?").run(reminder.id);
       continue;
     }
-    const assignment = lookupAssignment ? lookupAssignment.get(reminder.assignmentKey) : null;
-    const title = assignment ? `${assignment.course} - ${assignment.title}` : "Assignment reminder";
+    const assignment = lookupAssignment ? withDerivedAssignmentTitle(lookupAssignment.get(reminder.assignmentKey)) : null;
+    const title = buildAssignmentTaskTitle(assignment);
     insertTask.run({
       assignment_key: reminder.assignmentKey,
       title,
@@ -871,16 +891,17 @@ export function syncAssignmentsFromState(db, state) {
     const key =
       normalizeAssignmentKeyForId(assignmentId, item.key || "") ||
       String(item.key || "").trim();
+    const rawText = item.rawText || "";
     return {
       key,
       assignment_id: assignmentId || null,
       course: item.course || "",
-      title: item.title || "",
+      title: deriveSchoologyAssignmentTitle({ title: item.title || "", rawText }),
       due_date: item.dueDate || "",
       status: item.status || "",
       score: item.score || "",
       url: item.url || "",
-      raw_text: item.rawText || "",
+      raw_text: rawText,
       first_seen_at: item.firstSeenAt || "",
       last_seen_at: item.lastSeenAt || "",
       last_missing_at: item.lastMissingAt || "",
@@ -962,7 +983,8 @@ export function listAssignments(db, options = {}) {
     )
     .all(params);
 
-  const mapped = rows.map((row) => {
+  const mapped = rows.map((sourceRow) => {
+    const row = withDerivedAssignmentTitle(sourceRow);
     const manualStatus = row.manualStatus || "";
     const manualCategory = getManualStatusCategory(manualStatus);
     const autoIgnored = row.autoIgnored === 1;
@@ -1173,7 +1195,7 @@ export function findAssignments(db, options = {}) {
   const course = options.course ? String(options.course).toLowerCase() : null;
   if (!title) return [];
   const params = { title: `%${title}%` };
-  const filters = ["LOWER(title) LIKE @title"];
+  const filters = ["(LOWER(title) LIKE @title OR LOWER(raw_text) LIKE @title)"];
   if (course) {
     filters.push("LOWER(course) LIKE @course");
     params.course = `%${course}%`;
@@ -1183,6 +1205,7 @@ export function findAssignments(db, options = {}) {
     .prepare(
       `
       SELECT key, course, title, due_date AS dueDate, status, manual_status AS manualStatus
+             , raw_text AS rawText
              , assignment_id AS assignmentId
       FROM assignments
       ${where}
@@ -1190,7 +1213,30 @@ export function findAssignments(db, options = {}) {
       LIMIT 20
     `
     )
-    .all(params);
+    .all(params)
+    .map((row) => withDerivedAssignmentTitle(row));
+}
+
+function loadAssignmentByKey(db, key) {
+  return withDerivedAssignmentTitle(
+    db
+      .prepare(
+        `
+        SELECT
+          key,
+          course,
+          title,
+          due_date AS dueDate,
+          status,
+          manual_status AS manualStatus,
+          raw_text AS rawText,
+          assignment_id AS assignmentId
+        FROM assignments
+        WHERE key = ?
+      `
+      )
+      .get(key)
+  );
 }
 
 export function updateAssignmentStatus(db, { key, title, course, status }) {
@@ -1226,9 +1272,7 @@ export function updateAssignmentStatus(db, { key, title, course, status }) {
     return { ok: false, error: "Assignment not found." };
   }
 
-  const assignment = db
-    .prepare("SELECT course, title, due_date AS dueDate FROM assignments WHERE key = ?")
-    .get(targetKey);
+  const assignment = loadAssignmentByKey(db, targetKey);
 
   return { ok: true, key: targetKey, status: normalizedStatus, assignment };
 }
@@ -1299,9 +1343,7 @@ export function addAssignmentNote(db, { key, title, course, note }) {
     )
     .run({ key: targetKey, note, created_at: nowIso() });
 
-  const assignment = db
-    .prepare("SELECT course, title, due_date AS dueDate FROM assignments WHERE key = ?")
-    .get(targetKey);
+  const assignment = loadAssignmentByKey(db, targetKey);
 
   return { ok: true, key: targetKey, noteId: result.lastInsertRowid, assignment };
 }
@@ -1385,10 +1427,8 @@ export function scheduleReminder(
   if (!existing) {
     return { ok: false, error: "Assignment not found." };
   }
-  const assignment = db
-    .prepare("SELECT course, title, due_date AS dueDate FROM assignments WHERE key = ?")
-    .get(targetKey);
-  const taskTitle = assignment ? `${assignment.course} - ${assignment.title}` : "Assignment reminder";
+  const assignment = loadAssignmentByKey(db, targetKey);
+  const taskTitle = buildAssignmentTaskTitle(assignment);
 
   if (replaceExisting) {
     const existing = db
@@ -1641,7 +1681,7 @@ export function listResolvedWithManualStatus(db, sinceIso) {
   return db
     .prepare(
       `
-      SELECT a.key, a.course, a.title, a.manual_status AS manualStatus,
+      SELECT a.key, a.course, a.title, a.raw_text AS rawText, a.manual_status AS manualStatus,
              (SELECT COUNT(*) FROM assignment_notes n WHERE n.assignment_key = a.key) AS notesCount
       FROM assignments a
       WHERE a.is_missing = 0
@@ -1650,7 +1690,8 @@ export function listResolvedWithManualStatus(db, sinceIso) {
       ORDER BY a.resolved_at DESC
     `
     )
-    .all({ since: sinceIso });
+    .all({ since: sinceIso })
+    .map((row) => withDerivedAssignmentTitle(row));
 }
 
 export function clearManualStatuses(db, keys = []) {

@@ -9,6 +9,7 @@ import {
 import { STATUS_CODE_MAP, getManualStatusCategory } from "./statuses.js";
 import { addLocalReminderFields, addLocalReminderFieldsToList, recurrenceOptionList } from "./reminder_view.js";
 import { formatDateTimeLabel, formatDateYmd, parseSchoologyDate } from "./time.js";
+import { deriveSchoologyAssignmentTitle } from "./text_utils.js";
 
 const WORKBENCH_LIMIT = 1000;
 const NOTES_PREVIEW_LIMIT = 2;
@@ -207,12 +208,13 @@ function mapAssignmentRow(row, notesByKey, reminderGroups, timeZone, nowDate) {
   const inferredSubmittedUngraded = row.isMissing === true && isSubmittedUngraded(row);
   const bucket = displayBucket(row.statusCategory, { inferredSubmittedUngraded });
   const todayYmd = formatDateYmd(nowDate, timeZone);
+  const title = deriveSchoologyAssignmentTitle({ title: row.title || "", rawText: row.rawText || "" });
   return {
     kind: "assignment",
     key: row.key,
     assignmentId: row.assignmentId || null,
     course: row.course || "",
-    title: row.title || "",
+    title,
     schoologyStatus: row.status || "",
     effectiveStatus: row.effectiveStatus || row.status || "",
     manualStatus: row.manualStatus || "",

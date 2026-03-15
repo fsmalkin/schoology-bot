@@ -1,6 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createDb, syncAssignmentsFromState, updateAssignmentStatus, applyNumberedStatuses, listAssignments } from "../src/db.js";
+import {
+  createDb,
+  syncAssignmentsFromState,
+  updateAssignmentStatus,
+  applyNumberedStatuses,
+  listAssignments,
+  findAssignments,
+  scheduleReminder,
+} from "../src/db.js";
 
 function seedDb(db) {
   const state = {
@@ -98,4 +106,44 @@ test("listAssignments auto-ignores submitted items awaiting grade", () => {
   assert.ok(row);
   assert.equal(row.statusCategory, "ignored");
   assert.equal(row.effectiveStatus, "Submitted, awaiting grade");
+});
+
+test("blank-title Schoology rows derive titles for lists and reminder flows", () => {
+  const db = createDb();
+  syncAssignmentsFromState(db, {
+    assignments: {
+      a1: {
+        key: "a1",
+        course: "Language Arts",
+        title: "",
+        dueDate: "2/11/26",
+        status: "Missing, present during instruction.",
+        score: "0",
+        url: "",
+        rawText:
+          "L3: Figurative Language and Multiple ThemesNote: This material is not available within Schoology Due 2/11/260MissingComment: Missing, present during instruction.Offered/Received accommodation",
+        firstSeenAt: "2026-03-14T10:00:00Z",
+        lastSeenAt: "2026-03-14T10:00:00Z",
+        lastMissingAt: "2026-03-14T10:00:00Z",
+        resolvedAt: null,
+        isMissing: true,
+      },
+    },
+  });
+
+  const list = listAssignments(db, { status: "missing", includeIgnored: true, includePending: true });
+  assert.equal(list[0].title, "L3: Figurative Language and Multiple Themes");
+
+  const matches = findAssignments(db, { title: "Figurative Language" });
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].title, "L3: Figurative Language and Multiple Themes");
+
+  const reminder = scheduleReminder(db, {
+    key: "a1",
+    remindAt: "2026-03-14T16:00:00-04:00",
+    message: "Follow up tomorrow",
+  });
+  assert.equal(reminder.ok, true);
+  const task = db.prepare("SELECT title FROM tasks WHERE assignment_key = ?").get("a1");
+  assert.equal(task.title, "Language Arts - L3: Figurative Language and Multiple Themes");
 });

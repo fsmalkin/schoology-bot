@@ -168,6 +168,57 @@ test("buildAssignmentDetail returns full note and reminder detail with parent-fa
   }
 });
 
+test("dashboard workspaces derive titles from raw Schoology text when link titles are missing", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "schoology-dashboard-raw-title-"));
+  try {
+    const config = makeConfig(tempDir);
+    const db = createDb(":memory:");
+    db.prepare(
+      `
+      INSERT INTO assignments (
+        key, course, title, due_date, status, score, url, raw_text,
+        first_seen_at, last_seen_at, last_missing_at, resolved_at, is_missing, manual_status, auto_ignored
+      )
+      VALUES (
+        'ela-1',
+        'Language Arts GT/AA MS7: Sec 003 A PER02',
+        '',
+        '2/11/26',
+        'Missing, present during instruction.',
+        '0',
+        '',
+        'L3: Figurative Language and Multiple ThemesNote: This material is not available within Schoology Due 2/11/260MissingComment: Missing, present during instruction.Offered/Received accommodation',
+        '2026-03-14T10:00:00Z',
+        '2026-03-14T10:00:00Z',
+        '2026-03-14T10:00:00Z',
+        NULL,
+        1,
+        NULL,
+        0
+      )
+    `
+    ).run();
+
+    const payload = buildAssignmentsWorkspace({
+      config,
+      query: { status: "missing", includePending: "true", includeIgnored: "true" },
+      dbOverride: db,
+      now: new Date("2026-03-14T20:00:00Z"),
+    });
+    assert.equal(payload.rows[0]?.title, "L3: Figurative Language and Multiple Themes");
+
+    const detail = buildAssignmentDetail({
+      config,
+      key: "ela-1",
+      dbOverride: db,
+      now: new Date("2026-03-14T20:00:00Z"),
+    });
+    assert.equal(detail.assignment.title, "L3: Figurative Language and Multiple Themes");
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("buildTasksWorkspace excludes assignment-linked reminders", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "schoology-followups-workspace-"));
   try {

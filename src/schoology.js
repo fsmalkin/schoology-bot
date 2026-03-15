@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { chromium } from "playwright";
+import { deriveSchoologyAssignmentTitle } from "./text_utils.js";
 
 function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) {
@@ -461,10 +462,8 @@ function normalizeText(text) {
 }
 
 async function extractAssignments(page) {
-  return await page.evaluate(() => {
+  const extracted = await page.evaluate(() => {
     const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
-    const cleanTrailingLabel = (value) =>
-      normalize(value).replace(/[\s.:-]*(assignment|test-quiz|external-tool-link|discussion)$/i, "");
     const stripCommentPrefix = (value) => normalize(value).replace(/^Comment:\s*/i, "");
     const missingPatterns = [
       /missing/i,
@@ -486,9 +485,9 @@ async function extractAssignments(page) {
 
       const itemRows = Array.from(courseNode.querySelectorAll("tr.report-row.item-row"));
       for (const row of itemRows) {
+        const titleCell = row.querySelector("td.item-title, .item-title");
         const titleLink =
           row.querySelector("a[href*='/assignment']") || row.querySelector("a[href]") || null;
-        const title = titleLink ? cleanTrailingLabel(titleLink.textContent) : "";
         const base = location.origin && location.origin !== "null" ? location.origin : "https://bcps.schoology.com";
         const url = titleLink ? new URL(titleLink.getAttribute("href"), base).toString() : "";
 
@@ -529,7 +528,8 @@ async function extractAssignments(page) {
 
         results.push({
           course,
-          title,
+          title: titleLink ? normalize(titleLink.textContent) : "",
+          titleText: normalize(titleCell?.textContent || titleLink?.textContent || ""),
           dueDate,
           status: submissionText || commentText || exceptionText || "Missing",
           score: gradeText,
@@ -541,6 +541,24 @@ async function extractAssignments(page) {
     }
 
     return results;
+  });
+
+  return extracted.map((item) => {
+    const rawText = normalizeText(item.rawText || "");
+    return {
+      course: normalizeText(item.course || ""),
+      title: deriveSchoologyAssignmentTitle({
+        title: normalizeText(item.title || ""),
+        titleText: normalizeText(item.titleText || ""),
+        rawText,
+      }),
+      dueDate: normalizeText(item.dueDate || ""),
+      status: item.status || "Missing",
+      score: normalizeText(item.score || ""),
+      url: item.url || "",
+      rawText,
+      isMissing: Boolean(item.isMissing),
+    };
   });
 }
 
@@ -654,16 +672,7 @@ export async function scrapeMissingAssignments(config) {
         await dumpDebug(page, config);
       }
 
-      return assignments.map((a) => ({
-        course: normalizeText(a.course || ""),
-        title: normalizeText(a.title || ""),
-        dueDate: normalizeText(a.dueDate || ""),
-        status: a.status || "Missing",
-        score: normalizeText(a.score || ""),
-        url: a.url || "",
-        rawText: normalizeText(a.rawText || ""),
-        isMissing: Boolean(a.isMissing),
-      }));
+      return assignments;
     } catch (err) {
       await dumpDebug(page, config);
       const diagnosticPath = await writeLoginDiagnostic(config, page, err, {

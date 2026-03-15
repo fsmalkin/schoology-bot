@@ -5,6 +5,7 @@ import {
   sanitizeRepeatedText,
   isToolingLoop,
   normalizeAscii,
+  deriveSchoologyAssignmentTitle,
 } from "../src/text_utils.js";
 
 test("sanitizeRepeatedText collapses repeated lines", () => {
@@ -39,4 +40,12 @@ test("normalizeAscii converts smart punctuation", () => {
   const input = "Don\u2019t wait\u2014it\u2019s due\u2026";
   const output = normalizeAscii(input);
   assert.equal(output, "Don't wait-it's due...");
+});
+
+test("deriveSchoologyAssignmentTitle falls back to raw Schoology row text", () => {
+  const title = deriveSchoologyAssignmentTitle({
+    rawText:
+      "L4 Text Features Ice Cream and Cell Phones ArticlesNote: This material is not available within Schoology Due 2/13/260MissingComment: Missing, present during instruction.Offered/Received accommodation",
+  });
+  assert.equal(title, "L4 Text Features Ice Cream and Cell Phones Articles");
 });
