@@ -79,9 +79,9 @@ async function dashboardWrite(port, tool, args, headers = {}) {
 
 test("renderDashboardPage includes parent-first shell and asset refs", () => {
   const html = renderDashboardPage();
-  assert.match(html, /School nights, without the scramble/i);
+  assert.match(html, /Schoology Bot/i);
   assert.match(html, /All Schoolwork/i);
-  assert.match(html, /Admin/i);
+  assert.match(html, /System Health/i);
   assert.match(html, /drawerBackdrop/);
   assert.match(html, /role="dialog"/);
   assert.match(html, /\/assets\/dashboard\.css/);
@@ -105,7 +105,7 @@ test("dashboard server serves page, assets, and parent-first read APIs", async (
     const page = await fetch(`http://127.0.0.1:${port}/`);
     assert.equal(page.status, 200);
     const html = await page.text();
-    assert.match(html, /School nights, without the scramble/i);
+    assert.match(html, /Schoology Bot/i);
     assert.match(html, /drawerBackdrop/);
 
     const asset = await fetch(`http://127.0.0.1:${port}/assets/dashboard.js`);

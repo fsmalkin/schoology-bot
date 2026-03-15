@@ -114,8 +114,8 @@ test("dashboard card interactions open the review drawer and keep writes explici
     const page = await browser.newPage();
     await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle" });
 
-    await page.waitForSelector("text=Needs Attention Tonight");
-    await page.waitForSelector("text=Waiting on School");
+    await page.waitForSelector("text=Tonight's Assignments");
+    await page.waitForSelector("text=Waiting on Teacher");
 
     const refreshButton = page.locator('[data-view-panel="home"] [data-action="refresh-assignments"]').first();
     await refreshButton.click();
@@ -179,6 +179,7 @@ test("dashboard card interactions open the review drawer and keep writes explici
     await page.keyboard.press("Escape");
     await page.waitForFunction(() => document.getElementById("detailDrawer")?.dataset.open === "false");
 
+    await page.setViewportSize({ width: 1280, height: 900 });
     await page.getByRole("button", { name: "All Schoolwork" }).click();
     await page.waitForSelector("text=Bulk select");
     assert.equal(await page.locator('[data-action="toggle-assignment-select"]').count(), 0);

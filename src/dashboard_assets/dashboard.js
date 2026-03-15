@@ -170,11 +170,12 @@ function toolHeaders() {
 function setRefreshButtonsBusy(busy) {
   document.querySelectorAll('[data-action="refresh-assignments"]').forEach((node) => {
     if (!(node instanceof HTMLButtonElement)) return;
-    if (!node.dataset.defaultLabel) {
-      node.dataset.defaultLabel = node.textContent || "Refresh Schoology";
-    }
     node.disabled = busy;
-    node.textContent = busy ? "Refreshing..." : node.dataset.defaultLabel;
+    if (node.classList.contains("icon-btn")) return;
+    if (!node.dataset.defaultLabel) {
+      node.dataset.defaultLabel = node.textContent?.trim() || "Refresh Schoology";
+    }
+    node.textContent = busy ? "Refreshing…" : node.dataset.defaultLabel;
   });
 }
 
@@ -214,9 +215,14 @@ function showFlash(message, tone = "info") {
   }
 }
 
-function setHeroSubtitle(text) {
-  const subtitle = document.getElementById("heroSubtitle");
-  if (subtitle) subtitle.textContent = text;
+function setTopbarLabel(view) {
+  const labels = {
+    home: "Tonight's Plan",
+    schoolwork: "All Schoolwork",
+    admin: "System Health",
+  };
+  const el = document.getElementById("topbarViewLabel");
+  if (el) el.textContent = labels[view] || view;
 }
 
 function formatLocalInputValue(dateLike) {
@@ -331,52 +337,94 @@ function taskSurfaceId(id) {
   return `surface-task-${safeId(id)}`;
 }
 
-function updateHeroSubtitle() {
-  if (state.activeView === "admin" && state.health) {
-    setHeroSubtitle(
-      `Last scrape ${state.health.activity?.lastScrapeLabel || "unknown"}. Last summary ${state.health.activity?.lastSummaryLabel || "unknown"}.`
-    );
-    return;
-  }
-  if (state.activeView === "schoolwork" && state.assignments) {
-    const rows = filteredAssignmentRows();
-    if (state.bulkMode) {
-      setHeroSubtitle(
-        `${rows.length} assignment${rows.length === 1 ? "" : "s"} in view. ${selectedVisibleCount(rows)} selected for bulk updates.`
-      );
-      return;
-    }
-    setHeroSubtitle(`${rows.length} assignment${rows.length === 1 ? "" : "s"} ready to review. Click a card to open it.`);
-    return;
-  }
-  if (state.home) {
-    const summary = state.home.summary || {};
-    const next = summary.nextReminder?.remindAtLabel
-      ? ` Next reminder: ${summary.nextReminder.remindAtLabel}.`
-      : " No reminder is queued yet.";
-    setHeroSubtitle(
-      `${summary.tonightCount || 0} need attention tonight. ${summary.waitingCount || 0} are waiting on school.${next}`
-    );
-    return;
-  }
-  setHeroSubtitle("Loading your after-school plan...");
+function updateNavBadges() {
+  const home = document.getElementById("navBadgeHome");
+  const schoolwork = document.getElementById("navBadgeSchoolwork");
+  const tasks = document.getElementById("navBadgeTasks");
+  if (home) home.textContent = state.home?.summary?.tonightCount > 0 ? String(state.home.summary.tonightCount) : "";
+  if (schoolwork) schoolwork.textContent = state.assignments?.summary?.total > 0 ? String(state.assignments.summary.total) : "";
+  if (tasks) tasks.textContent = state.tasks?.summary?.pending > 0 ? String(state.tasks.summary.pending) : "";
 }
 
-function renderPrimaryViews() {
-  const root = document.getElementById("primaryViews");
-  const adminButton = document.getElementById("adminViewButton");
+function syncNavActive() {
+  document.querySelectorAll(".nav-item[data-view]").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.view === state.activeView);
+  });
+  setTopbarLabel(state.activeView);
+  updateNavBadges();
+}
+
+function renderMetricRow() {
+  const root = document.getElementById("metricRow");
   if (!root) return;
-  const tabs = state.meta?.primaryViews || [];
-  root.innerHTML = tabs
-    .map(
-      (tab) =>
-        `<button type="button" class="tab-button ${tab.id === state.activeView ? "active" : ""}" data-action="switch-view" data-view="${esc(tab.id)}">${esc(tab.label)}</button>`
-    )
-    .join("");
-  if (adminButton) {
-    adminButton.textContent = state.meta?.utilityViews?.[0]?.label || "Admin";
-    adminButton.classList.toggle("active", state.activeView === "admin");
-  }
+  const tonight = state.home?.summary?.tonightCount ?? "—";
+  const pendingTasks = state.tasks?.summary?.pending ?? "—";
+  const services = state.health?.services || [];
+  const okCount = services.filter((s) => s.ok).length;
+  const totalServices = services.length;
+  const lastSync = state.health?.activity?.lastScrapeAgeLabel || "—";
+  const scrapeStale = state.health?.activity?.scrapeStale;
+  const servicePill = totalServices > 0 ? `${okCount}/${totalServices}` : "—";
+  const servicesAllOk = okCount === totalServices && totalServices > 0;
+  root.innerHTML = `
+    <div class="metric-row">
+      <div class="metric-card">
+        <div class="metric-card-top">
+          <span class="metric-card-label">Action Required</span>
+          <div class="metric-icon red">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6.5 2v4M6.5 9.5h.01"/><circle cx="6.5" cy="6.5" r="5.5"/></svg>
+          </div>
+        </div>
+        <div class="metric-value">${esc(String(tonight))}</div>
+        <div class="metric-footer">
+          <span class="metric-delta neutral">tonight</span>
+          need attention
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-card-top">
+          <span class="metric-card-label">Pending Tasks</span>
+          <div class="metric-icon amber">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="5.5"/><path d="M6.5 4v3l2 1"/></svg>
+          </div>
+        </div>
+        <div class="metric-value">${esc(String(pendingTasks))}</div>
+        <div class="metric-footer">
+          <span class="metric-delta neutral">${esc(String(state.tasks?.summary?.overdue || 0))} overdue</span>
+          follow-ups
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-card-top">
+          <span class="metric-card-label">Services</span>
+          <div class="metric-icon ${servicesAllOk ? "green" : "amber"}">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 6.5l3.5 3.5 5.5-6"/></svg>
+          </div>
+        </div>
+        <div class="metric-value">${esc(servicePill)}</div>
+        <div class="metric-footer">
+          <span class="metric-delta ${servicesAllOk ? "down" : "up"}">${servicesAllOk ? "↓ OK" : "↑ Issue"}</span>
+          ${servicesAllOk ? "all healthy" : "check health tab"}
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-card-top">
+          <span class="metric-card-label">Last Sync</span>
+          <div class="metric-icon blue">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 6.5A5.5 5.5 0 0 1 10.5 2.5M12 6.5A5.5 5.5 0 0 1 2.5 10.5"/><path d="M9.5 1l1 1.5-1.5 1M3.5 11L2.5 9.5 4 8.5"/></svg>
+          </div>
+        </div>
+        <div class="metric-value" style="font-size:18px;letter-spacing:-0.02em;">${esc(lastSync)}</div>
+        <div class="metric-footer">
+          <span class="metric-delta ${scrapeStale ? "up" : "down"}">${scrapeStale ? "↑ Stale" : "↓ Fresh"}</span>
+          ${esc(state.health?.activity?.lastScrapeLabel || "—")}
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function syncDrawerChrome() {
@@ -478,73 +526,220 @@ function renderTaskCard(task, surface, options = {}) {
   `;
 }
 
-function renderHomeCards(items, sectionKey, options = {}) {
-  if (!items.length) {
-    return `<p class="empty-state">${esc(options.emptyLabel || "Nothing here right now.")}</p>`;
-  }
-  return `<div class="card-stack ${options.compact ? "compact-stack" : ""}">${items
-    .map((item) =>
-      item.kind === "task"
-        ? renderTaskCard(item, `home-${sectionKey}`, { compact: options.compact })
-        : renderAssignmentCard(item, `home-${sectionKey}`, { compact: options.compact })
-    )
-    .join("")}</div>`;
+
+function dueCls(row) {
+  if (!row.dueDateYmd) return "";
+  const today = new Date().toISOString().slice(0, 10);
+  if (row.dueDateYmd < today) return "overdue";
+  if (row.dueDateYmd === today) return "today";
+  return "";
 }
 
-function renderHomePrimarySection(section) {
-  const items = Array.isArray(section?.rows) ? section.rows : [];
+function dueDateLabel(row) {
+  if (!row.dueDateLabel || row.dueDateLabel === "No due date") return "";
+  return row.dueDateLabel;
+}
+
+function pillForRow(row) {
+  if (row.displayCategory === "pending") return { cls: "gray", label: row.displayStatusLabel || "Waiting" };
+  const dc = dueCls(row);
+  if (dc === "overdue") return { cls: "red", label: "Overdue" };
+  if (dc === "today") return { cls: "amber", label: "Tonight" };
+  return { cls: "blue", label: row.displayStatusLabel || "This week" };
+}
+
+function renderAssignRow(row) {
+  const dCls = dueCls(row);
+  const dLabel = dueDateLabel(row);
+  const pill = pillForRow(row);
+  const isWaiting = row.displayCategory === "pending";
+  const dueSvg = dLabel ? `<svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="5.5" cy="5.5" r="4.5"/><path d="M5.5 3v2.5l1.5 1.5"/></svg>` : "";
   return `
-    <section class="home-primary-panel">
-      <div class="section-head">
-        <div>
-          <p class="section-kicker">Tonight first</p>
-          <h3 class="section-title">${esc(section.label || "Needs Attention Tonight")}</h3>
+    <div
+      class="assign-row${isWaiting ? " is-waiting" : ""}"
+      data-open-assignment-key="${esc(row.key)}"
+      data-surface-card="assignment"
+      tabindex="0"
+      role="button"
+      aria-label="Review ${esc(row.title)}"
+    >
+      <div class="assign-check"></div>
+      <div class="assign-body">
+        <div class="assign-title">${esc(row.title)}</div>
+        <div class="assign-meta">
+          <span class="assign-course">${esc(shortenCourseLabel(row.course))}</span>
+          ${dLabel ? `<span class="assign-due ${dCls}">${dueSvg}${esc(dLabel)}</span>` : ""}
         </div>
-        <span class="status-pill actionable">${esc(items.length)}</span>
       </div>
-      ${renderHomeCards(items, "tonight", { emptyLabel: section.emptyLabel })}
-    </section>
+      <div class="assign-trail">
+        <span class="pill ${pill.cls}">${esc(pill.label)}</span>
+      </div>
+    </div>
   `;
 }
 
-function renderHomeSecondarySection(key, section, options = {}) {
-  const items = Array.isArray(section?.rows) ? section.rows : [];
-  const expanded = isHomeSectionExpanded(key);
-  const previewLimit = previewLimitForSection(key);
-  const visibleItems = expanded || previewLimit === 0 ? items : items.slice(0, previewLimit);
-  const countTone = key === "handled" ? "ignored" : "pending";
-  const toggleLabel =
-    key === "handled"
-      ? expanded
-        ? "Hide"
-        : "Show all"
-      : items.length > previewLimit
-        ? expanded
-          ? "Show fewer"
-          : "Show all"
-        : "";
-  const content =
-    key === "handled" && !expanded
-      ? `<p class="secondary-summary">${items.length === 0 ? esc(section.emptyLabel || "Nothing is tucked away.") : `${esc(items.length)} item${items.length === 1 ? "" : "s"} tucked away here.`}</p>`
-      : renderHomeCards(visibleItems, key, { compact: true, emptyLabel: section.emptyLabel });
+function renderTaskRow(task) {
+  const isOverdue = task.isOverdue;
+  const isToday = task.isToday;
+  const dotCls = isOverdue ? "red" : isToday ? "amber" : "blue";
+  const timeLabel = isOverdue ? "Overdue" : isToday ? "Today" : esc(task.remindAtLabel || "");
   return `
-    <section class="secondary-section ${expanded ? "is-expanded" : ""}">
-      <div class="secondary-head">
-        <div>
-          <h3 class="secondary-title">${esc(section.label || "")}</h3>
-          <p class="secondary-copy">${esc(options.copy || "")}</p>
+    <div
+      class="task-row"
+      data-open-task-id="${esc(task.id)}"
+      data-surface-card="task"
+      tabindex="0"
+      role="button"
+      aria-label="Review ${esc(task.title)}"
+    >
+      <div class="task-dot ${dotCls}"></div>
+      <span class="task-text">${esc(task.title)}</span>
+      <span class="task-time">${timeLabel}</span>
+    </div>
+  `;
+}
+
+function renderHomeSectionRows(sectionKey) {
+  const section = currentHomeSection(sectionKey);
+  const rows = Array.isArray(section.rows) ? section.rows : [];
+  if (rows.length === 0) return "";
+  return rows.map((row) => (row.kind === "task" ? renderTaskRow(row) : renderAssignRow(row))).join("");
+}
+
+function renderHomeRightCol() {
+  const assignments = state.health?.assignments || {};
+  const services = state.health?.services || [];
+  const activity = state.health?.activity || {};
+  const schedule = state.health?.schedule || {};
+  const taskRows = Array.isArray(state.tasks?.rows) ? state.tasks.rows.filter((t) => t.status === "pending") : [];
+  const totalMissing = assignments.totalMissing || 0;
+  const handled = assignments.ignored || 0;
+  const pct = totalMissing > 0 ? Math.round(((handled + (assignments.waiting || 0)) / totalMissing) * 100) : 0;
+
+  const serviceRows = services
+    .map((s) => {
+      const indCls = s.ok ? "green" : s.state === "stale" ? "amber" : "red";
+      const pillCls = s.ok ? "ok" : s.state === "stale" ? "stale" : "down";
+      return `
+        <div class="service-row">
+          <div class="service-indicator ${indCls}"></div>
+          <span class="service-name">${esc(s.label)}</span>
+          <span class="service-age">${esc(s.ageLabel)}</span>
+          <span class="service-status-pill ${pillCls}">${String(s.state || "down").toUpperCase()}</span>
         </div>
-        <div class="secondary-trail">
-          <span class="status-pill ${countTone}">${esc(items.length)}</span>
-          ${
-            toggleLabel
-              ? `<button type="button" class="text-button" data-action="toggle-home-section" data-section="${esc(key)}">${esc(toggleLabel)}</button>`
-              : ""
-          }
+      `;
+    })
+    .join("");
+
+  const allOk = services.length > 0 && services.every((s) => s.ok);
+  const syncStale = activity.scrapeStale;
+
+  const activityItems = [
+    activity.lastScrapeAt
+      ? { color: "purple", icon: `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M1 6A5 5 0 0 1 9.6 2.5M11 6A5 5 0 0 1 2.4 9.5"/><path d="M9 1l.6 1.5-1.5.6M3 10l-.6-1.5 1.5-.6"/></svg>`, text: `Schoology <strong>sync completed</strong>`, time: esc(activity.lastScrapeLabel) }
+      : null,
+    activity.lastSummaryAt
+      ? { color: "blue", icon: `<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 3h8M2 6h6M2 9h4"/></svg>`, text: `Daily summary <strong>sent via Telegram</strong>`, time: esc(activity.lastSummaryLabel) }
+      : null,
+  ].filter(Boolean);
+
+  const activityHtml = activityItems.length === 0
+    ? `<p class="empty-state">No recent activity recorded.</p>`
+    : activityItems.map((item) => `
+        <div class="activity-item">
+          <div class="activity-icon ${item.color}">${item.icon}</div>
+          <div class="activity-body">
+            <div class="activity-text">${item.text}</div>
+            <div class="activity-time">${item.time}</div>
+          </div>
+        </div>
+      `).join("");
+
+  const scheduleRows = [
+    { label: "Scrape Schoology", value: schedule.scrapeCron || "—" },
+    { label: "Daily summary", value: schedule.sendCron || "—" },
+    { label: "Due reminders", value: schedule.reminderCron || "—" },
+    schedule.liveChecksEnabled ? { label: "Live check", value: schedule.liveCheckCron || "—" } : null,
+  ].filter(Boolean);
+
+  const taskPanelRows = taskRows.slice(0, 5);
+
+  return `
+    <div class="right-col">
+
+      <!-- Assignment Overview -->
+      <div class="panel">
+        <div class="panel-header">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round"><path d="M2 12V3h11v9M2 12h11M5 6h5M5 9h3"/></svg>
+          <span class="panel-title">Assignment Overview</span>
+        </div>
+        <div class="progress-row">
+          <div class="mini-stat">
+            <div class="mini-stat-label">Actionable</div>
+            <div class="mini-stat-value" style="color:var(--red)">${esc(String(assignments.actionable || 0))}</div>
+          </div>
+          <div class="mini-stat">
+            <div class="mini-stat-label">Waiting</div>
+            <div class="mini-stat-value" style="color:var(--amber)">${esc(String(assignments.waiting || 0))}</div>
+          </div>
+          <div class="mini-stat">
+            <div class="mini-stat-label">Ignored</div>
+            <div class="mini-stat-value" style="color:var(--ink-3)">${esc(String(handled))}</div>
+          </div>
+          <div class="mini-stat">
+            <div class="mini-stat-label">Total Missing</div>
+            <div class="mini-stat-value">${esc(String(totalMissing))}</div>
+          </div>
+        </div>
+        <div style="padding: 0 18px 14px;">
+          <div class="progress-label" style="margin-bottom:6px;">
+            <span style="font-size:12px;font-weight:600;color:var(--ink-3);">Coverage this session</span>
+            <span class="progress-pct">${pct}%</span>
+          </div>
+          <div class="progress-track">
+            <div class="progress-fill brand" style="width:${pct}%"></div>
+          </div>
         </div>
       </div>
-      ${content}
-    </section>
+
+      <!-- System Health -->
+      ${services.length > 0 ? `
+      <div class="panel">
+        <div class="panel-header">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round"><path d="M2 10l3-6 3 4 2-3 3 5"/></svg>
+          <span class="panel-title">System Health</span>
+          <span class="pill ${allOk ? "green" : "amber"}" style="font-size:11px;padding:2px 7px;">${allOk ? "All OK" : "Check services"}</span>
+        </div>
+        <div class="service-list">${serviceRows}</div>
+        <div class="sync-bar${syncStale ? " stale" : ""}">
+          <div class="sync-dot"></div>
+          ${syncStale ? "Sync may be stale" : "Heartbeat live · checking every 30s"}
+          <span class="sync-bar-time">${esc(activity.lastScrapeAgeLabel || "—")} ago</span>
+        </div>
+      </div>` : ""}
+
+      <!-- Recent Activity -->
+      <div class="panel">
+        <div class="panel-header">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round"><path d="M7.5 2a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11ZM7.5 5v3l2 1"/></svg>
+          <span class="panel-title">Recent Activity</span>
+        </div>
+        <div class="activity-list">${activityHtml}</div>
+      </div>
+
+      <!-- Schedule -->
+      ${scheduleRows.length > 0 ? `
+      <div class="panel">
+        <div class="panel-header">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round"><rect x="2" y="3" width="11" height="10" rx="1.5"/><path d="M5 3V1.5M10 3V1.5M2 7h11"/></svg>
+          <span class="panel-title">Schedule</span>
+        </div>
+        <div class="schedule-rows">
+          ${scheduleRows.map((row, i) => `<div class="schedule-row${i > 0 ? "" : ""}"><span class="schedule-row-label">${esc(row.label)}</span><span class="schedule-row-value">${esc(row.value)}</span></div>`).join("")}
+        </div>
+      </div>` : ""}
+
+    </div>
   `;
 }
 
@@ -555,20 +750,143 @@ function renderHomePane() {
     root.innerHTML = `<p class="empty-state">Loading your after-school plan...</p>`;
     return;
   }
-  const summary = state.home.summary || {};
-  const nextReminder = summary.nextReminder;
+
+  const tonight = currentHomeSection("tonight");
+  const waiting = currentHomeSection("waiting");
+  const comingUp = currentHomeSection("comingUp");
+  const handled = currentHomeSection("handled");
+
+  const tonightRows = Array.isArray(tonight.rows) ? tonight.rows : [];
+  const waitingRows = Array.isArray(waiting.rows) ? waiting.rows : [];
+  const comingUpRows = Array.isArray(comingUp.rows) ? comingUp.rows : [];
+  const handledRows = Array.isArray(handled.rows) ? handled.rows : [];
+
+  const overdueRows = tonightRows.filter((r) => r.kind === "assignment" && dueCls(r) === "overdue");
+  const todayRows = tonightRows.filter((r) => r.kind !== "assignment" || dueCls(r) !== "overdue");
+
+  const actionableCount = tonightRows.length;
+  const taskPendingRows = (state.tasks?.rows || []).filter((t) => t.status === "pending");
+
+  const now = new Date();
+  const dateLabel = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+
+  // Progress: handled + waiting out of total
+  const totalActive = actionableCount + waitingRows.length + handledRows.length;
+  const resolvedCount = waitingRows.length + handledRows.length;
+  const progressPct = totalActive > 0 ? Math.round((resolvedCount / totalActive) * 100) : 0;
+
   root.innerHTML = `
-    <div class="summary-ribbon">
-      <div class="summary-stat"><span class="label">Tonight</span><span class="value">${esc(summary.tonightCount || 0)}</span><span class="support">Need a decision tonight.</span></div>
-      <div class="summary-stat"><span class="label">Waiting</span><span class="value">${esc(summary.waitingCount || 0)}</span><span class="support">Already in motion.</span></div>
-      <div class="summary-stat"><span class="label">Next reminder</span><span class="value">${esc(nextReminder?.remindAtLabel || "None set")}</span><span class="support">${esc(nextReminder?.title || "Create a follow-up when you need one.")}</span></div>
+    <div class="page-header">
+      <div class="page-title-group">
+        <div class="page-date">${esc(dateLabel)}</div>
+        <h1 class="page-title">Good ${now.getHours() < 12 ? "morning" : now.getHours() < 17 ? "afternoon" : "evening"}.</h1>
+        <p class="page-subtitle">${actionableCount > 0
+          ? `${actionableCount} assignment${actionableCount === 1 ? "" : "s"} need${actionableCount === 1 ? "s" : ""} attention tonight${overdueRows.length > 0 ? ` — ${overdueRows.length} overdue` : ""}.`
+          : "All caught up for tonight."
+        }</p>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button type="button" class="btn btn-ghost" data-action="refresh-assignments">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M1 6.5A5.5 5.5 0 0 1 10.5 2.5M12 6.5A5.5 5.5 0 0 1 2.5 10.5"/><path d="M10.5 1.5l.7 1.5-1.5.7M3.5 11.5l-.7-1.5 1.5-.7"/></svg>
+          Refresh Schoology
+        </button>
+      </div>
     </div>
-    ${renderHomePrimarySection(currentHomeSection("tonight"))}
-    <div class="home-secondary-list">
-      ${renderHomeSecondarySection("waiting", currentHomeSection("waiting"), { copy: "Work that is waiting on the teacher or gradebook." })}
-      ${renderHomeSecondarySection("comingUp", currentHomeSection("comingUp"), { copy: "What is already on the horizon." })}
-      ${renderHomeSecondarySection("handled", currentHomeSection("handled"), { copy: "Filed away so the main list stays calm." })}
-    </div>
+
+    <div class="dashboard-grid">
+
+      <!-- LEFT COLUMN -->
+      <div class="left-col">
+
+        <!-- Tonight's Assignments -->
+        <div class="panel">
+          <div class="panel-header">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round"><rect x="2" y="2" width="11" height="11" rx="2"/><path d="M5 7.5h5M5 5h5M5 10h3"/></svg>
+            <span class="panel-title">Tonight's Assignments</span>
+            <span class="panel-count">${actionableCount} item${actionableCount === 1 ? "" : "s"}</span>
+            <button type="button" class="panel-action" data-action="switch-view" data-view="schoolwork">View all</button>
+          </div>
+
+          ${overdueRows.length > 0 ? `
+            <div class="section-header">
+              <div class="section-dot red"></div>
+              <span class="section-name">Overdue</span>
+              <span class="section-count">${overdueRows.length}</span>
+            </div>
+            ${overdueRows.map(renderAssignRow).join("")}
+          ` : ""}
+
+          ${todayRows.length > 0 ? `
+            <div class="section-header">
+              <div class="section-dot amber"></div>
+              <span class="section-name">Due Tonight / Soon</span>
+              <span class="section-count">${todayRows.length}</span>
+            </div>
+            ${todayRows.map((row) => row.kind === "task" ? renderTaskRow(row) : renderAssignRow(row)).join("")}
+          ` : ""}
+
+          ${waitingRows.length > 0 ? `
+            <div class="section-header">
+              <div class="section-dot gray"></div>
+              <span class="section-name">Waiting on Teacher</span>
+              <span class="section-count">${waitingRows.length}</span>
+            </div>
+            ${waitingRows.map((row) => row.kind === "task" ? renderTaskRow(row) : renderAssignRow(row)).join("")}
+          ` : ""}
+
+          ${comingUpRows.length > 0 ? `
+            <div class="section-header">
+              <div class="section-dot blue"></div>
+              <span class="section-name">Coming Up</span>
+              <span class="section-count">${comingUpRows.length}</span>
+            </div>
+            ${comingUpRows.map((row) => row.kind === "task" ? renderTaskRow(row) : renderAssignRow(row)).join("")}
+          ` : ""}
+
+          ${actionableCount === 0 && waitingRows.length === 0 && comingUpRows.length === 0
+            ? `<div class="empty-state">All caught up — nothing needs attention tonight.</div>`
+            : ""}
+
+          <!-- Progress bar -->
+          <div class="progress-section">
+            <div class="progress-label">
+              <span>Tonight's progress</span>
+              <span class="progress-pct">${resolvedCount} of ${totalActive} resolved</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill ${progressPct >= 80 ? "green" : progressPct >= 40 ? "amber" : "red"}" style="width:${progressPct}%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Follow-up Tasks -->
+        <div class="panel">
+          <div class="panel-header">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round"><circle cx="7.5" cy="7.5" r="6"/><path d="M7.5 4.5v3.5l2 1.5"/></svg>
+            <span class="panel-title">Follow-up Tasks</span>
+            <span class="panel-count">${taskPendingRows.length} pending</span>
+            <button type="button" class="panel-action" data-action="new-task">+ Add task</button>
+          </div>
+          ${taskPendingRows.length === 0
+            ? `<div class="empty-state">No follow-up tasks pending.</div>`
+            : taskPendingRows.slice(0, 6).map(renderTaskRow).join("")}
+          <div class="quick-actions">
+            <button type="button" class="quick-action" data-action="new-task">
+              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg>
+              New task
+            </button>
+            <button type="button" class="quick-action" data-action="refresh-assignments">
+              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M1 7A6 6 0 0 1 11.2 3M13 7A6 6 0 0 1 2.8 11"/><path d="M10.5 1.5l.7 1.5-1.5.7M3.5 11.5l-.7-1.5 1.5-.7"/></svg>
+              Refresh now
+            </button>
+          </div>
+        </div>
+
+      </div><!-- /left-col -->
+
+      ${renderHomeRightCol()}
+
+    </div><!-- /dashboard-grid -->
   `;
 }
 
@@ -683,33 +1001,113 @@ function renderAdminPane() {
     root.innerHTML = `<p class="empty-state">Loading service health...</p>`;
     return;
   }
-  const metrics = [
-    { label: "Needs attention", value: state.health.assignments?.actionable || 0 },
-    { label: "Waiting on school", value: state.health.assignments?.waiting || 0 },
-    { label: "Handled for now", value: state.health.assignments?.ignored || 0 },
-    { label: "Follow-ups pending", value: state.health.tasks?.pending || 0 },
-    { label: "Follow-ups overdue", value: state.health.tasks?.overdue || 0 },
-    { label: "Follow-ups today", value: state.health.tasks?.today || 0 },
-  ];
+  const services = state.health.services || [];
+  const activity = state.health.activity || {};
+  const assignments = state.health.assignments || {};
+  const tasks = state.health.tasks || {};
+  const allOk = services.length > 0 && services.every((s) => s.ok);
+
+  const serviceRows = services.map((s) => {
+    const indCls = s.ok ? "green" : s.state === "stale" ? "amber" : "red";
+    const pillCls = s.ok ? "ok" : s.state === "stale" ? "stale" : "down";
+    return `
+      <div class="service-row">
+        <div class="service-indicator ${indCls}"></div>
+        <span class="service-name">${esc(s.label)}</span>
+        <span class="service-age">${esc(s.lastSeenLabel)}</span>
+        <span class="service-status-pill ${pillCls}">${String(s.state || "down").toUpperCase()}</span>
+      </div>
+    `;
+  }).join("");
+
   root.innerHTML = `
-    <div class="service-grid">
-      ${(state.health.services || [])
-        .map(
-          (service) =>
-            `<div class="service-card"><div class="drawer-stat-line"><strong>${esc(service.label)}</strong><span class="tiny-pill ${toneClass(service.state)}">${esc(String(service.state || "down").toUpperCase())}</span></div><p class="support-copy">Last seen: ${esc(service.lastSeenLabel)}<br />Age: ${esc(service.ageLabel)}</p></div>`
-        )
-        .join("")}
-    </div>
-    <div class="admin-grid">
-      <article class="mini-panel">
-        <h3>At a glance</h3>
-        <div class="metric-grid">${metrics.map((metric) => `<div class="metric-card"><span class="label">${esc(metric.label)}</span><span class="value">${esc(metric.value)}</span></div>`).join("")}</div>
-        <p class="activity-copy">Last scrape: <strong>${esc(state.health.activity?.lastScrapeLabel || "Never")}</strong><br />Last summary: <strong>${esc(state.health.activity?.lastSummaryLabel || "Never")}</strong></p>
-      </article>
-      <article class="mini-panel"><h3>How it works</h3><ul class="plain-list">${(state.health.howItWorks || []).map((line) => `<li>${esc(line)}</li>`).join("")}</ul></article>
-      <article class="mini-panel"><h3>Docs</h3><ul class="plain-list">${Object.values(state.health.docs || {}).map((value) => `<li><span class="mono-block">${esc(value)}</span></li>`).join("")}</ul></article>
-      <article class="mini-panel"><h3>Quick commands</h3><div class="command-list">${(state.health.quickCommands || []).map((command) => `<div class="mono-block">${esc(command)}</div>`).join("")}</div></article>
-      <article class="mini-panel"><h3>File state</h3><ul class="plain-list">${(state.health.files || []).map((file) => `<li>${esc(file.label)}: ${file.exists ? "present" : "missing"}<br /><span class="cell-subtle">${esc(file.path)}</span></li>`).join("")}</ul></article>
+    <div class="dashboard-grid">
+      <div class="left-col">
+
+        <!-- Service Health -->
+        <div class="panel">
+          <div class="panel-header">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round"><path d="M2 10l3-6 3 4 2-3 3 5"/></svg>
+            <span class="panel-title">System Health</span>
+            <span class="pill ${allOk ? "green" : "amber"}" style="font-size:11px;padding:2px 8px;">${allOk ? "All OK" : "Issues detected"}</span>
+          </div>
+          <div class="service-list">${serviceRows || `<p class="empty-state">No services configured.</p>`}</div>
+          <div class="sync-bar${activity.scrapeStale ? " stale" : ""}">
+            <div class="sync-dot"></div>
+            ${activity.scrapeStale ? "Sync may be stale" : "Heartbeat live · checking every 30s"}
+            <span class="sync-bar-time">Last scrape: ${esc(activity.lastScrapeAgeLabel || "—")} ago</span>
+          </div>
+        </div>
+
+        <!-- How it works -->
+        <div class="panel">
+          <div class="panel-header">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round"><circle cx="7.5" cy="7.5" r="6"/><path d="M7.5 5v3.5l2 1.5"/></svg>
+            <span class="panel-title">How It Works</span>
+          </div>
+          <ul class="plain-list" style="padding:14px 18px;">${(state.health.howItWorks || []).map((line) => `<li>${esc(line)}</li>`).join("")}</ul>
+        </div>
+
+        <!-- Quick commands -->
+        <div class="panel">
+          <div class="panel-header">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round"><rect x="2" y="2" width="11" height="11" rx="2"/><path d="M5 5l2 2-2 2M9 9H8"/></svg>
+            <span class="panel-title">Quick Commands</span>
+          </div>
+          <div class="command-list" style="padding:14px 18px;">${(state.health.quickCommands || []).map((cmd) => `<div class="mono-block">${esc(cmd)}</div>`).join("")}</div>
+        </div>
+
+      </div><!-- /left-col -->
+
+      <div class="right-col">
+
+        <!-- At a glance -->
+        <div class="panel">
+          <div class="panel-header">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round"><path d="M2 12V3h11v9M2 12h11M5 6h5M5 9h3"/></svg>
+            <span class="panel-title">At a Glance</span>
+          </div>
+          <div class="progress-row">
+            <div class="mini-stat"><div class="mini-stat-label">Actionable</div><div class="mini-stat-value" style="color:var(--red)">${esc(String(assignments.actionable || 0))}</div></div>
+            <div class="mini-stat"><div class="mini-stat-label">Waiting</div><div class="mini-stat-value" style="color:var(--amber)">${esc(String(assignments.waiting || 0))}</div></div>
+            <div class="mini-stat"><div class="mini-stat-label">Tasks pending</div><div class="mini-stat-value">${esc(String(tasks.pending || 0))}</div></div>
+            <div class="mini-stat"><div class="mini-stat-label">Tasks overdue</div><div class="mini-stat-value" style="color:var(--red)">${esc(String(tasks.overdue || 0))}</div></div>
+          </div>
+          <p class="activity-copy" style="padding:0 18px 14px;">
+            Last scrape: <strong>${esc(activity.lastScrapeLabel || "Never")}</strong><br />
+            Last summary: <strong>${esc(activity.lastSummaryLabel || "Never")}</strong>
+          </p>
+        </div>
+
+        <!-- File state -->
+        <div class="panel">
+          <div class="panel-header">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round"><path d="M4 2h5l4 4v8H4V2Z"/><path d="M9 2v4h4"/></svg>
+            <span class="panel-title">File State</span>
+          </div>
+          <ul class="plain-list" style="padding:14px 18px;">
+            ${(state.health.files || []).map((f) => `
+              <li>
+                <span style="font-weight:600;color:${f.exists ? "var(--green)" : "var(--red)"}">${esc(f.label)}</span>:
+                ${f.exists ? "present" : "missing"}
+                <br/><span class="cell-subtle">${esc(f.path)}</span>
+              </li>
+            `).join("")}
+          </ul>
+        </div>
+
+        <!-- Docs -->
+        <div class="panel">
+          <div class="panel-header">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round"><path d="M3 2h9v11H3ZM6 5h4M6 8h4M6 11h2"/></svg>
+            <span class="panel-title">Documentation</span>
+          </div>
+          <ul class="plain-list" style="padding:14px 18px;">
+            ${Object.values(state.health.docs || {}).map((v) => `<li><span class="mono-block" style="display:inline">${esc(v)}</span></li>`).join("")}
+          </ul>
+        </div>
+
+      </div><!-- /right-col -->
     </div>
   `;
 }
@@ -958,13 +1356,13 @@ function renderDrawer() {
 }
 
 function renderAll() {
-  renderPrimaryViews();
+  syncNavActive();
+  renderMetricRow();
   renderVisibility();
   renderHomePane();
   renderSchoolworkPane();
   renderAdminPane();
   renderDrawer();
-  updateHeroSubtitle();
 }
 
 function focusDrawerTarget() {
@@ -1394,7 +1792,7 @@ document.addEventListener("click", async (event) => {
         state.bulkMode = !state.bulkMode;
         if (!state.bulkMode) state.selectedAssignmentKeys.clear();
         renderSchoolworkPane();
-        updateHeroSubtitle();
+        updateNavBadges();
         return;
       }
       if (action === "toggle-assignment-select") {
@@ -1403,19 +1801,19 @@ document.addEventListener("click", async (event) => {
         if (actionTarget.checked) state.selectedAssignmentKeys.add(key);
         else state.selectedAssignmentKeys.delete(key);
         renderSchoolworkPane();
-        updateHeroSubtitle();
+        updateNavBadges();
         return;
       }
       if (action === "select-visible-assignments") {
         filteredAssignmentRows().forEach((row) => state.selectedAssignmentKeys.add(row.key));
         renderSchoolworkPane();
-        updateHeroSubtitle();
+        updateNavBadges();
         return;
       }
       if (action === "clear-assignment-selection") {
         state.selectedAssignmentKeys.clear();
         renderSchoolworkPane();
-        updateHeroSubtitle();
+        updateNavBadges();
         return;
       }
       if (action === "apply-bulk-status") return await handleBulkStatusApply();
@@ -1479,7 +1877,6 @@ document.addEventListener("input", (event) => {
   if (target.id === "assignmentSearch") {
     state.assignmentSearch = target.value || "";
     renderSchoolworkPane();
-    updateHeroSubtitle();
     return;
   }
   if (target.name === "outcome") {
@@ -1533,7 +1930,6 @@ async function init() {
     }, 30000);
   } catch (err) {
     showFlash(err.message || String(err), "error");
-    setHeroSubtitle("Dashboard failed to load.");
   }
 }
 
