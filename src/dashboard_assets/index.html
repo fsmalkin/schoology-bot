@@ -21,7 +21,6 @@
       </svg>
     </div>
     <span class="logo-text">Schoology Bot</span>
-    <span class="logo-badge">BETA</span>
   </div>
 
   <div class="sidebar-section">
@@ -58,8 +57,6 @@
   <!-- TOP BAR -->
   <header class="topbar">
     <div class="topbar-breadcrumb">
-      Home
-      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 2l4 4-4 4"/></svg>
       <span id="topbarViewLabel">Tonight's Plan</span>
     </div>
 
@@ -70,8 +67,8 @@
     </div>
 
     <div class="topbar-actions">
-      <button type="button" class="icon-btn" data-action="refresh-assignments" data-tip="Refresh Schoology">
-        <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M1.5 7.5A6 6 0 0 1 12 3M13.5 7.5A6 6 0 0 1 3 12"/><path d="M11 1.5l1 1.5-1.5 1M4 12.5L3 11l1.5-1"/></svg>
+      <button type="button" class="status-dot-btn" data-action="switch-view" data-view="admin" id="systemStatusBtn" aria-label="System health">
+        <span class="status-dot" id="systemStatusDot"></span>
       </button>
       <button type="button" class="btn btn-primary" data-action="new-task">
         <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6.5 2v9M2 6.5h9"/></svg>

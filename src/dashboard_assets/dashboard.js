@@ -352,18 +352,22 @@ function syncNavActive() {
   updateNavBadges();
 }
 
+function updateSystemStatusDot() {
+  const dot = document.getElementById("systemStatusDot");
+  if (!dot) return;
+  const services = state.health?.services || [];
+  const allOk = services.length > 0 && services.every((s) => s.ok);
+  const anyDown = services.some((s) => !s.ok && s.state !== "stale");
+  const cls = !state.health ? "gray" : anyDown ? "red" : allOk ? "green" : "amber";
+  dot.className = `status-dot ${cls}`;
+  dot.title = !state.health ? "Health unknown" : anyDown ? "Services down — click for details" : allOk ? "All services healthy" : "Some services stale";
+}
+
 function renderMetricRow() {
   const root = document.getElementById("metricRow");
   if (!root) return;
   const tonight = state.home?.summary?.tonightCount ?? "—";
   const pendingTasks = state.tasks?.summary?.pending ?? "—";
-  const services = state.health?.services || [];
-  const okCount = services.filter((s) => s.ok).length;
-  const totalServices = services.length;
-  const lastSync = state.health?.activity?.lastScrapeAgeLabel || "—";
-  const scrapeStale = state.health?.activity?.scrapeStale;
-  const servicePill = totalServices > 0 ? `${okCount}/${totalServices}` : "—";
-  const servicesAllOk = okCount === totalServices && totalServices > 0;
   root.innerHTML = `
     <div class="metric-row">
       <div class="metric-card">
@@ -391,34 +395,6 @@ function renderMetricRow() {
         <div class="metric-footer">
           <span class="metric-delta neutral">${esc(String(state.tasks?.summary?.overdue || 0))} overdue</span>
           follow-ups
-        </div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-card-top">
-          <span class="metric-card-label">Services</span>
-          <div class="metric-icon ${servicesAllOk ? "green" : "amber"}">
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 6.5l3.5 3.5 5.5-6"/></svg>
-          </div>
-        </div>
-        <div class="metric-value">${esc(servicePill)}</div>
-        <div class="metric-footer">
-          <span class="metric-delta ${servicesAllOk ? "down" : "up"}">${servicesAllOk ? "↓ OK" : "↑ Issue"}</span>
-          ${servicesAllOk ? "all healthy" : "check health tab"}
-        </div>
-      </div>
-
-      <div class="metric-card">
-        <div class="metric-card-top">
-          <span class="metric-card-label">Last Sync</span>
-          <div class="metric-icon blue">
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 6.5A5.5 5.5 0 0 1 10.5 2.5M12 6.5A5.5 5.5 0 0 1 2.5 10.5"/><path d="M9.5 1l1 1.5-1.5 1M3.5 11L2.5 9.5 4 8.5"/></svg>
-          </div>
-        </div>
-        <div class="metric-value" style="font-size:18px;letter-spacing:-0.02em;">${esc(lastSync)}</div>
-        <div class="metric-footer">
-          <span class="metric-delta ${scrapeStale ? "up" : "down"}">${scrapeStale ? "↑ Stale" : "↓ Fresh"}</span>
-          ${esc(state.health?.activity?.lastScrapeLabel || "—")}
         </div>
       </div>
     </div>
@@ -699,22 +675,6 @@ function renderHomeRightCol() {
           </div>
         </div>
       </div>
-
-      <!-- System Health -->
-      ${services.length > 0 ? `
-      <div class="panel">
-        <div class="panel-header">
-          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round"><path d="M2 10l3-6 3 4 2-3 3 5"/></svg>
-          <span class="panel-title">System Health</span>
-          <span class="pill ${allOk ? "green" : "amber"}" style="font-size:11px;padding:2px 7px;">${allOk ? "All OK" : "Check services"}</span>
-        </div>
-        <div class="service-list">${serviceRows}</div>
-        <div class="sync-bar${syncStale ? " stale" : ""}">
-          <div class="sync-dot"></div>
-          ${syncStale ? "Sync may be stale" : "Heartbeat live · checking every 30s"}
-          <span class="sync-bar-time">${esc(activity.lastScrapeAgeLabel || "—")} ago</span>
-        </div>
-      </div>` : ""}
 
       <!-- Recent Activity -->
       <div class="panel">
@@ -1355,6 +1315,7 @@ function renderDrawer() {
 
 function renderAll() {
   syncNavActive();
+  updateSystemStatusDot();
   renderMetricRow();
   renderVisibility();
   renderHomePane();
