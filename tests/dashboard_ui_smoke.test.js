@@ -117,11 +117,14 @@ test("dashboard card interactions open the review drawer and keep writes explici
     await page.waitForSelector("text=Tonight's Assignments");
     await page.waitForSelector("text=Waiting on Teacher");
 
-    const refreshButton = page.locator('[data-view-panel="home"] [data-action="refresh-assignments"]').first();
+    await page.locator('.nav-item[data-view="admin"]').click();
+    await page.waitForSelector("text=Refresh Schoology");
+    const refreshButton = page.locator('[data-view-panel="admin"] [data-action="refresh-assignments"]').first();
     await refreshButton.click();
     await page.waitForSelector("text=Refreshing Schoology...");
     await page.waitForSelector("text=Refresh complete. 1 need attention, 1 waiting on school, 0 handled for now.");
-    assert.equal((await refreshButton.textContent())?.trim(), "Refresh Schoology");
+    assert.equal((await refreshButton.textContent())?.trim().replace(/\s+/g, " "), "Refresh Schoology");
+    await page.getByRole("button", { name: "Tonight's Plan" }).click();
 
     const assignmentCards = page.locator('[data-surface-card="assignment"]');
     assert.ok((await assignmentCards.count()) > 0);

@@ -511,6 +511,28 @@ a { color: var(--brand); }
 .metric-delta.neutral { background: var(--canvas);    color: var(--ink-3); }
 
 /* ─── PAGE HEADER ──────────────────────────────────── */
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.admin-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  margin: 0 0 2px;
+}
+
+.admin-subtitle {
+  font-size: 13px;
+  color: var(--ink-3);
+  margin: 0;
+}
+
 .page-header {
   display: flex;
   align-items: flex-start;

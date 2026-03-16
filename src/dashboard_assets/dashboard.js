@@ -743,12 +743,6 @@ function renderHomePane() {
           : "All caught up for tonight."
         }</p>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <button type="button" class="btn btn-ghost" data-action="refresh-assignments">
-          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M1 6.5A5.5 5.5 0 0 1 10.5 2.5M12 6.5A5.5 5.5 0 0 1 2.5 10.5"/><path d="M10.5 1.5l.7 1.5-1.5.7M3.5 11.5l-.7-1.5 1.5-.7"/></svg>
-          Refresh Schoology
-        </button>
-      </div>
     </div>
 
     <div class="dashboard-grid">
@@ -832,10 +826,6 @@ function renderHomePane() {
             <button type="button" class="quick-action" data-action="new-task">
               <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg>
               New task
-            </button>
-            <button type="button" class="quick-action" data-action="refresh-assignments">
-              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M1 7A6 6 0 0 1 11.2 3M13 7A6 6 0 0 1 2.8 11"/><path d="M10.5 1.5l.7 1.5-1.5.7M3.5 11.5l-.7-1.5 1.5-.7"/></svg>
-              Refresh now
             </button>
           </div>
         </div>
@@ -979,6 +969,17 @@ function renderAdminPane() {
   }).join("");
 
   root.innerHTML = `
+    <div class="admin-header">
+      <div>
+        <h2 class="admin-title">System Health</h2>
+        <p class="admin-subtitle">Service status, last sync, and Schoology refresh.</p>
+      </div>
+      <button type="button" class="btn btn-primary" data-action="refresh-assignments">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 6.5A5.5 5.5 0 0 1 10.5 2.5M12 6.5A5.5 5.5 0 0 1 2.5 10.5"/><path d="M10.5 1.5l.7 1.5-1.5.7M3.5 11.5l-.7-1.5 1.5-.7"/></svg>
+        Refresh Schoology
+      </button>
+    </div>
+
     <div class="dashboard-grid">
       <div class="left-col">
 
@@ -986,7 +987,7 @@ function renderAdminPane() {
         <div class="panel">
           <div class="panel-header">
             <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round"><path d="M2 10l3-6 3 4 2-3 3 5"/></svg>
-            <span class="panel-title">System Health</span>
+            <span class="panel-title">Services</span>
             <span class="pill ${allOk ? "green" : "amber"}" style="font-size:11px;padding:2px 8px;">${allOk ? "All OK" : "Issues detected"}</span>
           </div>
           <div class="service-list">${serviceRows || `<p class="empty-state">No services configured.</p>`}</div>
