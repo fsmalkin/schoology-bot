@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Preview — Reminders as First-Class Items</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800&display=swap" rel="stylesheet"/>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --sidebar-bg: #1a1d23;
+  --sidebar-w: 220px;
+  --topbar-h: 52px;
+  --canvas: #f5f5f5;
+  --white: #ffffff;
+  --ink: #111318;
+  --ink-2: #374151;
+  --ink-3: #6b7280;
+  --border: #e5e7eb;
+  --border-strong: #d1d5db;
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --brand: #5b63f5;
+  --red: #ef4444;
+  --amber: #f59e0b;
+  --green: #22c55e;
+  --blue: #3b82f6;
+  --task-tint: #eff6ff;
+  --task-border: #bfdbfe;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+body { display: flex; min-height: 100vh; }
+
+/* SIDEBAR */
+.sidebar {
+  position: fixed; inset: 0 auto 0 0;
+  width: var(--sidebar-w);
+  background: var(--sidebar-bg);
+  display: flex; flex-direction: column;
+  z-index: 10;
+}
+.sidebar-logo {
+  display: flex; align-items: center; gap: 10px;
+  padding: 16px 18px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.logo-mark {
+  width: 28px; height: 28px; border-radius: 7px;
+  background: linear-gradient(135deg, #5b63f5, #7c3aed);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.logo-mark svg { width: 14px; height: 14px; }
+.logo-text { font-size: 13.5px; font-weight: 700; color: #fff; letter-spacing: -0.01em; }
+.sidebar-nav { padding: 10px; flex: 1; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 6px;
+  color: rgba(255,255,255,0.55);
+  font-size: 13.5px; font-weight: 500;
+  cursor: pointer; border: 0; background: transparent; width: 100%; text-align: left;
+}
+.nav-item.active { background: rgba(255,255,255,0.1); color: #fff; font-weight: 600; }
+.nav-item svg { width: 15px; height: 15px; flex-shrink: 0; opacity: 0.7; }
+.nav-item.active svg { opacity: 1; }
+.nav-badge {
+  margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 9px; font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.nav-badge.red { background: rgba(220,38,38,0.22); color: #f87171; }
+
+/* MAIN */
+.main { margin-left: var(--sidebar-w); flex: 1; display: flex; flex-direction: column; }
+.topbar {
+  position: sticky; top: 0; z-index: 5;
+  height: var(--topbar-h);
+  background: rgba(245,245,245,0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 24px;
+}
+.topbar-label { font-size: 14px; font-weight: 600; color: var(--ink); }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.status-dot { width: 10px; height: 10px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,0.15); }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; border-radius: 7px;
+  font-size: 13px; font-weight: 600; cursor: pointer; border: 0;
+}
+.btn-primary { background: var(--brand); color: #fff; }
+
+/* CONTENT */
+.content { padding: 24px 28px 40px; max-width: 1100px; }
+
+/* METRIC ROW */
+.metric-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 24px; }
+.metric-card {
+  background: var(--white); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 16px 18px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.metric-card-top { display: flex; align-items: center; justify-content: space-between; }
+.metric-label { font-size: 11.5px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em; }
+.metric-icon {
+  width: 28px; height: 28px; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+}
+.metric-icon.red { background: #fef2f2; color: var(--red); }
+.metric-icon.amber { background: #fffbeb; color: var(--amber); }
+.metric-value { font-size: 26px; font-weight: 800; letter-spacing: -0.03em; color: var(--ink); line-height: 1; }
+.metric-footer { font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
+.metric-delta { font-weight: 600; }
+.metric-delta.neutral { color: var(--ink-3); }
+
+/* GRID */
+.dashboard-grid { display: grid; grid-template-columns: 1fr 320px; gap: 20px; }
+.left-col { display: flex; flex-direction: column; gap: 0; }
+.right-col { display: flex; flex-direction: column; gap: 16px; }
+
+/* PAGE HEADER */
+.page-header { margin-bottom: 20px; }
+.page-date { font-size: 11.5px; font-weight: 700; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 4px; }
+.page-title { font-size: 22px; font-weight: 800; letter-spacing: -0.025em; color: var(--ink); margin-bottom: 4px; }
+.page-subtitle { font-size: 13.5px; color: var(--ink-2); }
+.page-subtitle strong { color: var(--red); }
+
+/* PANEL */
+.panel { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.04); margin-bottom: 16px; }
+.panel-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px; font-weight: 600; color: var(--ink-3);
+}
+.panel-title { color: var(--ink-2); font-size: 13px; font-weight: 600; }
+.panel-count { margin-left: 4px; font-size: 12px; color: var(--ink-3); font-weight: 500; }
+.panel-action { margin-left: auto; font-size: 12px; color: var(--brand); font-weight: 600; cursor: pointer; border: 0; background: 0; }
+
+/* SECTION HEADER */
+.section-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px 6px;
+  font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--ink-3);
+}
+.section-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.section-dot.red { background: var(--red); }
+.section-dot.amber { background: var(--amber); }
+.section-dot.gray { background: #d1d5db; }
+.section-dot.blue { background: var(--blue); }
+.section-dot.purple { background: #8b5cf6; }
+.section-name { font-size: 11.5px; }
+.section-count { margin-left: auto; font-size: 11px; background: var(--canvas); border: 1px solid var(--border); border-radius: 10px; padding: 1px 7px; }
+
+/* ─── ASSIGNMENT ROW ─── */
+.assign-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 16px; border-bottom: 1px solid var(--border);
+  cursor: pointer; transition: background 100ms;
+  background: var(--white);
+}
+.assign-row:hover { background: #fafafa; }
+.assign-row:last-child { border-bottom: 0; }
+.assign-stripe { width: 3px; height: 32px; border-radius: 2px; flex-shrink: 0; }
+.assign-body { flex: 1; min-width: 0; }
+.assign-title { font-size: 13.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.assign-meta { font-size: 12px; color: var(--ink-3); margin-top: 1px; }
+.assign-due { font-size: 12px; font-weight: 600; flex-shrink: 0; }
+.assign-due.red { color: var(--red); }
+.assign-due.amber { color: var(--amber); }
+.assign-due.gray { color: var(--ink-3); }
+.assign-chevron { color: var(--border-strong); flex-shrink: 0; }
+
+/* ─── REMINDER ROW (NEW) ─── */
+.reminder-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 16px; border-bottom: 1px solid var(--task-border);
+  cursor: pointer; transition: background 100ms;
+  background: var(--task-tint);
+}
+.reminder-row:hover { background: #dbeafe44; }
+.reminder-row:last-child { border-bottom: 0; }
+.reminder-icon {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(59,130,246,0.12);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; color: var(--blue);
+}
+.reminder-body { flex: 1; min-width: 0; }
+.reminder-title { font-size: 13.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.reminder-context { font-size: 12px; color: #6b7280; margin-top: 1px; }
+.reminder-time { font-size: 12px; font-weight: 700; color: var(--blue); flex-shrink: 0; }
+.reminder-time.now { color: var(--red); }
+.reminder-chevron { color: var(--border-strong); flex-shrink: 0; }
+
+/* ─── DUE NOW CALLOUT (NEW) ─── */
+.due-now-callout {
+  display: flex; align-items: center; gap: 10px;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-lg);
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.due-now-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 0 3px rgba(239,68,68,0.2);
+  flex-shrink: 0;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(239,68,68,0.2); }
+  50% { box-shadow: 0 0 0 5px rgba(239,68,68,0.08); }
+}
+.due-now-text { flex: 1; }
+.due-now-text strong { color: var(--red); }
+.due-now-link { font-size: 12px; font-weight: 600; color: var(--red); border: 0; background: 0; cursor: pointer; flex-shrink: 0; }
+
+/* PROGRESS */
+.progress-section { padding: 12px 16px 14px; }
+.progress-label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; font-size: 12.5px; color: var(--ink-3); font-weight: 500; }
+.progress-pct { font-weight: 700; color: var(--ink-2); }
+.progress-track { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--brand); border-radius: 3px; transition: width 400ms ease; }
+
+/* COLLAPSE HEADER */
+.collapse-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px; cursor: pointer;
+  font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--ink-3);
+  border-top: 1px solid var(--border);
+  user-select: none;
+}
+.collapse-header:hover { background: #fafafa; }
+.collapse-count { margin-left: auto; font-size: 11px; background: var(--canvas); border: 1px solid var(--border); border-radius: 10px; padding: 1px 7px; }
+.collapse-chevron { margin-left: 4px; opacity: 0.5; }
+
+/* RIGHT COLUMN PANELS */
+.mini-stat { text-align: center; }
+.mini-stat-label { font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; margin-bottom: 4px; }
+.mini-stat-value { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
+.progress-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 14px 16px; }
+
+.task-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 16px; border-bottom: 1px solid var(--border);
+  cursor: pointer; font-size: 13px;
+}
+.task-row:last-child { border-bottom: 0; }
+.task-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.task-dot.amber { background: var(--amber); }
+.task-dot.blue { background: var(--blue); }
+.task-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+.task-time { font-size: 11.5px; color: var(--ink-3); flex-shrink: 0; }
+
+.empty-state { padding: 14px 16px; font-size: 13px; color: var(--ink-3); }
+
+/* ANNOTATION OVERLAY */
+.annotation {
+  position: absolute; background: #1a1d23; color: #fff;
+  font-size: 11.5px; font-weight: 600; padding: 5px 10px;
+  border-radius: 6px; white-space: nowrap; z-index: 20;
+  pointer-events: none;
+}
+.annotation::after {
+  content: ''; position: absolute; border: 5px solid transparent;
+}
+.annotation.right::after { left: -10px; top: 50%; transform: translateY(-50%); border-right-color: #1a1d23; }
+.annotation.left::after { right: -10px; top: 50%; transform: translateY(-50%); border-left-color: #1a1d23; }
+.annotation.bottom::after { top: -10px; left: 50%; transform: translateX(-50%); border-bottom-color: #1a1d23; }
+
+.preview-label {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--ink-3); padding: 0 0 16px;
+}
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-mark">
+      <svg viewBox="0 0 16 16" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round">
+        <path d="M8 2L2 5.5V10.5L8 14L14 10.5V5.5L8 2Z"/>
+        <path d="M8 2V8M2 5.5L8 8L14 5.5"/>
+      </svg>
+    </div>
+    <span class="logo-text">Schoology Bot</span>
+  </div>
+  <div class="sidebar-nav">
+    <button class="nav-item active">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>
+      Tonight's Plan
+      <span class="nav-badge red">5</span>
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 5h12M2 8h9M2 11h6"/></svg>
+      All Schoolwork
+    </button>
+    <button class="nav-item">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M1 11l4-4 3 3 3-4 4 2"/><rect x="1" y="1" width="14" height="14" rx="2"/></svg>
+      System Health
+    </button>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div class="main">
+  <header class="topbar">
+    <span class="topbar-label">Tonight's Plan</span>
+    <div class="topbar-right">
+      <span class="status-dot"></span>
+      <button class="btn btn-primary" style="font-size:12.5px;padding:6px 12px;">
+        <svg width="12" height="12" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6.5 2v9M2 6.5h9"/></svg>
+        Add follow-up
+      </button>
+    </div>
+  </header>
+
+  <div class="content">
+    <div class="preview-label">Preview — Reminders as First-Class Items</div>
+
+    <!-- METRIC ROW -->
+    <div class="metric-row">
+      <div class="metric-card">
+        <div class="metric-card-top">
+          <span class="metric-label">Action Required</span>
+          <div class="metric-icon red">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6.5 2v4M6.5 9.5h.01"/><circle cx="6.5" cy="6.5" r="5.5"/></svg>
+          </div>
+        </div>
+        <div class="metric-value">2</div>
+        <div class="metric-footer"><span class="metric-delta neutral">assignments</span> due tonight</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-card-top">
+          <!-- KEY CHANGE: shows TODAY count, not total -->
+          <span class="metric-label">Reminders Today</span>
+          <div class="metric-icon amber">
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="5.5"/><path d="M6.5 4v3l2 1"/></svg>
+          </div>
+        </div>
+        <!-- KEY CHANGE: breaks out how many are due NOW -->
+        <div class="metric-value" style="color:var(--amber);">3</div>
+        <div class="metric-footer"><span class="metric-delta" style="color:var(--red);">1 due now</span> · 2 later tonight</div>
+      </div>
+    </div>
+
+    <div class="dashboard-grid">
+      <div class="left-col">
+
+        <!-- PAGE HEADER -->
+        <div class="page-header">
+          <div class="page-date">Monday, March 15</div>
+          <h1 class="page-title">Good evening.</h1>
+          <!-- KEY CHANGE: subtitle counts both assignments AND reminders -->
+          <p class="page-subtitle"><strong>2 assignments</strong> and <strong style="color:var(--amber);">3 reminders</strong> need attention tonight.</p>
+        </div>
+
+        <!-- KEY CHANGE: "DUE NOW" callout for overdue/firing reminders -->
+        <div class="due-now-callout">
+          <div class="due-now-dot"></div>
+          <div class="due-now-text"><strong>1 reminder fired at 6:30 PM</strong> — still needs action</div>
+          <button class="due-now-link">View ↓</button>
+        </div>
+
+        <div class="panel">
+
+          <!-- OVERDUE ASSIGNMENTS -->
+          <div class="section-header">
+            <div class="section-dot red"></div>
+            <span class="section-name">Overdue</span>
+            <span class="section-count">1</span>
+          </div>
+          <div class="assign-row">
+            <div class="assign-stripe" style="background:#ef4444;"></div>
+            <div class="assign-body">
+              <div class="assign-title">Chapter 7 Review</div>
+              <div class="assign-meta">Math</div>
+            </div>
+            <span class="assign-due red">2 days ago</span>
+            <svg class="assign-chevron" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 3l4 4-4 4"/></svg>
+          </div>
+
+          <!-- KEY CHANGE: "DUE NOW" reminder in the main flow -->
+          <div class="section-header" style="background:#fef2f222;">
+            <div class="section-dot red"></div>
+            <span class="section-name" style="color:var(--red);">Reminder — Fired 6:30 PM</span>
+            <span class="section-count" style="border-color:#fecaca;color:var(--red);">1</span>
+          </div>
+          <div class="reminder-row" style="background:#fef2f2;border-bottom-color:#fecaca;">
+            <div class="reminder-icon" style="background:rgba(239,68,68,0.1);color:var(--red);">
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="5.5"/><path d="M6.5 4v3l2 1"/></svg>
+            </div>
+            <div class="reminder-body">
+              <div class="reminder-title">Check if grade posted — Math Quiz</div>
+              <div class="reminder-context">Linked to: Math · Quiz on Ch. 5</div>
+            </div>
+            <span class="reminder-time now">6:30 PM ↑</span>
+            <svg class="reminder-chevron" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 3l4 4-4 4"/></svg>
+          </div>
+
+          <!-- DUE TONIGHT: assignments + reminders interleaved by time -->
+          <div class="section-header">
+            <div class="section-dot amber"></div>
+            <span class="section-name">Due Tonight</span>
+            <span class="section-count">4</span>
+          </div>
+
+          <!-- Assignment row -->
+          <div class="assign-row">
+            <div class="assign-stripe" style="background:#10b981;"></div>
+            <div class="assign-body">
+              <div class="assign-title">Essay Outline</div>
+              <div class="assign-meta">English</div>
+            </div>
+            <span class="assign-due amber">11:59 PM</span>
+            <svg class="assign-chevron" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 3l4 4-4 4"/></svg>
+          </div>
+
+          <!-- KEY CHANGE: Reminder row interleaved by time -->
+          <div class="reminder-row">
+            <div class="reminder-icon">
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="5.5"/><path d="M6.5 4v3l2 1"/></svg>
+            </div>
+            <div class="reminder-body">
+              <div class="reminder-title">Ask teacher about retake option</div>
+              <div class="reminder-context">Standalone follow-up</div>
+            </div>
+            <span class="reminder-time">8:00 PM</span>
+            <svg class="reminder-chevron" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 3l4 4-4 4"/></svg>
+          </div>
+
+          <!-- Assignment row -->
+          <div class="assign-row">
+            <div class="assign-stripe" style="background:#0ea5e9;"></div>
+            <div class="assign-body">
+              <div class="assign-title">Lab Write-up</div>
+              <div class="assign-meta">Science</div>
+            </div>
+            <span class="assign-due amber">11:59 PM</span>
+            <svg class="assign-chevron" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 3l4 4-4 4"/></svg>
+          </div>
+
+          <!-- Reminder row -->
+          <div class="reminder-row">
+            <div class="reminder-icon">
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="5.5"/><path d="M6.5 4v3l2 1"/></svg>
+            </div>
+            <div class="reminder-body">
+              <div class="reminder-title">Review upcoming test with Mayari</div>
+              <div class="reminder-context">Linked to: Math · Unit 7 Test · Due Fri</div>
+            </div>
+            <span class="reminder-time">Tonight</span>
+            <svg class="reminder-chevron" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 3l4 4-4 4"/></svg>
+          </div>
+
+          <!-- COLLAPSED SECTIONS -->
+          <div class="collapse-header">
+            <div class="section-dot gray"></div>
+            Waiting on Teacher
+            <span class="collapse-count">1</span>
+            <span class="collapse-chevron">›</span>
+          </div>
+          <div class="collapse-header">
+            <div class="section-dot blue"></div>
+            Coming Up
+            <span class="collapse-count">3</span>
+            <span class="collapse-chevron">›</span>
+          </div>
+
+          <!-- PROGRESS — KEY CHANGE: counts both assignments + reminders -->
+          <div class="progress-section">
+            <div class="progress-label">
+              <span>Tonight's progress <span style="font-weight:400;color:var(--ink-3);">(assignments + reminders)</span></span>
+              <span class="progress-pct">1 of 5 resolved</span>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" style="width:20%;"></div>
+            </div>
+          </div>
+
+        </div><!-- /panel -->
+      </div><!-- /left-col -->
+
+      <!-- RIGHT COLUMN — simplified (system stuff removed) -->
+      <div class="right-col">
+
+        <!-- Follow-up tasks panel — now only shows FUTURE reminders, not today's -->
+        <div class="panel">
+          <div class="panel-header">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round"><circle cx="7" cy="7" r="5.5"/><path d="M7 4v3.5l2 1.5"/></svg>
+            <span class="panel-title">Upcoming Reminders</span>
+            <span class="panel-count">2</span>
+            <button class="panel-action">+ Add</button>
+          </div>
+          <!-- KEY CHANGE: right column shows FUTURE reminders, not today's (those are in the left col) -->
+          <div class="task-row">
+            <div class="task-dot blue"></div>
+            <span class="task-text">Check History grade</span>
+            <span class="task-time">Tomorrow 4 PM</span>
+          </div>
+          <div class="task-row">
+            <div class="task-dot blue"></div>
+            <span class="task-text">Weekly grade review</span>
+            <span class="task-time">Fri 6 PM</span>
+          </div>
+          <div class="empty-state" style="font-size:12px;padding:10px 16px;border-top:1px solid var(--border);color:var(--ink-3);">
+            Today's reminders are shown in the plan →
+          </div>
+        </div>
+
+        <!-- Assignment Overview -->
+        <div class="panel">
+          <div class="panel-header">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round"><path d="M2 11V3h10v8M2 11h10M4 6h6M4 8.5h4"/></svg>
+            <span class="panel-title">Assignment Overview</span>
+          </div>
+          <div class="progress-row">
+            <div class="mini-stat">
+              <div class="mini-stat-label">Needs action</div>
+              <div class="mini-stat-value" style="color:var(--red);">2</div>
+            </div>
+            <div class="mini-stat">
+              <div class="mini-stat-label">Waiting</div>
+              <div class="mini-stat-value" style="color:var(--amber);">1</div>
+            </div>
+            <div class="mini-stat">
+              <div class="mini-stat-label">Handled</div>
+              <div class="mini-stat-value" style="color:var(--ink-3);">4</div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /right-col -->
+    </div><!-- /dashboard-grid -->
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<!-- DESIGN NOTES OVERLAY -->
+<div style="position:fixed;bottom:20px;right:20px;background:#1a1d23;color:#fff;border-radius:12px;padding:16px 20px;max-width:300px;font-size:12.5px;line-height:1.6;z-index:100;box-shadow:0 8px 32px rgba(0,0,0,0.3);">
+  <div style="font-weight:700;font-size:13px;margin-bottom:10px;color:#a5aafb;">Design Rationale</div>
+  <div style="display:flex;flex-direction:column;gap:6px;color:rgba(255,255,255,0.75);">
+    <div>🔴 <strong style="color:#fff;">Fired reminders</strong> are surfaced immediately — same urgency as overdue assignments</div>
+    <div>🔵 <strong style="color:#fff;">Today's reminders</strong> interleave with assignments in the left column, sorted by time</div>
+    <div>📊 <strong style="color:#fff;">Progress bar</strong> counts both assignments + reminders (true tonight's progress)</div>
+    <div>📋 <strong style="color:#fff;">Right column</strong> shows only FUTURE reminders — today's are already in the agenda</div>
+    <div>💬 <strong style="color:#fff;">Subtitle</strong> explicitly calls out both assignment and reminder counts</div>
+  </div>
+</div>
+
+</body>
+</html>

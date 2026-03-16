@@ -367,7 +367,9 @@ function renderMetricRow() {
   const root = document.getElementById("metricRow");
   if (!root) return;
   const tonight = state.home?.summary?.tonightCount ?? "—";
-  const pendingTasks = state.tasks?.summary?.pending ?? "—";
+  const tonightTaskRows = (state.home?.sections?.tonight?.rows || []).filter((r) => r.kind === "task");
+  const todayTaskCount = tonightTaskRows.length;
+  const overdueTaskCount = tonightTaskRows.filter((r) => r.isOverdue).length;
   root.innerHTML = `
     <div class="metric-row">
       <div class="metric-card">
@@ -386,15 +388,15 @@ function renderMetricRow() {
 
       <div class="metric-card">
         <div class="metric-card-top">
-          <span class="metric-card-label">Pending Tasks</span>
+          <span class="metric-card-label">Reminders Today</span>
           <div class="metric-icon amber">
             <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="5.5"/><path d="M6.5 4v3l2 1"/></svg>
           </div>
         </div>
-        <div class="metric-value">${esc(String(pendingTasks))}</div>
+        <div class="metric-value">${esc(String(todayTaskCount))}</div>
         <div class="metric-footer">
-          <span class="metric-delta neutral">${esc(String(state.tasks?.summary?.overdue || 0))} overdue</span>
-          follow-ups
+          <span class="metric-delta neutral">${esc(String(overdueTaskCount))} missed</span>
+          due today
         </div>
       </div>
     </div>
@@ -573,6 +575,28 @@ function renderTaskRow(task) {
   `;
 }
 
+function renderReminderRow(task) {
+  const isOverdue = task.isOverdue;
+  const timeLabel = isOverdue ? "Missed" : esc(task.remindAtLabel || "Today");
+  return `
+    <div
+      class="reminder-row${isOverdue ? " is-overdue" : ""}"
+      data-open-task-id="${esc(task.id)}"
+      data-surface-card="task"
+      tabindex="0"
+      role="button"
+      aria-label="Review ${esc(task.title)}"
+    >
+      <div class="reminder-icon${isOverdue ? " overdue" : ""}">
+        <svg width="12" height="12" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="5.5"/><path d="M6.5 4v2.5l2 1"/></svg>
+      </div>
+      <span class="reminder-title">${esc(task.title)}</span>
+      <span class="reminder-time${isOverdue ? " overdue" : ""}">${timeLabel}</span>
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" class="reminder-chevron"><path d="M4 2l4 4-4 4"/></svg>
+    </div>
+  `;
+}
+
 function renderHomeSectionRows(sectionKey) {
   const section = currentHomeSection(sectionKey);
   const rows = Array.isArray(section.rows) ? section.rows : [];
@@ -585,7 +609,9 @@ function renderHomeRightCol() {
   const services = state.health?.services || [];
   const activity = state.health?.activity || {};
   const schedule = state.health?.schedule || {};
-  const taskRows = Array.isArray(state.tasks?.rows) ? state.tasks.rows.filter((t) => t.status === "pending") : [];
+  const allPendingTasks = Array.isArray(state.tasks?.rows) ? state.tasks.rows.filter((t) => t.status === "pending") : [];
+  const futureTaskRows = allPendingTasks.filter((t) => !t.isToday && !t.isOverdue);
+  const todayTaskCount = allPendingTasks.filter((t) => t.isToday || t.isOverdue).length;
   const totalMissing = assignments.totalMissing || 0;
   const handled = assignments.ignored || 0;
   const pct = totalMissing > 0 ? Math.round(((handled + (assignments.waiting || 0)) / totalMissing) * 100) : 0;
@@ -636,10 +662,23 @@ function renderHomeRightCol() {
     schedule.liveChecksEnabled ? { label: "Live check", value: schedule.liveCheckCron || "—" } : null,
   ].filter(Boolean);
 
-  const taskPanelRows = taskRows.slice(0, 5);
+  const taskPanelRows = futureTaskRows.slice(0, 5);
 
   return `
     <div class="right-col">
+
+      <!-- Upcoming Reminders -->
+      <div class="panel">
+        <div class="panel-header">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round"><circle cx="7.5" cy="7.5" r="6"/><path d="M7.5 4.5v3.5l2 1.5"/></svg>
+          <span class="panel-title">Upcoming Reminders</span>
+          <span class="panel-count">${futureTaskRows.length}</span>
+          <button type="button" class="panel-action" data-action="new-task">+ Add</button>
+        </div>
+        ${taskPanelRows.length === 0
+          ? `<div class="empty-state">${todayTaskCount > 0 ? "Today's reminders are in the plan." : "No upcoming reminders."}</div>`
+          : taskPanelRows.map(renderTaskRow).join("")}
+      </div>
 
       <!-- Assignment Overview -->
       <div class="panel">
@@ -719,11 +758,14 @@ function renderHomePane() {
   const comingUpRows = Array.isArray(comingUp.rows) ? comingUp.rows : [];
   const handledRows = Array.isArray(handled.rows) ? handled.rows : [];
 
-  const overdueRows = tonightRows.filter((r) => r.kind === "assignment" && dueCls(r) === "overdue");
-  const todayRows = tonightRows.filter((r) => r.kind !== "assignment" || dueCls(r) !== "overdue");
+  const overdueAssignRows = tonightRows.filter((r) => r.kind === "assignment" && dueCls(r) === "overdue");
+  const missedReminderRows = tonightRows.filter((r) => r.kind === "task" && r.isOverdue);
+  const todayAssignRows = tonightRows.filter((r) => r.kind === "assignment" && dueCls(r) !== "overdue");
+  const todayTaskRows = tonightRows.filter((r) => r.kind === "task" && !r.isOverdue);
 
+  const assignmentCount = tonightRows.filter((r) => r.kind === "assignment").length;
+  const todayReminderCount = tonightRows.filter((r) => r.kind === "task").length;
   const actionableCount = tonightRows.length;
-  const taskPendingRows = (state.tasks?.rows || []).filter((t) => t.status === "pending");
 
   const now = new Date();
   const dateLabel = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
@@ -738,9 +780,13 @@ function renderHomePane() {
       <div class="page-title-group">
         <div class="page-date">${esc(dateLabel)}</div>
         <h1 class="page-title">Good ${now.getHours() < 12 ? "morning" : now.getHours() < 17 ? "afternoon" : "evening"}.</h1>
-        <p class="page-subtitle">${actionableCount > 0
-          ? `${actionableCount} assignment${actionableCount === 1 ? "" : "s"} need${actionableCount === 1 ? "s" : ""} attention tonight${overdueRows.length > 0 ? ` — ${overdueRows.length} overdue` : ""}.`
-          : "All caught up for tonight."
+        <p class="page-subtitle">${
+          actionableCount === 0
+            ? "All caught up — nothing needs attention tonight."
+            : [
+                assignmentCount > 0 ? `${assignmentCount} assignment${assignmentCount === 1 ? "" : "s"}` : "",
+                todayReminderCount > 0 ? `${todayReminderCount} reminder${todayReminderCount === 1 ? "" : "s"}` : "",
+              ].filter(Boolean).join(" and ") + " need attention tonight."
         }</p>
       </div>
     </div>
@@ -754,27 +800,37 @@ function renderHomePane() {
         <div class="panel">
           <div class="panel-header">
             <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round"><rect x="2" y="2" width="11" height="11" rx="2"/><path d="M5 7.5h5M5 5h5M5 10h3"/></svg>
-            <span class="panel-title">Tonight's Assignments</span>
+            <span class="panel-title">Tonight's Plan</span>
             <span class="panel-count">${actionableCount} item${actionableCount === 1 ? "" : "s"}</span>
             <button type="button" class="panel-action" data-action="switch-view" data-view="schoolwork">View all</button>
           </div>
 
-          ${overdueRows.length > 0 ? `
+          ${overdueAssignRows.length > 0 ? `
             <div class="section-header">
               <div class="section-dot red"></div>
               <span class="section-name">Overdue</span>
-              <span class="section-count">${overdueRows.length}</span>
+              <span class="section-count">${overdueAssignRows.length}</span>
             </div>
-            ${overdueRows.map(renderAssignRow).join("")}
+            ${overdueAssignRows.map(renderAssignRow).join("")}
           ` : ""}
 
-          ${todayRows.length > 0 ? `
+          ${missedReminderRows.length > 0 ? `
+            <div class="section-header reminder-section-header missed">
+              <div class="section-dot red"></div>
+              <span class="section-name">Missed Reminders</span>
+              <span class="section-count">${missedReminderRows.length}</span>
+            </div>
+            ${missedReminderRows.map(renderReminderRow).join("")}
+          ` : ""}
+
+          ${(todayAssignRows.length > 0 || todayTaskRows.length > 0) ? `
             <div class="section-header">
               <div class="section-dot amber"></div>
-              <span class="section-name">Due Tonight / Soon</span>
-              <span class="section-count">${todayRows.length}</span>
+              <span class="section-name">Due Tonight</span>
+              <span class="section-count">${todayAssignRows.length + todayTaskRows.length}</span>
             </div>
-            ${todayRows.map((row) => row.kind === "task" ? renderTaskRow(row) : renderAssignRow(row)).join("")}
+            ${todayAssignRows.map(renderAssignRow).join("")}
+            ${todayTaskRows.map(renderReminderRow).join("")}
           ` : ""}
 
           ${waitingRows.length > 0 ? `
@@ -808,25 +864,6 @@ function renderHomePane() {
             <div class="progress-track">
               <div class="progress-fill ${progressPct >= 80 ? "green" : progressPct >= 40 ? "amber" : "red"}" style="width:${progressPct}%"></div>
             </div>
-          </div>
-        </div>
-
-        <!-- Follow-up Tasks -->
-        <div class="panel">
-          <div class="panel-header">
-            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round"><circle cx="7.5" cy="7.5" r="6"/><path d="M7.5 4.5v3.5l2 1.5"/></svg>
-            <span class="panel-title">Follow-up Tasks</span>
-            <span class="panel-count">${taskPendingRows.length} pending</span>
-            <button type="button" class="panel-action" data-action="new-task">+ Add task</button>
-          </div>
-          ${taskPendingRows.length === 0
-            ? `<div class="empty-state">No follow-up tasks pending.</div>`
-            : taskPendingRows.slice(0, 6).map(renderTaskRow).join("")}
-          <div class="quick-actions">
-            <button type="button" class="quick-action" data-action="new-task">
-              <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M7 2v10M2 7h10"/></svg>
-              New task
-            </button>
           </div>
         </div>
 

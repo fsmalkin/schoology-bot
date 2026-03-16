@@ -114,7 +114,7 @@ test("dashboard card interactions open the review drawer and keep writes explici
     const page = await browser.newPage();
     await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle" });
 
-    await page.waitForSelector("text=Tonight's Assignments");
+    await page.waitForSelector("text=Tonight's Plan");
     await page.waitForSelector("text=Waiting on Teacher");
 
     await page.locator('.nav-item[data-view="admin"]').click();

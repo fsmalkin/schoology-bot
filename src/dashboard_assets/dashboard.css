@@ -742,6 +742,66 @@ a { color: var(--brand); }
   margin-top: 2px;
 }
 
+/* ─── REMINDER ROW ─────────────────────────────────── */
+.reminder-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #bfdbfe;
+  cursor: pointer;
+  background: #eff6ff;
+  transition: background 100ms;
+}
+
+.reminder-row:hover { background: #dbeafe; }
+.reminder-row:last-child { border-bottom: 0; }
+
+.reminder-row.is-overdue {
+  background: #fef2f2;
+  border-bottom-color: #fecaca;
+}
+.reminder-row.is-overdue:hover { background: #fee2e2; }
+
+.reminder-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(59,130,246,0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--blue);
+}
+
+.reminder-icon.overdue {
+  background: rgba(239,68,68,0.1);
+  color: var(--red);
+}
+
+.reminder-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reminder-time {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--blue);
+  flex-shrink: 0;
+}
+
+.reminder-time.overdue { color: var(--red); }
+
+.reminder-chevron { color: var(--border-strong); flex-shrink: 0; }
+
 /* ─── TASK ROWS ─────────────────────────────────────── */
 .task-row {
   display: flex;
