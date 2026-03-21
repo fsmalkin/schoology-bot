@@ -1,81 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { closeDb, getDb } from "../src/db.js";
-import { createDashboardServer, renderDashboardPage } from "../src/dashboard_server.js";
+import { renderDashboardPage } from "../src/dashboard_server.js";
 import { runToolByName } from "../src/tool_runner.js";
-
-function makeConfig(tempDir) {
-  return {
-    schedule: {
-      timezone: "America/New_York",
-      scrapeCron: "0 6 * * *",
-      sendCron: "0 7 * * *",
-      reminderCron: "*/1 * * * *",
-    },
-    liveChecks: {
-      enabled: false,
-      cron: "0 5 * * *",
-    },
-    paths: {
-      dataDir: tempDir,
-      statePath: path.join(tempDir, "state.json"),
-      agentDbPath: path.join(tempDir, "agent.db"),
-    },
-  };
-}
-
-function seedStateFile(config) {
-  fs.writeFileSync(
-    config.paths.statePath,
-    JSON.stringify(
-      {
-        meta: { createdAt: new Date().toISOString() },
-        lastScrapeAt: "2026-02-16T11:00:00Z",
-        lastSummarySentAt: "2026-02-16T12:00:00Z",
-        assignments: {},
-      },
-      null,
-      2
-    ),
-    "utf8"
-  );
-}
-
-function seedAssignments(db) {
-  db.prepare(
-    `
-    INSERT INTO assignments (
-      key, course, title, due_date, status, score, url, raw_text,
-      first_seen_at, last_seen_at, last_missing_at, resolved_at, is_missing, manual_status, auto_ignored
-    )
-    VALUES
-      ('a1', 'Algebra: Sec 1', 'Homework 1', '2/15/26 11:59pm', 'Missing', '', 'https://schoology.local/a1', '', '2026-02-10T00:00:00Z', '2026-02-16T00:00:00Z', '2026-02-16T00:00:00Z', NULL, 1, NULL, 0),
-      ('a2', 'Latin: Sec 1', 'Quiz 1', '2/21/26 11:59pm', 'Missing', '', '', '', '2026-02-10T00:00:00Z', '2026-02-16T00:00:00Z', '2026-02-16T00:00:00Z', NULL, 1, NULL, 0)
-  `
-  ).run();
-}
-
-function sameOriginHeaders(port) {
-  return {
-    origin: `http://127.0.0.1:${port}`,
-    "X-Schoology-Dashboard-Request": "1",
-    "Content-Type": "application/json",
-  };
-}
-
-async function dashboardWrite(port, tool, args, headers = {}) {
-  return fetch(`http://127.0.0.1:${port}/api/tools/run`, {
-    method: "POST",
-    headers: {
-      ...sameOriginHeaders(port),
-      ...headers,
-    },
-    body: JSON.stringify({ tool, args }),
-  });
-}
+import {
+  dashboardWrite,
+  makeDashboardConfig,
+  makeDashboardTempDir,
+  seedDashboardAssignments,
+  seedDashboardStateFile,
+  startDashboardServer,
+} from "./dashboard_test_utils.js";
 
 test("renderDashboardPage includes parent-first shell and asset refs", () => {
   const html = renderDashboardPage();
@@ -89,17 +25,17 @@ test("renderDashboardPage includes parent-first shell and asset refs", () => {
 });
 
 test("dashboard server serves page, assets, and parent-first read APIs", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "schoology-dashboard-server-"));
-  const config = makeConfig(tempDir);
-  seedStateFile(config);
+  const tempDir = makeDashboardTempDir("schoology-dashboard-server-");
+  const config = makeDashboardConfig(tempDir);
+  seedDashboardStateFile(config);
   const db = getDb(config);
-  seedAssignments(db);
+  seedDashboardAssignments(db);
 
-  const server = createDashboardServer({ config, logger: { log: () => {} } });
+  const { port, stop } = await startDashboardServer({
+    config,
+    logger: { log: () => {} },
+  });
   try {
-    await server.start(0);
-    const address = server.server.address();
-    const port = address && typeof address === "object" ? address.port : 0;
     assert.ok(port > 0);
 
     const page = await fetch(`http://127.0.0.1:${port}/`);
@@ -143,26 +79,46 @@ test("dashboard server serves page, assets, and parent-first read APIs", async (
     const healthPayload = await health.json();
     assert.equal(health.status, 200);
     assert.ok(Array.isArray(healthPayload.services));
+
+    const betaPage = await fetch(`http://127.0.0.1:${port}/beta`);
+    assert.equal(betaPage.status, 200);
+    const betaHtml = await betaPage.text();
+    assert.match(betaHtml, /Schoology Bot/i);
+    assert.match(betaHtml, /Beta/);
+    assert.match(betaHtml, /\/assets\/dashboard\.css/);
+    assert.match(betaHtml, /\/beta\/assets\/beta\.css/);
+    assert.match(betaHtml, /\/beta\/assets\/beta\.js/);
+
+    const betaCss = await fetch(`http://127.0.0.1:${port}/beta/assets/beta.css`);
+    assert.equal(betaCss.status, 200);
+    const betaCssText = await betaCss.text();
+    assert.match(betaCssText, /beta-section/);
+    assert.match(betaCssText, /beta-badge/);
+
+    const betaJs = await fetch(`http://127.0.0.1:${port}/beta/assets/beta.js`);
+    assert.equal(betaJs.status, 200);
+    const betaJsText = await betaJs.text();
+    assert.match(betaJsText, /beta-toggle-section/);
+    assert.match(betaJsText, /openAssignmentDrawer/);
   } finally {
-    await server.stop();
+    await stop();
     closeDb();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
 
 test("dashboard write API rejects unsafe requests", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "schoology-dashboard-unsafe-"));
-  const config = makeConfig(tempDir);
-  seedStateFile(config);
+  const tempDir = makeDashboardTempDir("schoology-dashboard-unsafe-");
+  const config = makeDashboardConfig(tempDir);
+  seedDashboardStateFile(config);
   const db = getDb(config);
-  seedAssignments(db);
+  seedDashboardAssignments(db);
 
-  const server = createDashboardServer({ config, logger: { log: () => {} } });
+  const { port, stop } = await startDashboardServer({
+    config,
+    logger: { log: () => {} },
+  });
   try {
-    await server.start(0);
-    const address = server.server.address();
-    const port = address && typeof address === "object" ? address.port : 0;
-
     const missingHeaders = await fetch(`http://127.0.0.1:${port}/api/tools/run`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -173,18 +129,18 @@ test("dashboard write API rejects unsafe requests", async () => {
     const unsupportedTool = await dashboardWrite(port, "list_tasks", {});
     assert.equal(unsupportedTool.status, 400);
   } finally {
-    await server.stop();
+    await stop();
     closeDb();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
 
 test("dashboard write API supports assignment and follow-up mutations", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "schoology-dashboard-mutations-"));
-  const config = makeConfig(tempDir);
-  seedStateFile(config);
+  const tempDir = makeDashboardTempDir("schoology-dashboard-mutations-");
+  const config = makeDashboardConfig(tempDir);
+  seedDashboardStateFile(config);
   const db = getDb(config);
-  seedAssignments(db);
+  seedDashboardAssignments(db);
   let refreshCalled = false;
 
   const toolExecutor = async (toolDb, tool, args, context) => {
@@ -195,12 +151,12 @@ test("dashboard write API supports assignment and follow-up mutations", async ()
     return runToolByName(toolDb, tool, args, context);
   };
 
-  const server = createDashboardServer({ config, logger: { log: () => {} }, toolExecutor });
+  const { port, stop } = await startDashboardServer({
+    config,
+    logger: { log: () => {} },
+    toolExecutor,
+  });
   try {
-    await server.start(0);
-    const address = server.server.address();
-    const port = address && typeof address === "object" ? address.port : 0;
-
     let response = await dashboardWrite(port, "update_assignment_status", {
       key: "a1",
       status: "Waiting on teacher",
@@ -301,7 +257,7 @@ test("dashboard write API supports assignment and follow-up mutations", async ()
     const tasksPayload = await tasks.json();
     assert.equal(tasksPayload.rows.length, 0);
   } finally {
-    await server.stop();
+    await stop();
     closeDb();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

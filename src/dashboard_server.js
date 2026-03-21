@@ -16,6 +16,9 @@ import { runToolByName } from "./tool_runner.js";
 const DASHBOARD_HTML = fs.readFileSync(new URL("./dashboard_assets/index.html", import.meta.url), "utf8");
 const DASHBOARD_CSS = fs.readFileSync(new URL("./dashboard_assets/dashboard.css", import.meta.url), "utf8");
 const DASHBOARD_JS = fs.readFileSync(new URL("./dashboard_assets/dashboard.js", import.meta.url), "utf8");
+const BETA_HTML = fs.readFileSync(new URL("./dashboard_assets/beta_index.html", import.meta.url), "utf8");
+const BETA_CSS = fs.readFileSync(new URL("./dashboard_assets/beta_dashboard.css", import.meta.url), "utf8");
+const BETA_JS = fs.readFileSync(new URL("./dashboard_assets/beta_dashboard.js", import.meta.url), "utf8");
 
 function statusClass(state) {
   if (state === "ok") return "ok";
@@ -99,6 +102,9 @@ export function createDashboardServer({
     html: htmlOverride || DASHBOARD_HTML,
     css: assetsOverride.css || DASHBOARD_CSS,
     js: assetsOverride.js || DASHBOARD_JS,
+    betaHtml: BETA_HTML,
+    betaCss: BETA_CSS,
+    betaJs: BETA_JS,
   };
 
   const server = http.createServer(async (req, res) => {
@@ -157,6 +163,15 @@ export function createDashboardServer({
         }
         const output = await toolExecutor(dashboardDb(config), tool, args, {});
         return sendJson(res, 200, { ok: true, tool, output });
+      }
+      if (req.method === "GET" && url.pathname === "/beta") {
+        return sendText(res, 200, assets.betaHtml, "text/html; charset=utf-8");
+      }
+      if (req.method === "GET" && url.pathname === "/beta/assets/beta.css") {
+        return sendText(res, 200, assets.betaCss, "text/css; charset=utf-8");
+      }
+      if (req.method === "GET" && url.pathname === "/beta/assets/beta.js") {
+        return sendText(res, 200, assets.betaJs, "text/javascript; charset=utf-8");
       }
       return sendJson(res, 404, { ok: false, error: "Not found." });
     } catch (err) {

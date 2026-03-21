@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Schoology Bot · Beta</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;1,14..32,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/dashboard.css" />
+  <link rel="stylesheet" href="/beta/assets/beta.css" />
+</head>
+<body>
+
+<!-- ═══ SIDEBAR ════════════════════════════════════ -->
+<nav class="sidebar" aria-label="Main navigation">
+  <div class="sidebar-logo">
+    <div class="logo-mark">
+      <svg viewBox="0 0 16 16" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round">
+        <path d="M8 2L2 5.5V10.5L8 14L14 10.5V5.5L8 2Z"/>
+        <path d="M8 2V8M2 5.5L8 8L14 5.5"/>
+      </svg>
+    </div>
+    <span class="logo-text">Schoology Bot</span>
+    <span class="beta-badge">Beta</span>
+  </div>
+
+  <div class="sidebar-section">
+    <button type="button" class="nav-item" data-action="switch-view" data-view="home">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="1" y="1" width="6" height="6" rx="1.5"/>
+        <rect x="9" y="1" width="6" height="6" rx="1.5"/>
+        <rect x="1" y="9" width="6" height="6" rx="1.5"/>
+        <rect x="9" y="9" width="6" height="6" rx="1.5"/>
+      </svg>
+      Tonight's Plan
+      <span class="nav-badge red" id="navBadgeHome" aria-label="action required"></span>
+    </button>
+    <button type="button" class="nav-item" data-action="switch-view" data-view="schoolwork">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 5h12M2 8h9M2 11h6"/>
+      </svg>
+      All Schoolwork
+      <span class="nav-badge" id="navBadgeSchoolwork" aria-label="assignments"></span>
+    </button>
+    <button type="button" class="nav-item" data-action="switch-view" data-view="admin">
+      <svg class="nav-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M1 11l4-4 3 3 3-4 4 2"/>
+        <rect x="1" y="1" width="14" height="14" rx="2"/>
+      </svg>
+      System Health
+    </button>
+  </div>
+</nav>
+
+<!-- ═══ MAIN ════════════════════════════════════════ -->
+<div class="main">
+
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <div class="topbar-breadcrumb">
+      <span id="topbarViewLabel">Tonight's Plan</span>
+    </div>
+
+    <div class="topbar-search" role="search" aria-label="Search assignments">
+      <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="5.5" cy="5.5" r="4"/><path d="M9 9l2.5 2.5"/></svg>
+      Search assignments…
+      <span class="topbar-search-kbd">⌘K</span>
+    </div>
+
+    <div class="topbar-actions">
+      <button type="button" class="status-dot-btn" data-action="switch-view" data-view="admin" id="systemStatusBtn" aria-label="System health">
+        <span class="status-dot" id="systemStatusDot"></span>
+      </button>
+      <button type="button" class="btn btn-primary" data-action="new-task">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6.5 2v9M2 6.5h9"/></svg>
+        Add follow-up
+      </button>
+    </div>
+  </header>
+
+  <!-- FLASH -->
+  <section id="flash" class="flash-slot" aria-live="polite"></section>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <!-- Metric row — injected by JS -->
+    <div id="metricRow"></div>
+
+    <!-- View panels -->
+    <div class="view-panel" data-view-panel="home">
+      <div id="homePane" class="workspace-pane"></div>
+    </div>
+
+    <div class="view-panel" data-view-panel="schoolwork" hidden>
+      <div id="schoolworkPane" class="workspace-pane"></div>
+    </div>
+
+    <div class="view-panel" data-view-panel="admin" hidden>
+      <div id="adminPane" class="workspace-pane"></div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<!-- ═══ DRAWER ═══════════════════════════════════════ -->
+<button
+  type="button"
+  class="drawer-backdrop"
+  id="drawerBackdrop"
+  data-action="close-drawer"
+  data-open="false"
+  aria-label="Close review drawer"
+  aria-hidden="true"
+></button>
+
+<aside
+  class="drawer"
+  id="detailDrawer"
+  role="dialog"
+  aria-modal="true"
+  aria-live="polite"
+  aria-hidden="true"
+  data-open="false"
+>
+  <div class="drawer-shell">
+    <div class="drawer-content" id="drawerContent"></div>
+  </div>
+</aside>
+
+<script type="module" src="/beta/assets/beta.js"></script>
+</body>
+</html>

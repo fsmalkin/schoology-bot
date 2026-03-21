@@ -106,7 +106,7 @@ Title:
 Card-First Parent Dashboard Redesign
 
 Last updated:
-2026-03-08
+2026-03-20
 
 Goal:
 - Keep the parent-first dashboard structure, but simplify the interaction model so cards are for scanning/opening and the right-side review drawer is the single place where assignment and follow-up edits happen.
@@ -195,6 +195,18 @@ Dependencies:
 End state:
 - Feature is documented and regression coverage exists for both parent-home shaping and HTTP behavior.
 
+Phase 4 - Beta stabilization and release confidence
+Tasks:
+- Add shared dashboard test fixtures so stable and beta server/browser tests can reuse the same seeded runtime setup.
+- Extend HTTP integration coverage to validate `/beta` plus `/beta/assets/beta.css` and `/beta/assets/beta.js`.
+- Add a dedicated beta browser smoke suite for page boot, view switching, drawer open/close, accordion sections, explicit assignment writes, reminder/task flows, and mobile drawer behavior.
+- Fix beta-only regressions in `beta_dashboard.js` in this order: rerender/polling draft loss, stale async drawer responses, focus return and keyboard behavior, and composite `Submitted` partial-failure handling.
+- Add at least one beta race/regression scenario for stale detail responses or close-before-response behavior.
+Dependencies:
+- Phase 2 complete.
+End state:
+- `/beta` has its own core-flow safety net and the highest-risk client-state bugs are covered by automated tests before promotion decisions.
+
 Validation plan:
 Unit tests:
 - Parent-home and schoolwork data shaping tests.
@@ -202,6 +214,9 @@ Unit tests:
 Integration tests:
 - Dashboard HTTP tests for assets, `GET /api/home`, read APIs, write guardrails, and assignment/task mutations.
 - Dashboard browser smoke test for click-to-open cards, drawer close behavior, explicit status save, and bulk-mode reveal.
+- Dedicated `/beta` HTTP coverage for the beta shell and beta-only assets.
+- Dedicated `/beta` browser smoke for beta-only interactions and core regression cases.
+- Dedicated `/beta` browser smoke should cover stale detail-response races and timer-driven health-poll rerenders in addition to core interaction flows.
 - Full `npm test` run.
 Smoke tests:
 - `docker compose up -d --build`
@@ -212,6 +227,10 @@ Manual checks (if any):
   - No default assignment card button appears to mutate data directly.
   - `All Schoolwork` search/filter/bulk status flows work in card mode.
   - `Admin` still shows health/commands/docs.
+  - `/beta` loads on desktop and a mobile-width viewport without console errors.
+  - Closing the beta drawer returns focus to the opener and does not lose in-progress edits during normal interaction.
+  - Reminder and follow-up edits still behave correctly on `/beta`.
+  - If reminder/task write behavior changed, run `npm run beta:reset-memory`, `npm run stories:run`, and `npm run stories:judge` before human UAT.
 
 Rollback plan:
 - Revert to last stable commit/image and rebuild containers.
@@ -228,3 +247,5 @@ Notes:
 - 2026-03-06: Decision - `Submitted` is a dashboard-local composite action (note + waiting-on-teacher status) built on existing deterministic tool calls.
 - 2026-03-07: Decision - remove on-card assignment quick actions and make the review drawer the single editing surface so parents do not have to guess which buttons write immediately.
 - 2026-03-08: Decision - collapse secondary home sections, convert `All Schoolwork` from a board to one grouped list, and keep only one editable drawer section open at a time to reduce visual noise.
+- 2026-03-20: Decision - keep `/beta` on the existing dashboard API contract and add a dedicated beta test layer rather than splitting backend behavior.
+- 2026-03-20: Decision - prioritize beta stabilization around client-state safety: stale request guards, draft preservation, and focus return before broader polish.

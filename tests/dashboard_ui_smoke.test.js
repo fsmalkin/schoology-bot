@@ -1,75 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { chromium } from "playwright";
 import { closeDb, getDb } from "../src/db.js";
-import { createDashboardServer } from "../src/dashboard_server.js";
 import { runToolByName } from "../src/tool_runner.js";
-
-function makeConfig(tempDir) {
-  return {
-    schedule: {
-      timezone: "America/New_York",
-      scrapeCron: "0 6 * * *",
-      sendCron: "0 7 * * *",
-      reminderCron: "*/1 * * * *",
-    },
-    liveChecks: {
-      enabled: false,
-      cron: "0 5 * * *",
-    },
-    paths: {
-      dataDir: tempDir,
-      statePath: path.join(tempDir, "state.json"),
-      agentDbPath: path.join(tempDir, "agent.db"),
-    },
-  };
-}
-
-function seedStateFile(config) {
-  fs.writeFileSync(
-    config.paths.statePath,
-    JSON.stringify(
-      {
-        meta: { createdAt: new Date().toISOString() },
-        lastScrapeAt: "2026-02-16T11:00:00Z",
-        lastSummarySentAt: "2026-02-16T12:00:00Z",
-        assignments: {},
-      },
-      null,
-      2
-    ),
-    "utf8"
-  );
-}
-
-function seedAssignments(db) {
-  db.prepare(
-    `
-    INSERT INTO assignments (
-      key, course, title, due_date, status, score, url, raw_text,
-      first_seen_at, last_seen_at, last_missing_at, resolved_at, is_missing, manual_status, auto_ignored
-    )
-    VALUES
-      ('a1', 'Algebra: Sec 1', 'Homework 1', '2/15/26 11:59pm', 'Missing', '', 'https://schoology.local/a1', '', '2026-02-10T00:00:00Z', '2026-02-16T00:00:00Z', '2026-02-16T00:00:00Z', NULL, 1, NULL, 0),
-      ('a2', 'Latin: Sec 1', 'Quiz 1', '2/21/26 11:59pm', 'Missing', '', '', '', '2026-02-10T00:00:00Z', '2026-02-16T00:00:00Z', '2026-02-16T00:00:00Z', NULL, 1, 'Waiting on teacher', 0)
-  `
-  ).run();
-}
-
-function seedTasks(db) {
-  db.prepare(
-    `
-    INSERT INTO tasks (
-      assignment_key, title, message, remind_at, status, kind, recurrence_kind, recurrence_tz, auto_cancel_on_resolve, auto_planned, created_at
-    )
-    VALUES
-      (NULL, 'Ask teacher', 'follow up tomorrow', '2026-02-16T22:00:00Z', 'pending', 'personal', 'none', NULL, 0, 0, '2026-02-10T00:00:00Z')
-  `
-  ).run();
-}
+import {
+  makeDashboardConfig,
+  makeDashboardTempDir,
+  seedDashboardAssignments,
+  seedDashboardStateFile,
+  seedDashboardTasks,
+  startDashboardServer,
+} from "./dashboard_test_utils.js";
 
 async function launchChromiumOrSkip(t) {
   try {
@@ -85,12 +27,12 @@ async function launchChromiumOrSkip(t) {
 }
 
 test("dashboard card interactions open the review drawer and keep writes explicit", async (t) => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "schoology-dashboard-ui-"));
-  const config = makeConfig(tempDir);
-  seedStateFile(config);
+  const tempDir = makeDashboardTempDir("schoology-dashboard-ui-");
+  const config = makeDashboardConfig(tempDir);
+  seedDashboardStateFile(config);
   const db = getDb(config);
-  seedAssignments(db);
-  seedTasks(db);
+  seedDashboardAssignments(db);
+  seedDashboardTasks(db);
 
   const toolExecutor = async (toolDb, tool, args, context) => {
     if (tool === "refresh_schoology") {
@@ -100,15 +42,15 @@ test("dashboard card interactions open the review drawer and keep writes explici
     return runToolByName(toolDb, tool, args, context);
   };
 
-  const server = createDashboardServer({ config, logger: { log: () => {} }, toolExecutor });
   let browser;
+  let stop = async () => {};
   try {
     browser = await launchChromiumOrSkip(t);
     if (!browser) return;
 
-    await server.start(0);
-    const address = server.server.address();
-    const port = address && typeof address === "object" ? address.port : 0;
+    const serverRuntime = await startDashboardServer({ config, logger: { log: () => {} }, toolExecutor });
+    const { port } = serverRuntime;
+    stop = serverRuntime.stop;
     assert.ok(port > 0);
 
     const page = await browser.newPage();
@@ -193,7 +135,7 @@ test("dashboard card interactions open the review drawer and keep writes explici
     await page.close();
   } finally {
     if (browser) await browser.close();
-    await server.stop().catch(() => {});
+    await stop().catch(() => {});
     closeDb();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

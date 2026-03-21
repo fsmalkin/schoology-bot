@@ -1,0 +1,272 @@
+/*
+ * beta_dashboard.css
+ * Loaded after dashboard.css on /beta.
+ * Accordion drawer: collapsed rows showing current value + chevron, click to expand.
+ */
+
+/* ─── BETA BADGE ──────────────────────────────────── */
+.beta-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 100px;
+  background: rgba(91, 99, 245, 0.15);
+  color: var(--brand);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+/* ─── CLOSE BUTTON ────────────────────────────────── */
+.beta-close-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.beta-close-btn:hover {
+  background: var(--canvas);
+  border-color: var(--ink-4);
+  color: var(--ink);
+}
+
+/* ─── DRAWER CONTAINER ────────────────────────────── */
+.beta-drawer {
+  position: relative;
+  display: grid;
+  gap: 0;
+}
+
+/* ─── HEADER ──────────────────────────────────────── */
+.beta-header {
+  padding: 0 44px 18px 0;
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  gap: 5px;
+}
+
+.beta-eyebrow {
+  margin: 0;
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.beta-title {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.beta-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.beta-meta-sep { color: var(--ink-4); font-size: 13px; }
+.beta-meta-due { font-size: 13px; color: var(--ink-2); font-weight: 500; }
+
+.beta-schoology-link {
+  color: var(--brand);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.beta-schoology-link:hover { text-decoration: underline; }
+
+.beta-reason {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-3);
+  line-height: 1.45;
+  font-style: italic;
+}
+
+/* ─── TASK STATUS ROW ─────────────────────────────── */
+.beta-task-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.beta-task-status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.beta-task-status-pill.done  { background: rgba(22,163,74,0.1);  color: #16a34a; }
+.beta-task-status-pill.pending { background: rgba(217,119,6,0.1); color: #d97706; }
+
+.beta-task-action { font-size: 12.5px; padding: 4px 10px; }
+.beta-task-delete {
+  margin-left: auto;
+  font-size: 12.5px;
+  padding: 4px 10px;
+  color: var(--ink-3);
+}
+.beta-task-delete:hover { color: #dc2626; border-color: rgba(220,38,38,0.3); }
+
+/* ─── ACCORDION SECTION ───────────────────────────── */
+.beta-section {
+  border-top: 1px solid var(--border);
+}
+
+/* The clickable row: label on left, value+chevron on right */
+.beta-section-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+.beta-section-row:hover { opacity: 0.75; }
+
+.beta-row-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+
+.beta-row-value-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.beta-row-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.beta-row-value-sub {
+  font-weight: 400;
+  color: var(--ink-3);
+}
+
+.beta-row-value-empty {
+  font-weight: 400;
+  color: var(--ink-4);
+}
+
+.beta-chevron {
+  color: var(--ink-4);
+  flex-shrink: 0;
+  transition: transform 200ms ease;
+}
+.beta-section.is-open .beta-chevron { transform: rotate(180deg); }
+
+/* Expanded body */
+.beta-section-body {
+  padding-bottom: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+/* Footer row inside expanded body: remove-link left, save right */
+.beta-body-foot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.beta-remove-link {
+  margin-right: auto;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: transparent;
+  transition: color 120ms ease, text-decoration-color 120ms ease;
+}
+.beta-remove-link:hover {
+  color: #dc2626;
+  text-decoration-color: rgba(220,38,38,0.4);
+}
+
+/* ─── TWO-COLUMN FORM ROW ─────────────────────────── */
+.beta-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+@media (max-width: 480px) { .beta-two-col { grid-template-columns: 1fr; } }
+
+/* ─── NOTES ───────────────────────────────────────── */
+.beta-notes-list {
+  display: grid;
+  gap: 6px;
+}
+
+.beta-note-item {
+  padding: 10px 13px;
+  border-radius: var(--radius);
+  background: var(--canvas);
+  border: 1px solid var(--border);
+}
+
+.beta-note-date {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-3);
+  margin-bottom: 4px;
+}
+
+.beta-note-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
