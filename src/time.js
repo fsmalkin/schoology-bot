@@ -214,6 +214,28 @@ export function parseReminderTime(input, timeZone, now = new Date()) {
 
   const numericOnly = /^\d{1,4}$/.test(text);
   if (!numericOnly) {
+    // A datetime-local string (e.g. "2026-03-20T12:00" from an HTML datetime-local
+    // input) has no timezone offset. Interpret it in the configured timezone rather
+    // than the server's local time, which may differ.
+    const localDtMatch = text.match(
+      /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/
+    );
+    if (localDtMatch) {
+      const date = makeDateInZone(
+        {
+          year: Number(localDtMatch[1]),
+          month: Number(localDtMatch[2]),
+          day: Number(localDtMatch[3]),
+          hour: Number(localDtMatch[4]),
+          minute: Number(localDtMatch[5]),
+        },
+        withDefaultZone(timeZone)
+      );
+      if (date && Number.isFinite(date.getTime())) {
+        return { ok: true, date, assumption: null };
+      }
+    }
+
     const direct = new Date(text);
     if (Number.isFinite(direct.getTime())) {
       return { ok: true, date: direct, assumption: null };
@@ -222,16 +244,33 @@ export function parseReminderTime(input, timeZone, now = new Date()) {
 
   const tz = withDefaultZone(timeZone);
   const nowParts = getLocalDateTimeParts(now, tz);
-  const base = nowParts ? makeDateInZoneParts(nowParts, tz) : now;
+  // Use the local Date constructor with Eastern time values so chrono's internal
+  // getHours()/getDate() calls return Eastern values on any server timezone.
+  const base = nowParts
+    ? new Date(nowParts.year, nowParts.month - 1, nowParts.day, nowParts.hour, nowParts.minute)
+    : now;
   const results = chrono.parse(text, base, { forwardDate: true });
   if (results && results.length > 0) {
     const start = results[0].start;
-    const date = start?.date();
-    if (date && Number.isFinite(date.getTime())) {
+    const chronoDate = start?.date();
+    if (chronoDate && Number.isFinite(chronoDate.getTime())) {
       let assumption = null;
       if (!start.isCertain("meridiem")) {
         assumption = "Assumed PM when meridiem was not specified.";
       }
+      // chrono built its result using local time, which contains Eastern values
+      // (because we seeded it with Eastern values via the local constructor).
+      // Extract those local-time parts and convert to the correct UTC instant.
+      const date = makeDateInZone(
+        {
+          year: chronoDate.getFullYear(),
+          month: chronoDate.getMonth() + 1,
+          day: chronoDate.getDate(),
+          hour: chronoDate.getHours(),
+          minute: chronoDate.getMinutes(),
+        },
+        tz
+      );
       return { ok: true, date, assumption };
     }
   }

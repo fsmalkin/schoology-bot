@@ -135,6 +135,58 @@ test("dashboard write API rejects unsafe requests", async () => {
   }
 });
 
+test("schedule_reminder via HTTP stores noon datetime-local as noon Eastern", async () => {
+  const tempDir = makeDashboardTempDir("schoology-dashboard-noon-");
+  const config = makeDashboardConfig(tempDir);
+  seedDashboardStateFile(config);
+  const db = getDb(config);
+  seedDashboardAssignments(db);
+
+  const { port, stop } = await startDashboardServer({
+    config,
+    logger: { log: () => {} },
+  });
+  try {
+    // Simulate the browser sending a datetime-local value (no timezone offset).
+    // "2026-03-20T12:00" means the user typed noon. It must be stored as noon Eastern,
+    // i.e. 2026-03-20T16:00:00Z (UTC), not noon UTC (2026-03-20T12:00:00Z = 8 AM Eastern).
+    let response = await dashboardWrite(port, "schedule_reminder", {
+      key: "a1",
+      remindAt: "2026-03-20T12:00",
+      recurrence: "none",
+      message: "Noon reminder test",
+      replaceExisting: true,
+    });
+    let payload = await response.json();
+    assert.equal(payload.output.ok, true, JSON.stringify(payload));
+    const storedUtc = new Date(payload.output.remindAtUtc).getTime();
+    assert.equal(
+      storedUtc,
+      new Date("2026-03-20T16:00:00Z").getTime(),
+      `Expected noon EDT (16:00 UTC) but got ${payload.output.remindAtUtc}`
+    );
+    assert.match(payload.output.remindAtLabel, /12:00 PM/);
+
+    // Also verify update_assignment_reminder honours the timezone correctly.
+    const reminderId = payload.output.reminder.id;
+    response = await dashboardWrite(port, "update_assignment_reminder", {
+      id: reminderId,
+      remindAt: "2026-03-21T12:00",
+    });
+    payload = await response.json();
+    assert.equal(payload.output.ok, true, JSON.stringify(payload));
+    assert.equal(
+      new Date(payload.output.reminder?.remindAtUtc).getTime(),
+      new Date("2026-03-21T16:00:00Z").getTime(),
+      `update: expected noon EDT (16:00 UTC) but got ${payload.output.reminder?.remindAtUtc}`
+    );
+  } finally {
+    await stop();
+    closeDb();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("dashboard write API supports assignment and follow-up mutations", async () => {
   const tempDir = makeDashboardTempDir("schoology-dashboard-mutations-");
   const config = makeDashboardConfig(tempDir);
