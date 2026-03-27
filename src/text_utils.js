@@ -108,6 +108,12 @@ function cleanSchoologyTitleCandidate(text) {
     .trim();
 }
 
+export function expandDisplayTitle(text) {
+  const compact = normalizeCompactText(text);
+  if (!compact) return "";
+  return compact.replace(/\bMUA\b/g, "Mid-Unit Assessment");
+}
+
 function earliestMatchIndex(text, patterns) {
   let earliest = -1;
   for (const pattern of patterns) {

@@ -15,7 +15,7 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 - Incoming Telegram messages are batched briefly and the oldest dropped if too long.
 - Agent tool routing uses a multi-step structured-output planner (tool group -> tool picker -> augment).
 - Tool execution is handled by app code (not model tool-calling).
-- Availability target: run via Docker with restart policy + health check; update with `docker compose up -d --build`.
+- Availability target: run via Docker with restart policy + health check; update with `docker compose -p schoology-prod up -d --build`.
 - Production runtime is hosted on the local server (Docker Compose).
 - If using Twilio later, use Auth Token for now; plan to switch to API Key for server move.
 - Session-based login: use one-time interactive login and refresh when session expires.
@@ -37,6 +37,7 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 - OpenClaw beta runtime uses gateway-native Telegram + cron, with `schoology-tool-api` retained as a parity sidecar.
 - Coexistence guardrail: Schoology stacks use explicit Docker Compose project names (`schoology-prod`, `schoology-openclaw-beta`) to avoid conflicts with other local OpenClaw projects.
 - Beta reset command (`npm run beta:reset-memory`) targets the active OpenClaw beta runtime (`schoology-openclaw-beta`, `data/beta/*`); legacy beta compose is rollback-only.
+- Beta runtime DB is `data/beta/agent.runtime.db`; reset/restore must install it via container-side copy so SQLite can open the bind-mounted file reliably on Windows.
 - Disaster-recovery automation uses scheduled backup + freshness checks with off-machine folder sync.
 - Agentic release gate is mandatory before UAT for reminder-impacting releases:
   - Reset beta from prod memory.
@@ -44,7 +45,7 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
   - Run one GPT-5.2 judge pass and review evidence.
   - Then execute user UAT.
 
-## Status Snapshot (2026-03-15)
+## Status Snapshot (2026-03-23)
 - Delivered:
   - Runtime migrated from laptop to local server and is running in Docker Compose with health checks.
   - OpenClaw beta one-gateway runtime is running from one shared image (`schoology-beta-openclaw-unified:latest`).
@@ -55,19 +56,18 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
   - Recurring reminder runtime support implemented across DB, tool runner, and reminder scheduler (`daily`, `weekdays`, `weekly`).
   - Dashboard redesigned with dark sidebar nav, 4-card metric row, and 2-column home layout (assignment sections + right-col panels). Replaces the hero/tab-bar shell. Section labels updated for clarity (`Tonight's Assignments`, `Waiting on Teacher`).
   - Schoology title derivation: assignments with no link title now derive a clean display name from the raw Schoology row text.
+  - MUA/external-tool-link scrape correctness wave delivered: score-vs-missing conflict handling, detail-page fallback for ambiguous rows, stable assignment identity refresh, auto-cancel-on-resolve reminder cleanup, DB-backed chat memory/style persistence, plain-language formatting, richer follow-up replies, and `Will complete in class` status support.
+  - Reminder-scope release gate completed for this wave: `npm run beta:reset-memory`, `npm run stories:run`, `npm run stories:judge`, prod rebuild, and beta/prod dashboard health checks.
   - Full dashboard design plan written (`docs/DASHBOARD_DESIGN.md`): user stories, navigation architecture, view designs, interaction patterns, mobile layout, and implementation phases.
 - In progress:
-  - Agentic story suite run and single-pass GPT-5.2 judge evidence review before UAT.
-  - Production rollout checklist and cutover validation for recurring reminder release.
   - Dashboard Phase 1 polish: sidebar nav fix, course color stripes, mobile bottom tab bar.
+  - OpenClaw cron bootstrap reliability (`openclaw_cron_sync`) still relies on runtime retries/log validation rather than deterministic integration coverage.
 
 ## Active Queue (P1)
-1. Recurring reminders release gate completion (beta reset, story suite, GPT-5.2 judge evidence, UAT, prod rollout).
-2. OpenClaw beta UAT and production promotion readiness.
-3. Dashboard Phase 1: sidebar nav fix, course color stripes, mobile bottom tab bar, system status dot in right column.
-4. DB-backed context compaction and long-thread memory (#14).
-5. Detail-page fallback for ambiguous submission status (#15).
-6. Auto-cancel assignment reminders when assignment becomes inactive/resolved (#10).
+1. OpenClaw beta UAT and production promotion readiness.
+2. Dashboard Phase 1: sidebar nav fix, course color stripes, mobile bottom tab bar, system status dot in right column.
+3. OpenClaw cron bootstrap hardening and explicit test coverage.
+4. Login/session resilience follow-up while keeping secrets-based unattended login (#18) parked unless strategy changes.
 
 ## Ready Next (P2)
 1. Dashboard Phase 2: This Week view (calendar strip + day-lane layout).
@@ -104,4 +104,3 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 - Execution status, intake state, and handoffs are tracked on the GitHub Project `FSM Engineering Board`.
 - This roadmap remains strategic (goals, priorities, and direction), not the live execution board.
 - Repo-local handoff ledger: `docs/WORKLOG.md`.
-

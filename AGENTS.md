@@ -5,19 +5,20 @@ Codex owns Docker operations for this repo. Do not ask the user to restart servi
 
 ## Default service management
 - Build + restart after code changes:
-  `docker compose up -d --build`
+  `docker compose -p schoology-prod up -d --build`
 - Tail Telegram agent logs:
-  `docker compose logs --tail 200 telegram-agent`
+  `docker compose -p schoology-prod logs --tail 200 telegram-agent`
 - Tail scheduler logs:
-  `docker compose logs --tail 200 schoology`
+  `docker compose -p schoology-prod logs --tail 200 schoology`
 - Tail dashboard logs:
-  `docker compose logs --tail 200 dashboard`
+  `docker compose -p schoology-prod logs --tail 200 dashboard`
 - Stop services:
-  `docker compose down`
+  `docker compose -p schoology-prod down`
 
 ## Beta reset operations
 - Use `npm run beta:reset-memory` to refresh beta from prod.
 - Beta reset targets the active OpenClaw beta runtime (`schoology-openclaw-beta`, `data/beta/*`).
+- Beta runtime DB lives at `data/beta/agent.runtime.db`; reset/restore scripts must install it via container-side copy, not host-side `Copy-Item`, or SQLite can fail to open the bind-mounted file.
 - Treat `docker-compose.beta.yml` / `schoology-beta` as rollback-only unless a task explicitly calls for legacy beta.
 
 ## Agent usage

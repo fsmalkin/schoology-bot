@@ -3,6 +3,10 @@ import path from "path";
 import { chromium } from "playwright";
 import { deriveSchoologyAssignmentTitle } from "./text_utils.js";
 
+const MAX_DETAIL_FALLBACK_ROWS = 25;
+const MISSING_HINT_RE = /\b(missing|not completed|not submitted|no submission|not turned in|incomplete|absent)\b/i;
+const SUBMITTED_AWAITING_GRADE_RE = /submitted, awaiting grade|submission that has not been graded|assignment submitted/i;
+
 function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });
@@ -461,7 +465,229 @@ function normalizeText(text) {
   return text.replace(/\s+/g, " ").trim().replace(/\u00e2\u20ac\u201d/g, "-");
 }
 
-async function extractAssignments(page) {
+function extractAssignmentId(url) {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+  const match = raw.match(/\/assignment\/(\d+)(?:[/?#]|$)/i);
+  return match ? String(match[1]) : "";
+}
+
+function hasMeaningfulScore(score) {
+  const text = normalizeText(score || "");
+  if (!text) return false;
+  if (MISSING_HINT_RE.test(text)) return false;
+  if (/^no grade$/i.test(text)) return false;
+  if (/^not submitted$/i.test(text)) return false;
+  if (/^submitted, awaiting grade$/i.test(text)) return false;
+  if (/[a-f]\b/i.test(text)) return true;
+  const firstNumber = text.match(/\d+(?:\.\d+)?/);
+  if (!firstNumber) return false;
+  return Number(firstNumber[0]) > 0;
+}
+
+function buildRowSignals(item = {}) {
+  const course = normalizeText(item.course || "");
+  const title = normalizeText(item.title || "");
+  const titleText = normalizeText(item.titleText || "");
+  const dueDate = normalizeText(item.dueDate || "");
+  const status = normalizeText(item.status || "");
+  const score = normalizeText(item.score || "");
+  const url = normalizeText(item.url || "");
+  const rawText = normalizeText(item.rawText || "");
+  const statusText = normalizeText(item.statusText || "");
+  const submissionText = normalizeText(item.submissionText || "");
+  const gradeText = normalizeText(item.gradeText || "");
+  const assignmentId = extractAssignmentId(url);
+  const scoreText = hasMeaningfulScore(score) ? score : hasMeaningfulScore(gradeText) ? gradeText : "";
+  const statusHintText = [status, statusText, submissionText, rawText].filter(Boolean).join(" ");
+  const hasSubmittedAwaitingGrade =
+    SUBMITTED_AWAITING_GRADE_RE.test(statusHintText) || SUBMITTED_AWAITING_GRADE_RE.test(scoreText);
+  const hasMissingHint = MISSING_HINT_RE.test(statusHintText);
+  const looksLikeExternalToolLink =
+    /external-tool-link/i.test(statusHintText) || /\bmua\b/i.test(title) || /\bmua\b/i.test(titleText);
+  const ambiguous = Boolean(hasMissingHint && !hasMeaningfulScore(scoreText) && looksLikeExternalToolLink);
+
+  let finalStatus = status || "Missing";
+  let isMissing = Boolean(hasMissingHint);
+  let confidence = 10;
+  let detailCandidate = false;
+
+  if (hasSubmittedAwaitingGrade) {
+    finalStatus = "Submitted, awaiting grade";
+    isMissing = true;
+    confidence = 80;
+  } else if (hasMeaningfulScore(scoreText)) {
+    finalStatus = scoreText;
+    isMissing = false;
+    confidence = 100;
+  } else if (submissionText) {
+    finalStatus = submissionText;
+    isMissing = SUBMITTED_AWAITING_GRADE_RE.test(submissionText) || MISSING_HINT_RE.test(submissionText);
+    confidence = isMissing ? 70 : 60;
+  } else if (hasMissingHint) {
+    finalStatus = "Missing";
+    isMissing = true;
+    confidence = 40;
+    detailCandidate = ambiguous;
+  } else if (scoreText) {
+    finalStatus = scoreText;
+    isMissing = false;
+    confidence = 90;
+  } else if (statusText) {
+    finalStatus = statusText;
+    isMissing = MISSING_HINT_RE.test(statusText) || SUBMITTED_AWAITING_GRADE_RE.test(statusText);
+    confidence = isMissing ? 60 : 50;
+  }
+
+  return {
+    key: assignmentId ? `assignment:${assignmentId}` : url || `${course}|${title}|${dueDate}`,
+    assignmentId,
+    course,
+    title,
+    titleText,
+    dueDate,
+    status: finalStatus,
+    score: scoreText,
+    url,
+    rawText,
+    statusText,
+    submissionText,
+    gradeText,
+    hasMissingHint,
+    hasSubmittedAwaitingGrade,
+    looksLikeExternalToolLink,
+    detailCandidate,
+    confidence,
+    isMissing,
+  };
+}
+
+function parseHtmlText(html) {
+  return normalizeText(
+    String(html || "")
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+  );
+}
+
+function classifyDetailText(html, fallbackRow = {}) {
+  const text = parseHtmlText(html);
+  const scoreMatch = text.match(/\b([A-F]|\d+(?:\.\d+)?)\s*(?:\/\s*\d+(?:\.\d+)?)\b/);
+  const hasSubmittedAwaitingGrade = SUBMITTED_AWAITING_GRADE_RE.test(text);
+  const hasMissingHint = MISSING_HINT_RE.test(text);
+  if (hasSubmittedAwaitingGrade) {
+    return {
+      status: "Submitted, awaiting grade",
+      score: fallbackRow.score || "",
+      isMissing: true,
+      confidence: 120,
+    };
+  }
+  if (scoreMatch) {
+    return {
+      status: scoreMatch[0],
+      score: scoreMatch[0],
+      isMissing: false,
+      confidence: 120,
+    };
+  }
+  if (hasMissingHint) {
+    return {
+      status: "Missing",
+      score: fallbackRow.score || "",
+      isMissing: true,
+      confidence: 60,
+    };
+  }
+  return {
+    status: fallbackRow.status || "Missing",
+    score: fallbackRow.score || "",
+    isMissing: fallbackRow.isMissing === true,
+    confidence: 10,
+  };
+}
+
+function rankAssignmentRow(row) {
+  let rank = Number(row?.confidence || 0);
+  if (row?.detailResolved) rank += 20;
+  if (row?.score && hasMeaningfulScore(row.score)) rank += 10;
+  if (row?.status === "Submitted, awaiting grade") rank += 5;
+  if (row?.isMissing === false) rank += 2;
+  return rank;
+}
+
+function dedupeAssignments(assignments) {
+  const grouped = new Map();
+  for (const assignment of assignments || []) {
+    const key = assignment.assignmentId ? `assignment:${assignment.assignmentId}` : assignment.key || assignment.url || assignment.title || "";
+    const current = grouped.get(key);
+    if (!current || rankAssignmentRow(assignment) > rankAssignmentRow(current)) {
+      grouped.set(key, assignment);
+    }
+  }
+  return Array.from(grouped.values());
+}
+
+async function fetchDetailHtml(page, url) {
+  const detailPage = await page.context().newPage();
+  try {
+    detailPage.setDefaultTimeout(30000);
+    await detailPage.goto(url, { waitUntil: "domcontentloaded" });
+    await detailPage.waitForLoadState("networkidle").catch(() => {});
+    return await detailPage.content();
+  } finally {
+    await detailPage.close().catch(() => {});
+  }
+}
+
+async function resolveAmbiguousAssignments(page, assignments, options = {}) {
+  const detailHtmlByUrl = options.detailHtmlByUrl && typeof options.detailHtmlByUrl === "object"
+    ? options.detailHtmlByUrl
+    : null;
+  const detailFetcher = options.detailFetcher || null;
+  if (!detailFetcher && !detailHtmlByUrl) return assignments;
+
+  const resolved = [];
+  let fetched = 0;
+  for (const assignment of assignments) {
+    if (!assignment.detailCandidate || !assignment.url || fetched >= MAX_DETAIL_FALLBACK_ROWS) {
+      resolved.push(assignment);
+      continue;
+    }
+
+    fetched += 1;
+    let detailHtml = null;
+    try {
+      if (detailHtmlByUrl && Object.prototype.hasOwnProperty.call(detailHtmlByUrl, assignment.url)) {
+        detailHtml = detailHtmlByUrl[assignment.url];
+      } else {
+        detailHtml = await detailFetcher(assignment.url, assignment);
+      }
+    } catch {
+      detailHtml = null;
+    }
+
+    if (!detailHtml) {
+      resolved.push(assignment);
+      continue;
+    }
+
+    const detail = classifyDetailText(detailHtml, assignment);
+    resolved.push({
+      ...assignment,
+      status: detail.status || assignment.status,
+      score: detail.score || assignment.score,
+      isMissing: detail.isMissing,
+      detailResolved: true,
+      confidence: Math.max(assignment.confidence || 0, detail.confidence || 0),
+    });
+  }
+
+  return resolved;
+}
+
+async function extractAssignments(page, options = {}) {
   const extracted = await page.evaluate(() => {
     const normalize = (value) => String(value || "").replace(/\s+/g, " ").trim();
     const stripCommentPrefix = (value) => normalize(value).replace(/^Comment:\s*/i, "");
@@ -535,6 +761,9 @@ async function extractAssignments(page) {
           score: gradeText,
           url,
           rawText: normalize(row.textContent || ""),
+          statusText: normalize(commentText || exceptionText || gradeColumnText || ""),
+          submissionText,
+          gradeText,
           isMissing: missingPatterns.some((pattern) => pattern.test(statusHints)),
         });
       }
@@ -543,19 +772,36 @@ async function extractAssignments(page) {
     return results;
   });
 
-  return extracted.map((item) => {
-    const rawText = normalizeText(item.rawText || "");
+  let assignments = extracted.map((item) => {
+    const signals = buildRowSignals(item);
     return {
+      ...signals,
       course: normalizeText(item.course || ""),
       title: deriveSchoologyAssignmentTitle({
-        title: normalizeText(item.title || ""),
-        titleText: normalizeText(item.titleText || ""),
-        rawText,
+        title: signals.title || normalizeText(item.title || ""),
+        titleText: signals.titleText || normalizeText(item.titleText || ""),
+        rawText: signals.rawText,
       }),
+    };
+  });
+
+  assignments = await resolveAmbiguousAssignments(page, assignments, options);
+  assignments = dedupeAssignments(assignments);
+
+  return assignments.map((item) => {
+    const rawText = normalizeText(item.rawText || "");
+    const title = deriveSchoologyAssignmentTitle({
+      title: normalizeText(item.title || ""),
+      titleText: normalizeText(item.titleText || ""),
+      rawText,
+    });
+    return {
+      course: normalizeText(item.course || ""),
+      title,
       dueDate: normalizeText(item.dueDate || ""),
-      status: item.status || "Missing",
+      status: normalizeText(item.status || "Missing"),
       score: normalizeText(item.score || ""),
-      url: item.url || "",
+      url: normalizeText(item.url || ""),
       rawText,
       isMissing: Boolean(item.isMissing),
     };
@@ -665,7 +911,9 @@ export async function scrapeMissingAssignments(config) {
       await selectStudentIfNeeded(page, config.schoology.studentName);
       await page.waitForLoadState("networkidle");
 
-      const assignments = await extractAssignments(page);
+      const assignments = await extractAssignments(page, {
+        detailFetcher: (url) => fetchDetailHtml(page, url),
+      });
       await context.storageState({ path: config.paths.storagePath });
 
       if (assignments.length === 0) {
@@ -711,12 +959,12 @@ export async function extractMissingAssignmentsFromHtml(html) {
   }
 }
 
-export async function extractAssignmentsFromHtml(html) {
+export async function extractAssignmentsFromHtml(html, options = {}) {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   try {
     await page.setContent(html, { waitUntil: "domcontentloaded" });
-    return await extractAssignments(page);
+    return await extractAssignments(page, options);
   } finally {
     await browser.close();
   }

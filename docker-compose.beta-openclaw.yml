@@ -145,7 +145,6 @@ services:
     command: ["npm", "run", "dashboard"]
     environment:
       - RUNTIME_STACK=openclaw
-      - AGENT_DB_PATH=/app/schoology/data/beta/agent.db
       - DASHBOARD_HOST=0.0.0.0
     volumes:
       - ./data:/app/schoology/data

@@ -6,6 +6,13 @@ import { migrateDb } from "../src/db.js";
 test("db migrations add task columns and index", () => {
   const db = new Database(":memory:");
   db.exec(`
+    CREATE TABLE chat_state (
+      chat_id TEXT PRIMARY KEY,
+      last_response_id TEXT,
+      turn_count INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT
+    );
+
     CREATE TABLE tasks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
@@ -32,6 +39,14 @@ test("db migrations add task columns and index", () => {
   const indexes = db.prepare("PRAGMA index_list(tasks)").all().map((row) => row.name);
   assert.ok(indexes.includes("idx_tasks_assignment"));
   assert.ok(indexes.includes("idx_tasks_kind_status"));
+
+  const chatColumns = db.prepare("PRAGMA table_info(chat_state)").all().map((row) => row.name);
+  assert.ok(chatColumns.includes("message_style"));
+
+  const chatMemory = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'chat_memory'")
+    .get();
+  assert.ok(chatMemory);
 });
 
 test("db migrations move pending legacy reminders into assignment tasks", () => {

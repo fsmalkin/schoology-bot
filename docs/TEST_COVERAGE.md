@@ -16,9 +16,12 @@ Unit tests
 - Login-failure Telegram alert throttling (first alert, cooldown suppression, changed-error resend, post-success resend).
 - Assignment identity canonicalization (`assignment:<id>`) and legacy-key merge behavior.
 - Assignment identity migration v6 (backfill `assignment_id`, dedupe by ID, and reference relink for notes/tasks).
+- Chat-memory persistence, message-style persistence, and resolved-assignment reminder cleanup helpers.
 - Schoology scraper title fallback for rows that have visible text but no assignment link (`Note: This material is not available within Schoology` shape).
+- Schoology scraper conflict handling for MUA/external-tool-link rows (score beats Missing badge, detail-page fallback for ambiguous rows, capped fallback volume).
 - Dashboard health/data builders (heartbeat + snapshot shaping).
 - Dashboard parent-home and schoolwork data builders (home section classification, parent-facing labels, assignment notes preview, reminder summary, task-only filtering, and raw-text title fallback when stored titles are blank).
+- Dashboard read models for `Will complete in class` and MUA display-title expansion.
 - Dashboard browser smoke coverage for click-to-open cards, the minimal card surface, collapsed drawer sections, explicit assignment status saves, visible Schoology refresh busy/success feedback, backdrop/escape close behavior, and bulk-mode reveal.
 - Beta dashboard client-state safeguards in `beta_dashboard.js` (draft-preserving rerenders, focus-return fallback when cards move buckets, and safer `Submitted` partial-failure handling) are covered through dedicated browser smoke and regression scenarios.
 - Time parsing and timezone formatting (local labels, shorthand).
@@ -28,11 +31,13 @@ Unit tests
 - Capability registry rendering and runtime limits.
 - Capability guard behavior (unsupported request blocked with fallback; supported request proceeds to tools).
 - Agent mock recurring story flow (assumption confirmation + conversational correction).
+- Agent runtime memory replay/style-toggle coverage and richer readable follow-up formatting.
 
 Integration tests
 - OpenAI live plan tests (tool planning and schema format).
 - Live API simulation using dummy data.
 - Reminder delivery flow (runReminders with mocked Telegram sender).
+- Reminder integration coverage for auto-cancel-on-resolve behavior without canceling pending manual-status items.
 - Dashboard HTTP integration (page/assets, `GET /api/home`, read APIs, same-origin write guard, and assignment/task mutation routes).
 - Dashboard browser smoke (`tests/dashboard_ui_smoke.test.js`) for the card-first interaction model.
 - Dashboard beta HTTP integration (`tests/dashboard_server.test.js`) for `/beta`, `/beta/assets/beta.css`, and `/beta/assets/beta.js`.
@@ -57,6 +62,7 @@ CLI checks
   - `npm run beta:reset-memory`
   - `npm run stories:run`
   - `npm run stories:judge`
+- Beta reset now validates against the beta runtime DB file `data/beta/agent.runtime.db`; `stories:judge` must run after `stories:run` completes because it consumes the completed artifact directory.
 - Recovery/operations scripts:
   - `powershell -ExecutionPolicy Bypass -File scripts/start_schoology_stacks.ps1 -RuntimeMode docker`
   - `powershell -ExecutionPolicy Bypass -File scripts/create_schoology_pre_cutover_snapshot.ps1`
@@ -87,6 +93,7 @@ OpenClaw stack
 - Tool API cron-facing flows covered by unit tests (`tests/tool_runner_openclaw_cron.test.js`).
 - No automated tests for OpenClaw gateway UI.
 - Cron bootstrap behavior (`scripts/openclaw_cron_sync.mjs`) is validated via docker runtime logs, not unit tests.
+- Beta runtime DB bind-mount recovery is covered by live CLI release-gate execution (`npm run beta:reset-memory`), not automated unit tests.
 
 Performance and reliability
 - No load or soak tests.

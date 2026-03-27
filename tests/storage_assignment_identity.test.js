@@ -99,3 +99,43 @@ test("loadState merges legacy hash + canonical duplicate records into canonical 
   const saved = JSON.parse(fs.readFileSync(statePath, "utf8"));
   assert.deepEqual(Object.keys(saved.assignments), ["assignment:8267055411"]);
 });
+
+test("updateStateWithScrape keeps one record when a no-id assignment title drifts by graded suffix", () => {
+  const state = {
+    meta: { createdAt: "2026-03-16T10:00:00Z" },
+    assignments: {},
+  };
+
+  updateStateWithScrape(state, "2026-03-16T11:00:00Z", [
+    {
+      course: "Algebra 1 GT/AA MS7: Sec 004 B PER03",
+      title: "25-26 Algebra 1 Unit 6 MUA",
+      dueDate: "3/10/26 11:59pm",
+      status: "Missing",
+      score: "",
+      url: "",
+      rawText: "25-26 Algebra 1 Unit 6 MUA external-tool-link Due 3/10/26 11:59pm Missing",
+      isMissing: true,
+    },
+  ]);
+
+  const initialKey = Object.keys(state.assignments)[0];
+  assert.ok(initialKey);
+
+  updateStateWithScrape(state, "2026-03-17T11:00:00Z", [
+    {
+      course: "Algebra 1 GT/AA MS7: Sec 004 B PER03",
+      title: "25-26 Algebra 1 Unit 6 MUA (Graded: 3/16)",
+      dueDate: "3/10/26 11:59pm",
+      status: "Missing",
+      score: "",
+      url: "",
+      rawText: "25-26 Algebra 1 Unit 6 MUA (Graded: 3/16) external-tool-link Due 3/10/26 11:59pm Missing",
+      isMissing: true,
+    },
+  ]);
+
+  const keys = Object.keys(state.assignments);
+  assert.deepEqual(keys, [initialKey]);
+  assert.equal(state.assignments[initialKey].lastSeenAt, "2026-03-17T11:00:00Z");
+});

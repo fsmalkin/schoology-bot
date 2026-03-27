@@ -23,6 +23,7 @@ import {
   createAssignmentTask,
   createTask,
   deleteTask,
+  completeResolvedAssignmentReminders,
   findPendingAssignmentTask,
   getDb,
   listDueTasks,
@@ -142,6 +143,7 @@ export async function runScrape() {
       keywords: config.autoIgnore.keywords,
     });
   }
+  completeResolvedAssignmentReminders(db, { completedAt: scrapeAt });
   if (config.autoUpcoming.enabled) {
     autoPlanUpcomingReminders(db, config);
   }
@@ -488,6 +490,7 @@ export async function runReminders(options = {}) {
 
   const db = options.dbOverride || getDb(config);
   const now = nowOverride || nowIso();
+  completeResolvedAssignmentReminders(db, { completedAt: now });
   const due = listDueTasks(db, now);
   if (due.length === 0) return { ok: true, sent: 0, messages: [] };
 

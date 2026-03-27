@@ -24,6 +24,7 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
    - Playwright login -> grades page -> parse missing assignments.
    - Treat title text like `(Graded: 1/10)` as descriptive only; do not use it by itself as proof that the current student's item is graded or resolved.
    - If Schoology renders a gradebook row without an assignment link, fall back to the visible row title/raw row text so dashboard and reminder flows still show a usable title.
+   - For ambiguous external-tool-link rows, use score/submitted signals before generic Missing badges and fall back to the assignment detail page only for conflicting status evidence.
    - Updates state.json and syncs into SQLite.
 2) Summary send
    - Builds DB-backed summary (actionable + pending; archived hidden by default).
@@ -33,24 +34,29 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
    - Pending tasks due now trigger Telegram reminders.
    - One-time reminders roll over by 24h if not completed.
    - Recurring reminders are expanded by cadence (`daily`, `weekdays`, `weekly`) in reminder runner logic.
+   - Assignment-linked reminders with `auto_cancel_on_resolve=1` are auto-completed when the assignment resolves, is auto-ignored, or is submitted-awaiting-grade.
 4) Agent chat
    - Capability gate checks for unsupported requests and proposes nearest supported fallback.
    - Planner selects tools, executes, then composes final message.
-   - Pending actions stored per chat for multi-step confirmations.
+   - Pending actions, chat memory snapshots, and message style preferences are stored per chat for multi-step confirmations and long-thread continuity.
    - Reminder writes are agent-mediated with proactive assumptions + post-create confirmation:
      - missing recurring cadence defaults to weekdays on explicit recurring asks,
      - missing recurring time defaults to 7:00 AM / 4:30 PM / 9:00 PM ET by cue type,
      - unsupported cadence falls back to weekly with explicit warning.
+   - User-facing follow-up text expands `MUA` to `Mid-Unit Assessment`, can switch between `compact` and `plain_language`, and includes saved note/reminder context when available.
 5) Dashboard
    - `Home` reads SQLite to build a parent-first after-school plan with clickable assignment and follow-up cards.
    - `All Schoolwork` reads SQLite for card-based assignment management, opt-in bulk status updates, notes, and reminders.
+   - Manual assignment statuses include `Will complete in class` as a pending-but-lower-urgency state.
    - `Admin` reads state.json, SQLite, and heartbeat files for service freshness + assignment/follow-up health.
 
 ## Data and logs
 - data/state.json
   - Last scrape timestamps and raw assignment cache.
 - data/agent.db
-  - SQLite for assignments, unified task/reminder records, notes, chat_state.
+  - SQLite for assignments, unified task/reminder records, notes, chat_state, and chat_memory.
+- data/beta/agent.runtime.db
+  - Beta OpenClaw bind-mounted runtime DB; reset/restore scripts install it via container-side copy to avoid Windows bind-mount SQLite open issues.
 - artifacts/beta-reset/*
   - Beta reset snapshots and parity report artifacts.
 - artifacts/agentic-story-suite/*
@@ -116,6 +122,7 @@ Outcome:
 - Single runtime path reduces startup drift and troubleshooting branches.
 - Tasks execute post-boot/logged-off without requiring interactive desktop logon.
 - Login failures now produce diagnostic artifacts and retry before alerting.
+- Beta reset/restore now preserve a Docker-healthy beta SQLite runtime file (`data/beta/agent.runtime.db`) across Windows bind mounts.
 
 Fallback:
 - If unattended task logon fails, run `scripts/start_schoology_stacks.ps1 -RuntimeMode docker` manually, then re-register tasks with a verified password.

@@ -218,6 +218,53 @@ function Restore-SqliteBundleIfExists($sourceMainPath, $targetMainPath) {
   return $true
 }
 
+function Install-BindMountedSqliteBundle {
+  param(
+    [string]$SourceMainPath,
+    [string]$TargetMainPath
+  )
+
+  if ([string]::IsNullOrWhiteSpace($SourceMainPath) -or -not (Test-Path $SourceMainPath)) {
+    return
+  }
+
+  $sourceDir = Split-Path -Parent $SourceMainPath
+  $sourceFile = Split-Path -Leaf $SourceMainPath
+  $targetDir = Split-Path -Parent $TargetMainPath
+  $targetFile = Split-Path -Leaf $TargetMainPath
+  $repairScript = @'
+rm -f "/target/{1}" "/target/{1}-wal" "/target/{1}-shm"
+if [ -f "/from/{0}" ]; then
+  cp "/from/{0}" "/target/{1}"
+  chmod 666 "/target/{1}" 2>/dev/null || true
+  chown 1000:1000 "/target/{1}" 2>/dev/null || true
+fi
+for suffix in -wal -shm; do
+  if [ -f "/from/{0}${{suffix}}" ]; then
+    cp "/from/{0}${{suffix}}" "/target/{1}${{suffix}}"
+    chmod 666 "/target/{1}${{suffix}}" 2>/dev/null || true
+    chown 1000:1000 "/target/{1}${{suffix}}" 2>/dev/null || true
+  fi
+done
+'@ -f $sourceFile, $targetFile
+
+  Write-Step ("Installing SQLite bind-mount bundle into " + $TargetMainPath)
+  Invoke-Docker -DockerArgs @(
+    "run",
+    "--rm",
+    "--user",
+    "root",
+    "-v",
+    "${sourceDir}:/from",
+    "-v",
+    "${targetDir}:/target",
+    "alpine:3.20",
+    "sh",
+    "-lc",
+    $repairScript
+  ) | Out-Null
+}
+
 if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
   $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 }
@@ -260,15 +307,21 @@ $restoreFiles = @(
   "data\agent.db-shm",
   "data\beta\state.json",
   "data\beta\storage.json",
-  "data\beta\agent.db",
-  "data\beta\agent.db-wal",
-  "data\beta\agent.db-shm"
+  "data\beta\agent.runtime.db",
+  "data\beta\agent.runtime.db-wal",
+  "data\beta\agent.runtime.db-shm"
 )
 foreach ($relative in $restoreFiles) {
   Restore-FileIfExists -extractRoot $extractRoot -repoRoot $RepoRoot -relativePath $relative
 }
 Restore-DirectoryIfExists -extractRoot $extractRoot -repoRoot $RepoRoot -relativePath "data\openclaw-beta"
 Restore-DirectoryIfExists -extractRoot $extractRoot -repoRoot $RepoRoot -relativePath "openclaw_workspace"
+
+if ($RuntimeMode -eq "docker") {
+  $betaExtractedDb = Join-Path $extractRoot "data\beta\agent.runtime.db"
+  $betaBindMountedDb = Join-Path $RepoRoot "data\beta\agent.runtime.db"
+  Install-BindMountedSqliteBundle -SourceMainPath $betaExtractedDb -TargetMainPath $betaBindMountedDb
+}
 
 $dbSnapshot = Join-Path (Join-Path $extractRoot "db") "agent.db.prod"
 if ($DryRun) {

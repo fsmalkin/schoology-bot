@@ -9,7 +9,7 @@ import {
 import { STATUS_CODE_MAP, getManualStatusCategory } from "./statuses.js";
 import { addLocalReminderFields, addLocalReminderFieldsToList, recurrenceOptionList } from "./reminder_view.js";
 import { formatDateTimeLabel, formatDateYmd, parseSchoologyDate } from "./time.js";
-import { deriveSchoologyAssignmentTitle } from "./text_utils.js";
+import { deriveSchoologyAssignmentTitle, expandDisplayTitle } from "./text_utils.js";
 
 const WORKBENCH_LIMIT = 1000;
 const NOTES_PREVIEW_LIMIT = 2;
@@ -55,6 +55,11 @@ const MANUAL_STATUS_UI = {
   },
   [STATUS_CODE_MAP.E]: {
     label: "Waiting on teacher",
+    category: "pending",
+    description: "Waiting on school",
+  },
+  [STATUS_CODE_MAP.F]: {
+    label: "Will complete in class",
     category: "pending",
     description: "Waiting on school",
   },
@@ -161,6 +166,7 @@ function bucketReasonText(row, inferredSubmittedUngraded, todayYmd) {
   if (row.statusCategory === "pending") {
     if (row.manualStatus === STATUS_CODE_MAP.D) return "You marked this as waiting for a grade to post.";
     if (row.manualStatus === STATUS_CODE_MAP.E) return "You marked this as waiting on a teacher.";
+    if (row.manualStatus === STATUS_CODE_MAP.F) return "You marked this as will complete in class.";
     return "This is waiting on school follow-up.";
   }
   if (row.statusCategory === "ignored") {
@@ -208,7 +214,9 @@ function mapAssignmentRow(row, notesByKey, reminderGroups, timeZone, nowDate) {
   const inferredSubmittedUngraded = row.isMissing === true && isSubmittedUngraded(row);
   const bucket = displayBucket(row.statusCategory, { inferredSubmittedUngraded });
   const todayYmd = formatDateYmd(nowDate, timeZone);
-  const title = deriveSchoologyAssignmentTitle({ title: row.title || "", rawText: row.rawText || "" });
+  const title = expandDisplayTitle(
+    deriveSchoologyAssignmentTitle({ title: row.title || "", rawText: row.rawText || "" })
+  );
   return {
     kind: "assignment",
     key: row.key,

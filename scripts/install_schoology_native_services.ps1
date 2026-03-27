@@ -248,7 +248,7 @@ Group=root
 WorkingDirectory=$repoWsl
 EnvironmentFile=$betaEnvWsl
 Environment=DATA_DIR=$repoWsl/data/beta
-Environment=AGENT_DB_PATH=$repoWsl/data/beta/agent.db
+Environment=AGENT_DB_PATH=$repoWsl/data/beta/agent.runtime.db
 Environment=RUNTIME_STACK=openclaw
 Environment=SCHOOLOGY_TOOL_API_PORT=3030
 ExecStart=/usr/bin/node $repoWsl/src/openclaw_tool_api.js
@@ -328,7 +328,7 @@ Group=root
 WorkingDirectory=$repoWsl
 EnvironmentFile=$betaEnvWsl
 Environment=DATA_DIR=$repoWsl/data/beta
-Environment=AGENT_DB_PATH=$repoWsl/data/beta/agent.db
+Environment=AGENT_DB_PATH=$repoWsl/data/beta/agent.runtime.db
 Environment=RUNTIME_STACK=openclaw
 Environment=DASHBOARD_PORT=8788
 Environment=DASHBOARD_HOST=0.0.0.0

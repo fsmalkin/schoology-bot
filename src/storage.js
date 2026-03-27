@@ -44,6 +44,14 @@ function minDateValue(...values) {
   return best;
 }
 
+function normalizeIdentityText(value) {
+  return String(value ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function normalizeIdentityTitle(value) {
+  return normalizeIdentityText(value).replace(/\s*\(graded:\s*[^)]+\)\s*$/i, "").trim();
+}
+
 function normalizeAssignmentShape(key, item = {}) {
   const assignmentId = extractAssignmentId(item.url || "") || item.assignmentId || "";
   const normalizedKey = assignmentId ? `assignment:${assignmentId}` : key;
@@ -64,6 +72,17 @@ function normalizeAssignmentShape(key, item = {}) {
     lastMissingAt: item.lastMissingAt || null,
     resolvedAt: item.resolvedAt || null,
   };
+}
+
+function assignmentIdentityKey(item = {}) {
+  const rawText = item.rawText || "";
+  const title = normalizeIdentityTitle(
+    deriveSchoologyAssignmentTitle({ title: item.title || "", rawText })
+  );
+  const course = normalizeIdentityText(item.course || "");
+  const dueDate = normalizeIdentityText(item.dueDate || "");
+  if (!course || !dueDate || !title) return "";
+  return `${course}|${dueDate}|${title}`;
 }
 
 function mergeAssignmentRecords(current, incoming) {
@@ -178,11 +197,45 @@ export function updateStateWithScrape(state, scrapeAt, assignments) {
   state.assignments = normalizeStateAssignments(state.assignments || {});
   const seenKeys = new Set();
 
+  const findMatchingAssignmentEntry = (item, preferredKey) => {
+    if (preferredKey && state.assignments[preferredKey]) {
+      return {
+        storageKey: preferredKey,
+        record: normalizeAssignmentShape(preferredKey, state.assignments[preferredKey] || {}),
+      };
+    }
+
+    const assignmentId = extractAssignmentId(item.url || "") || item.assignmentId || "";
+    const canonicalKey = assignmentId ? `assignment:${assignmentId}` : "";
+    if (canonicalKey && state.assignments[canonicalKey]) {
+      return {
+        storageKey: canonicalKey,
+        record: normalizeAssignmentShape(canonicalKey, state.assignments[canonicalKey] || {}),
+      };
+    }
+
+    const fallbackIdentity = assignmentIdentityKey(item);
+    let fallbackMatch = null;
+    for (const [candidateKey, raw] of Object.entries(state.assignments || {})) {
+      const candidate = normalizeAssignmentShape(candidateKey, raw || {});
+      if (assignmentId && candidate.assignmentId === assignmentId) {
+        return { storageKey: candidateKey, record: candidate };
+      }
+      if (!fallbackMatch && fallbackIdentity && assignmentIdentityKey(candidate) === fallbackIdentity) {
+        fallbackMatch = { storageKey: candidateKey, record: candidate };
+      }
+    }
+    return fallbackMatch;
+  };
+
   for (const item of assignments) {
     const assignmentId = extractAssignmentId(item);
-    const key = makeAssignmentKey(item);
+    const canonicalKey = assignmentId ? `assignment:${assignmentId}` : "";
+    const generatedKey = makeAssignmentKey(item);
+    const existingMatch = findMatchingAssignmentEntry(item, canonicalKey || generatedKey);
+    const key = canonicalKey || existingMatch?.record?.key || generatedKey;
     seenKeys.add(key);
-    const existing = normalizeAssignmentShape(key, state.assignments[key] || {});
+    const existing = existingMatch?.record || normalizeAssignmentShape(key, state.assignments[key] || {});
     const firstSeenAt = existing.firstSeenAt || scrapeAt;
     const isMissing = item.isMissing === true;
     const wasMissing = existing.isMissing === true;
@@ -207,6 +260,9 @@ export function updateStateWithScrape(state, scrapeAt, assignments) {
       lastMissingAt: isMissing ? scrapeAt : existing.lastMissingAt || null,
       resolvedAt,
     };
+    if (existingMatch?.storageKey && existingMatch.storageKey !== key) {
+      delete state.assignments[existingMatch.storageKey];
+    }
     state.assignments[key] = mergeAssignmentRecords(existing, updated);
   }
 

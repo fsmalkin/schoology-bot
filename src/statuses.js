@@ -4,6 +4,7 @@ export const STATUS_CODE_MAP = {
   C: "No way to fix it",
   D: "No grade put in yet",
   E: "Waiting on teacher",
+  F: "Will complete in class",
 };
 
 export const MANUAL_STATUSES = Object.values(STATUS_CODE_MAP);
@@ -15,7 +16,7 @@ export const STATUS_CATEGORY = {
 };
 
 const IGNORED_STATUSES = new Set([STATUS_CODE_MAP.A, STATUS_CODE_MAP.B, STATUS_CODE_MAP.C]);
-const PENDING_STATUSES = new Set([STATUS_CODE_MAP.D, STATUS_CODE_MAP.E]);
+const PENDING_STATUSES = new Set([STATUS_CODE_MAP.D, STATUS_CODE_MAP.E, STATUS_CODE_MAP.F]);
 
 export function normalizeManualStatus(value) {
   const raw = String(value || "").trim();

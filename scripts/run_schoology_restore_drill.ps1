@@ -52,7 +52,7 @@ $requiredPaths = @(
   "data\agent.db",
   "data\beta\state.json",
   "data\beta\storage.json",
-  "data\beta\agent.db",
+  "data\beta\agent.runtime.db",
   "data\openclaw-beta",
   "openclaw_workspace",
   "db\agent.db.prod",

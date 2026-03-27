@@ -236,9 +236,9 @@ $filePaths = @(
   "data\agent.db-shm",
   "data\beta\state.json",
   "data\beta\storage.json",
-  "data\beta\agent.db",
-  "data\beta\agent.db-wal",
-  "data\beta\agent.db-shm"
+  "data\beta\agent.runtime.db",
+  "data\beta\agent.runtime.db-wal",
+  "data\beta\agent.runtime.db-shm"
 )
 foreach ($relative in $filePaths) {
   if (Copy-FileIfExists -repoRoot $RepoRoot -snapshotRoot $snapshotRoot -relativePath $relative) {

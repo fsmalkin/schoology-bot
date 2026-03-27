@@ -185,15 +185,26 @@ test("beta dashboard boots cleanly and keeps assignment drawer flows explicit", 
     assert.equal(await page.locator('form[data-form="assignment-status"]').isVisible(), true);
     assert.equal(await page.locator('form[data-form="assignment-drawer-reminder"]').count(), 0);
     assert.equal(await page.locator('form[data-form="assignment-drawer-note"]').count(), 0);
+    assert.ok(
+      await page.locator('label.outcome-option').filter({ hasText: "Will complete in class" }).first().isVisible()
+    );
 
-    await page.locator('label.outcome-option').filter({ has: page.locator('input[name="outcome"][value="waiting_teacher"]') }).click();
     const beforeStatusSave = await readJson(`http://127.0.0.1:${port}/api/assignments/a1/detail`);
     assert.equal(beforeStatusSave.assignment.manualStatus || "", "");
 
+    await page.locator('label.outcome-option').filter({ hasText: "Will complete in class" }).first().click();
+    await page.locator('form[data-form="assignment-status"] button[type="submit"]').click();
+    await page.waitForSelector("text=Marked as will complete in class.");
+    await waitForAssignmentDrawerReady(page);
+
+    let afterStatusSave = await readJson(`http://127.0.0.1:${port}/api/assignments/a1/detail`);
+    assert.equal(afterStatusSave.assignment.manualStatus, "Will complete in class");
+
+    await page.locator('label.outcome-option').filter({ has: page.locator('input[name="outcome"][value="waiting_teacher"]') }).click();
     await page.locator('form[data-form="assignment-status"] button[type="submit"]').click();
     await page.waitForSelector("text=Marked as waiting on teacher.");
     await waitForAssignmentDrawerReady(page);
-    const afterStatusSave = await readJson(`http://127.0.0.1:${port}/api/assignments/a1/detail`);
+    afterStatusSave = await readJson(`http://127.0.0.1:${port}/api/assignments/a1/detail`);
     assert.equal(afterStatusSave.assignment.manualStatus, "Waiting on teacher");
 
     await ensureReminderSectionOpen(page);

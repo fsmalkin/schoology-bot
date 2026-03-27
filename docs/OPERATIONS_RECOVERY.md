@@ -68,7 +68,7 @@ Default backup locations:
 
 Archive includes:
 1. `data/state.json`, `data/storage.json`, `data/agent.db`
-2. `data/beta/state.json`, `data/beta/storage.json`, `data/beta/agent.db`
+2. `data/beta/state.json`, `data/beta/storage.json`, `data/beta/agent.runtime.db`
 3. `data/openclaw-beta/`, `openclaw_workspace/`
 4. Prod DB SQLite bundle: `db/agent.db.prod`, `db/agent.db.prod-wal`, `db/agent.db.prod-shm`
 5. `manifest.json` checksums

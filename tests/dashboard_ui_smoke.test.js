@@ -79,15 +79,26 @@ test("dashboard card interactions open the review drawer and keep writes explici
     assert.ok(await page.getByRole("button", { name: "Save status" }).isVisible());
     assert.equal(await page.getByRole("button", { name: /Create reminder|Save reminder/ }).count(), 0);
     assert.equal(await page.getByRole("button", { name: "Save note" }).count(), 0);
+    assert.ok(
+      await page.locator('.outcome-option').filter({ hasText: "Will complete in class" }).first().isVisible()
+    );
 
     let detail = await fetch(`http://127.0.0.1:${port}/api/assignments/a1/detail`).then((response) => response.json());
     assert.equal(detail.notes.length, 0);
     assert.equal(detail.assignment.manualStatus || "", "");
 
+    await page.locator('.outcome-option').filter({ hasText: "Will complete in class" }).first().click();
+    await page.getByRole("button", { name: "Save status" }).click();
+    await page.waitForSelector("text=Marked as will complete in class.");
+
+    detail = await fetch(`http://127.0.0.1:${port}/api/assignments/a1/detail`).then((response) => response.json());
+    assert.equal(detail.notes.length, 0);
+    assert.equal(detail.assignment.manualStatus, "Will complete in class");
+
     await page.locator(".outcome-option").filter({ hasText: "Submitted" }).first().click();
     detail = await fetch(`http://127.0.0.1:${port}/api/assignments/a1/detail`).then((response) => response.json());
     assert.equal(detail.notes.length, 0);
-    assert.equal(detail.assignment.manualStatus || "", "");
+    assert.equal(detail.assignment.manualStatus, "Will complete in class");
 
     await page.getByRole("button", { name: "Save status" }).click();
     await page.waitForSelector("text=Marked submitted and moved to waiting on teacher.");
@@ -131,6 +142,9 @@ test("dashboard card interactions open the review drawer and keep writes explici
 
     await page.getByRole("button", { name: "Bulk select" }).click();
     assert.ok((await page.locator('[data-action="toggle-assignment-select"]').count()) > 0);
+    assert.ok(
+      (await page.locator('#bulkStatusSelect option').filter({ hasText: "Will complete in class" }).count()) > 0
+    );
 
     await page.close();
   } finally {

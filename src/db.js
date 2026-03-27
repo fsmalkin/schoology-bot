@@ -10,6 +10,9 @@ let dbInstance = null;
 
 const RECURRENCE_KIND_VALUES = ["none", "daily", "weekdays", "weekly"];
 const RECURRENCE_KIND_SET = new Set(RECURRENCE_KIND_VALUES);
+const CHAT_MESSAGE_STYLE_VALUES = ["compact", "plain_language"];
+const CHAT_MESSAGE_STYLE_SET = new Set(CHAT_MESSAGE_STYLE_VALUES);
+const DEFAULT_CHAT_MESSAGE_STYLE = "compact";
 const RECURRENCE_ALIAS_MAP = new Map([
   ["one-time", "none"],
   ["one time", "none"],
@@ -35,6 +38,20 @@ export function normalizeRecurrenceKind(value, { allowNull = false } = {}) {
     };
   }
   return { ok: true, value: mapped };
+}
+
+export function normalizeChatMessageStyle(value, { allowNull = false } = {}) {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return { ok: true, value: allowNull ? null : DEFAULT_CHAT_MESSAGE_STYLE };
+  }
+  const raw = String(value).trim().toLowerCase();
+  if (!CHAT_MESSAGE_STYLE_SET.has(raw)) {
+    return {
+      ok: false,
+      error: `Message style is invalid. Use one of: ${CHAT_MESSAGE_STYLE_VALUES.join(", ")}.`,
+    };
+  }
+  return { ok: true, value: raw };
 }
 
 function normalizeRecurrenceTz(value) {
@@ -225,6 +242,14 @@ function initDb(db) {
       last_response_id TEXT,
       turn_count INTEGER NOT NULL DEFAULT 0,
       last_compact_at TEXT,
+      message_style TEXT NOT NULL DEFAULT 'compact',
+      updated_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS chat_memory (
+      chat_id TEXT PRIMARY KEY,
+      summary_text TEXT NOT NULL,
+      source_response_id TEXT,
       updated_at TEXT
     );
 
@@ -290,6 +315,34 @@ function ensureTaskIndexes(db) {
   } catch (err) {
     // Column may not exist on older DBs until migration completes; ignore.
   }
+}
+
+function ensureChatStateColumns(db) {
+  const tableExists = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='chat_state'")
+    .get();
+  if (!tableExists) return;
+  const columns = db.prepare("PRAGMA table_info(chat_state)").all().map((row) => row.name);
+  const addColumn = (name, type, defaultValue) => {
+    if (columns.includes(name)) return;
+    const clause = defaultValue !== undefined ? ` DEFAULT ${defaultValue}` : "";
+    db.exec(`ALTER TABLE chat_state ADD COLUMN ${name} ${type}${clause}`);
+  };
+
+  addColumn("last_compact_at", "TEXT");
+  addColumn("message_style", "TEXT", `'${DEFAULT_CHAT_MESSAGE_STYLE}'`);
+  addColumn("updated_at", "TEXT");
+}
+
+function ensureChatMemoryTable(db) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS chat_memory (
+      chat_id TEXT PRIMARY KEY,
+      summary_text TEXT NOT NULL,
+      source_response_id TEXT,
+      updated_at TEXT NOT NULL
+    );
+  `);
 }
 
 function parseIsoMs(value) {
@@ -730,6 +783,14 @@ function runMigrations(db) {
       name: "assignment-identity-canonicalization",
       apply: () => {
         migrateAssignmentIdentity(db);
+      },
+    },
+    {
+      version: 7,
+      name: "chat-memory-and-style",
+      apply: () => {
+        ensureChatStateColumns(db);
+        ensureChatMemoryTable(db);
       },
     },
   ];
@@ -1230,7 +1291,10 @@ function loadAssignmentByKey(db, key) {
           status,
           manual_status AS manualStatus,
           raw_text AS rawText,
-          assignment_id AS assignmentId
+          assignment_id AS assignmentId,
+          auto_ignored AS autoIgnored,
+          auto_ignore_reason AS autoIgnoreReason,
+          is_missing AS isMissing
         FROM assignments
         WHERE key = ?
       `
@@ -1239,8 +1303,8 @@ function loadAssignmentByKey(db, key) {
   );
 }
 
-export function updateAssignmentStatus(db, { key, title, course, status }) {
-  let targetKey = key || null;
+function resolveAssignmentSelection(db, { key, title, course } = {}) {
+  let targetKey = key ? String(key).trim() : "";
   if (!targetKey && title) {
     const matches = findAssignments(db, { title, course });
     if (matches.length === 1) {
@@ -1255,6 +1319,53 @@ export function updateAssignmentStatus(db, { key, title, course, status }) {
   if (!targetKey) {
     return { ok: false, error: "Assignment key or title is required." };
   }
+
+  const assignment = loadAssignmentByKey(db, targetKey);
+  if (!assignment) {
+    return { ok: false, error: "Assignment not found." };
+  }
+
+  return { ok: true, key: targetKey, assignment };
+}
+
+export function getAssignmentFollowUpContext(db, { key, title, course } = {}) {
+  const resolved = resolveAssignmentSelection(db, { key, title, course });
+  if (!resolved.ok) return resolved;
+
+  const assignment = resolved.assignment;
+  const notes = listAssignmentNotes(db, { keys: [assignment.key], limitPerAssignment: 3 }).get(assignment.key) || [];
+  const reminders = listReminders(db, { key: assignment.key, status: "pending" });
+  const manualStatus = String(assignment.manualStatus || "").trim();
+  const inferredSubmittedUngraded = Number(assignment.isMissing || 0) === 1 && isSubmittedUngraded(assignment);
+  const statusCategory =
+    Number(assignment.autoIgnored || 0) === 1
+      ? "ignored"
+      : inferredSubmittedUngraded
+      ? "ignored"
+      : getManualStatusCategory(manualStatus);
+  const effectiveStatus =
+    manualStatus || (inferredSubmittedUngraded ? "Submitted, awaiting grade" : assignment.status || "");
+
+  return {
+    ok: true,
+    assignment: {
+      ...assignment,
+      isMissing: Number(assignment.isMissing || 0) === 1,
+      autoIgnored: Number(assignment.autoIgnored || 0) === 1,
+      effectiveStatus,
+      statusCategory,
+    },
+    notes,
+    latestNote: notes[0] || null,
+    pendingReminder: reminders[0] || null,
+    pendingReminderCount: reminders.length,
+  };
+}
+
+export function updateAssignmentStatus(db, { key, title, course, status }) {
+  const resolved = resolveAssignmentSelection(db, { key, title, course });
+  if (!resolved.ok) return resolved;
+  const targetKey = resolved.key;
 
   const normalizedStatus = normalizeManualStatus(status);
   const updated = db
@@ -1815,6 +1926,63 @@ export function listTasks(db, options = {}) {
     .all(params);
 }
 
+export function completeResolvedAssignmentReminders(db, { completedAt = nowIso() } = {}) {
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        t.id,
+        a.key,
+        a.status,
+        a.raw_text AS rawText,
+        a.manual_status AS manualStatus,
+        a.auto_ignored AS autoIgnored,
+        a.is_missing AS isMissing
+      FROM tasks t
+      JOIN assignments a ON a.key = t.assignment_key
+      WHERE t.kind = 'assignment'
+        AND t.status = 'pending'
+        AND t.auto_cancel_on_resolve = 1
+    `
+    )
+    .all();
+
+  const completeTask = db.prepare(
+    `
+      UPDATE tasks
+      SET status = 'done',
+          completed_at = @completed_at
+      WHERE id = @id
+        AND status = 'pending'
+    `
+  );
+
+  let completed = 0;
+  const completedIds = [];
+  for (const row of rows) {
+    const pendingManualOnly =
+      Number(row.isMissing || 0) === 1 &&
+      Number(row.autoIgnored || 0) !== 1 &&
+      !isSubmittedUngraded(row) &&
+      getManualStatusCategory(row.manualStatus || "") === "pending";
+    if (pendingManualOnly) continue;
+
+    const shouldComplete =
+      Number(row.isMissing || 0) !== 1 ||
+      Number(row.autoIgnored || 0) === 1 ||
+      isSubmittedUngraded(row);
+    if (!shouldComplete) continue;
+
+    const result = completeTask.run({ id: row.id, completed_at: completedAt });
+    if (result.changes > 0) {
+      completed += 1;
+      completedIds.push(row.id);
+    }
+  }
+
+  return { ok: true, completed, ids: completedIds };
+}
+
 export function updateTaskStatus(db, { id, status }) {
   const taskId = Number(id);
   if (!Number.isFinite(taskId)) {
@@ -2002,32 +2170,119 @@ export function markTaskReminderSent(db, { id, sentAt, nextRemindAt }) {
 
 export function getChatState(db, chatId) {
   const row = db
-    .prepare("SELECT chat_id AS chatId, last_response_id AS lastResponseId, turn_count AS turnCount FROM chat_state WHERE chat_id = ?")
+    .prepare(
+      `SELECT
+         chat_id AS chatId,
+         last_response_id AS lastResponseId,
+         turn_count AS turnCount,
+         last_compact_at AS lastCompactAt,
+         message_style AS messageStyle,
+         updated_at AS updatedAt
+       FROM chat_state
+       WHERE chat_id = ?`
+    )
     .get(chatId);
   if (!row) {
-    return { chatId, lastResponseId: null, turnCount: 0 };
+    return {
+      chatId,
+      lastResponseId: null,
+      turnCount: 0,
+      lastCompactAt: null,
+      messageStyle: DEFAULT_CHAT_MESSAGE_STYLE,
+      updatedAt: null,
+    };
   }
-  return row;
+  return {
+    ...row,
+    messageStyle: normalizeChatMessageStyle(row.messageStyle, { allowNull: false }).value,
+  };
+}
+
+export function getChatMemory(db, chatId) {
+  if (!chatId) return null;
+  const row = db
+    .prepare(
+      `SELECT
+         chat_id AS chatId,
+         summary_text AS summaryText,
+         source_response_id AS sourceResponseId,
+         updated_at AS updatedAt
+       FROM chat_memory
+       WHERE chat_id = ?`
+    )
+    .get(chatId);
+  return row || null;
+}
+
+export function upsertChatMemory(db, { chatId, summaryText, sourceResponseId = null, updatedAt = nowIso() } = {}) {
+  if (!chatId) return { ok: false, error: "Chat id is required." };
+  const text = String(summaryText || "").trim();
+  if (!text) return { ok: false, error: "Summary text is required." };
+
+  db.prepare(
+    `
+    INSERT INTO chat_memory (chat_id, summary_text, source_response_id, updated_at)
+    VALUES (@chat_id, @summary_text, @source_response_id, @updated_at)
+    ON CONFLICT(chat_id) DO UPDATE SET
+      summary_text = excluded.summary_text,
+      source_response_id = excluded.source_response_id,
+      updated_at = excluded.updated_at
+  `
+  ).run({
+    chat_id: chatId,
+    summary_text: text,
+    source_response_id: sourceResponseId ? String(sourceResponseId) : null,
+    updated_at: updatedAt,
+  });
+
+  return { ok: true, chatId, summaryText: text, sourceResponseId: sourceResponseId || null, updatedAt };
+}
+
+export function setChatMessageStyle(db, chatId, messageStyle, { updatedAt = nowIso() } = {}) {
+  if (!chatId) return { ok: false, error: "Chat id is required." };
+  const normalized = normalizeChatMessageStyle(messageStyle);
+  if (!normalized.ok) return normalized;
+
+  db.prepare(
+    `
+    INSERT INTO chat_state (chat_id, last_response_id, turn_count, last_compact_at, message_style, updated_at)
+    VALUES (@chat_id, NULL, 0, NULL, @message_style, @updated_at)
+    ON CONFLICT(chat_id) DO UPDATE SET
+      message_style = excluded.message_style,
+      updated_at = excluded.updated_at
+  `
+  ).run({
+    chat_id: chatId,
+    message_style: normalized.value,
+    updated_at: updatedAt,
+  });
+
+  return { ok: true, chatId, messageStyle: normalized.value, updatedAt };
 }
 
 export function updateChatState(db, chatId, lastResponseId) {
   db.prepare(
     `
-    INSERT INTO chat_state (chat_id, last_response_id, turn_count, updated_at)
-    VALUES (@chat_id, @last_response_id, 1, @updated_at)
+    INSERT INTO chat_state (chat_id, last_response_id, turn_count, message_style, updated_at)
+    VALUES (@chat_id, @last_response_id, 1, @message_style, @updated_at)
     ON CONFLICT(chat_id) DO UPDATE SET
       last_response_id = excluded.last_response_id,
       turn_count = chat_state.turn_count + 1,
       updated_at = excluded.updated_at
   `
-  ).run({ chat_id: chatId, last_response_id: lastResponseId, updated_at: nowIso() });
+  ).run({
+    chat_id: chatId,
+    last_response_id: lastResponseId,
+    message_style: DEFAULT_CHAT_MESSAGE_STYLE,
+    updated_at: nowIso(),
+  });
 }
 
 export function updateChatCompaction(db, chatId, lastResponseId) {
   db.prepare(
     `
-    INSERT INTO chat_state (chat_id, last_response_id, turn_count, last_compact_at, updated_at)
-    VALUES (@chat_id, @last_response_id, 0, @last_compact_at, @updated_at)
+    INSERT INTO chat_state (chat_id, last_response_id, turn_count, last_compact_at, message_style, updated_at)
+    VALUES (@chat_id, @last_response_id, 0, @last_compact_at, @message_style, @updated_at)
     ON CONFLICT(chat_id) DO UPDATE SET
       last_response_id = excluded.last_response_id,
       turn_count = 0,
@@ -2038,6 +2293,7 @@ export function updateChatCompaction(db, chatId, lastResponseId) {
     chat_id: chatId,
     last_response_id: lastResponseId,
     last_compact_at: nowIso(),
+    message_style: DEFAULT_CHAT_MESSAGE_STYLE,
     updated_at: nowIso(),
   });
 }
@@ -2045,12 +2301,12 @@ export function updateChatCompaction(db, chatId, lastResponseId) {
 export function resetChatState(db, chatId) {
   db.prepare(
     `
-    INSERT INTO chat_state (chat_id, last_response_id, turn_count, updated_at)
-    VALUES (@chat_id, NULL, 0, @updated_at)
+    INSERT INTO chat_state (chat_id, last_response_id, turn_count, message_style, updated_at)
+    VALUES (@chat_id, NULL, 0, @message_style, @updated_at)
     ON CONFLICT(chat_id) DO UPDATE SET
       last_response_id = NULL,
       turn_count = 0,
       updated_at = excluded.updated_at
   `
-  ).run({ chat_id: chatId, updated_at: nowIso() });
+  ).run({ chat_id: chatId, message_style: DEFAULT_CHAT_MESSAGE_STYLE, updated_at: nowIso() });
 }

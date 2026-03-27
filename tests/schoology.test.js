@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { extractMissingAssignmentsFromHtml } from "../src/schoology.js";
+import { extractAssignmentsFromHtml, extractMissingAssignmentsFromHtml } from "../src/schoology.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -81,4 +81,96 @@ test("extractMissingAssignmentsFromHtml falls back to visible row title when no 
   assert.equal(items.length, 1);
   assert.equal(items[0].title, "L3: Figurative Language and Multiple Themes");
   assert.equal(items[0].dueDate, "2/11/26");
+});
+
+test("extractAssignmentsFromHtml prefers score over missing badge and dedupes by assignment id", async () => {
+  const html = loadFixture("grades_conflicts.html");
+  const items = await extractAssignmentsFromHtml(html);
+
+  assert.equal(items.length, 2);
+
+  const unit5Rows = items.filter((item) => item.url.endsWith("/assignment/8191759007"));
+  assert.equal(unit5Rows.length, 1);
+  assert.equal(unit5Rows[0].isMissing, false);
+  assert.notEqual(unit5Rows[0].status, "Missing");
+  assert.match(unit5Rows[0].score, /\d/);
+
+  const unit6 = items.find((item) => item.url.endsWith("/assignment/8286264016"));
+  assert.ok(unit6);
+  assert.equal(unit6.status, "Submitted, awaiting grade");
+  assert.equal(unit6.isMissing, true);
+});
+
+test("extractAssignmentsFromHtml uses detail fallback for ambiguous external-tool-link rows", async () => {
+  const listHtml = `
+    <div class="gradebook-course">
+      <div class="gradebook-course-title">Algebra 1 GT/AA MS7: Sec 004 B PER03</div>
+      <table>
+        <tr class="report-row item-row">
+          <td class="item-title">
+            <a href="/assignment/999999">25-26 Algebra 1 Unit 7 MUA</a>
+            <span class="type">external-tool-link</span>
+          </td>
+          <td class="due-date">Due 3/10/26 11:59pm</td>
+          <td class="grade-column">
+            <span class="exception-text">Missing</span>
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
+  const detailHtml = loadFixture("assignment-detail-mua.html");
+  let fetchCount = 0;
+
+  const items = await extractAssignmentsFromHtml(listHtml, {
+    detailFetcher: async (url) => {
+      fetchCount += 1;
+      assert.equal(url, "https://bcps.schoology.com/assignment/999999");
+      return detailHtml;
+    },
+  });
+
+  assert.equal(fetchCount, 1);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].status, "Submitted, awaiting grade");
+  assert.equal(items[0].isMissing, true);
+});
+
+test("extractAssignmentsFromHtml caps detail fallback fetches at 25 rows", async () => {
+  const rows = Array.from({ length: 30 }, (_, index) => {
+    const id = 900000 + index;
+    return `
+      <tr class="report-row item-row">
+        <td class="item-title">
+          <a href="/assignment/${id}">25-26 Algebra 1 Unit ${index + 1} MUA</a>
+          <span class="type">external-tool-link</span>
+        </td>
+        <td class="due-date">Due 3/10/26 11:59pm</td>
+        <td class="grade-column">
+          <span class="exception-text">Missing</span>
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  const listHtml = `
+    <div class="gradebook-course">
+      <div class="gradebook-course-title">Algebra 1 GT/AA MS7: Sec 004 B PER03</div>
+      <table>${rows}</table>
+    </div>
+  `;
+  const detailHtml = loadFixture("assignment-detail-mua.html");
+  let fetchCount = 0;
+
+  const items = await extractAssignmentsFromHtml(listHtml, {
+    detailFetcher: async () => {
+      fetchCount += 1;
+      return detailHtml;
+    },
+  });
+
+  assert.equal(fetchCount, 25);
+  assert.equal(items.length, 30);
+  assert.equal(items.slice(0, 25).every((item) => item.status === "Submitted, awaiting grade"), true);
+  assert.equal(items.slice(25).every((item) => item.status === "Missing"), true);
 });

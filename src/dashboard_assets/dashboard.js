@@ -30,6 +30,11 @@ const ASSIGNMENT_OUTCOMES = [
     description: "Use when the work is done but Schoology still has not caught up.",
   },
   {
+    value: "will_complete_in_class",
+    label: "Will complete in class",
+    description: "Use when the work will be finished during class time instead of at home.",
+  },
+  {
     value: "none",
     label: "No special status",
     description: "Clears any local override and returns the assignment to normal review.",
@@ -1115,6 +1120,7 @@ function currentAssignmentOutcome(assignment) {
   if (manual === "Practice / not for grade") return "practice_only";
   if (manual === "No way to fix it") return "let_it_go";
   if (manual === "No grade put in yet") return "grade_not_posted";
+  if (manual === "Will complete in class") return "will_complete_in_class";
   return "none";
 }
 
@@ -1590,6 +1596,7 @@ async function handleAssignmentStatusSubmit(form) {
     practice_only: "B",
     let_it_go: "C",
     grade_not_posted: "D",
+    will_complete_in_class: "F",
     none: "",
   };
   const outcomeToMessage = {
@@ -1598,6 +1605,7 @@ async function handleAssignmentStatusSubmit(form) {
     practice_only: "Marked as practice only.",
     let_it_go: "Marked to let go.",
     grade_not_posted: "Marked as grade not posted yet.",
+    will_complete_in_class: "Marked as will complete in class.",
     none: "Special status cleared.",
   };
   return await setAssignmentStatus(key, outcomeToStatus[outcome] ?? "", outcomeToMessage[outcome] || "Assignment updated.");

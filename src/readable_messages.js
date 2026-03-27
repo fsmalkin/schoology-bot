@@ -1,8 +1,12 @@
 import { parseSchoologyDate } from "./time.js";
-import { normalizeAscii } from "./text_utils.js";
+import { expandDisplayTitle, normalizeAscii } from "./text_utils.js";
 
 const MAX_SECTION_ITEMS = 5;
 const DEFAULT_TIME_ZONE = "America/New_York";
+const MESSAGE_STYLE = {
+  COMPACT: "compact",
+  PLAIN_LANGUAGE: "plain_language",
+};
 
 function toTimeZone(value) {
   const raw = String(value || "").trim();
@@ -59,7 +63,7 @@ function normalizeKey(value) {
 }
 
 function assignmentIdentity(course, title) {
-  return `${normalizeKey(simplifyCourseName(course))}|${normalizeKey(title)}`;
+  return `${normalizeKey(simplifyCourseName(course))}|${normalizeKey(expandDisplayTitle(title))}`;
 }
 
 function assignmentIdentityFromTask(task) {
@@ -91,6 +95,9 @@ export function formatFriendlyStatus(status) {
   if (lower === "incomplete") {
     return "Finish and resubmit (Incomplete)";
   }
+  if (lower === "will complete in class") {
+    return "Will complete in class";
+  }
   return `Needs action (${official})`;
 }
 
@@ -106,12 +113,29 @@ function formatDueLabel(dueDate, timeZone, nowDate) {
   return `Due ${label}`;
 }
 
-function buildAssignmentItem(item, { timeZone, nowDate, includeLink }) {
+function normalizeMessageStyle(value) {
+  return String(value || "").trim().toLowerCase() === MESSAGE_STYLE.PLAIN_LANGUAGE
+    ? MESSAGE_STYLE.PLAIN_LANGUAGE
+    : MESSAGE_STYLE.COMPACT;
+}
+
+function isPlainLanguageStyle(messageStyle) {
+  return normalizeMessageStyle(messageStyle) === MESSAGE_STYLE.PLAIN_LANGUAGE;
+}
+
+function displayTitle(title) {
+  return expandDisplayTitle(title || "");
+}
+
+function buildAssignmentItem(item, { timeZone, nowDate, includeLink, messageStyle }) {
+  const style = normalizeMessageStyle(messageStyle);
   const course = simplifyCourseName(item?.course);
-  const title = String(item?.title || "Untitled assignment");
+  const title = displayTitle(item?.title || "Untitled assignment");
   const status = formatFriendlyStatus(item?.manualStatus || item?.status || item?.effectiveStatus || "");
   const due = formatDueLabel(item?.dueDate, timeZone, nowDate);
-  const line = `[${course}] ${title} | ${due} | ${status}`;
+  const line = isPlainLanguageStyle(style)
+    ? `${course}: ${title}. ${due}. Status: ${status}.`
+    : `[${course}] ${title} | ${due} | ${status}`;
   const link = includeLink && item?.url ? String(item.url).trim() : "";
   return link ? { line, link } : { line };
 }
@@ -122,18 +146,23 @@ function buildReminderActionText(task) {
   if (!title && !message) return "Check Schoology";
   if (!message) return title || "Reminder";
   if (/^auto reminder for upcoming due date/i.test(message)) {
-    return title ? `Work on ${title}` : "Work on upcoming assignment";
+    return title ? `Work on ${displayTitle(title)}` : "Work on upcoming assignment";
   }
-  if (!title) return message;
-  if (message.toLowerCase().includes(title.toLowerCase())) return message;
-  return `${title}: ${message}`;
+  if (!title) return displayTitle(message);
+  const expandedTitle = displayTitle(title);
+  if (message.toLowerCase().includes(title.toLowerCase())) return displayTitle(message);
+  return `${expandedTitle}: ${displayTitle(message)}`;
 }
 
-function buildReminderItem(task, timeZone) {
+function buildReminderItem(task, timeZone, messageStyle) {
+  const style = normalizeMessageStyle(messageStyle);
   const action = buildReminderActionText(task);
   const remindAt = asDate(task?.remindAt);
   const when = remindAt ? formatDayDateTime(remindAt, timeZone, false) : "No time set";
-  return { line: `${action} | ${when}` };
+  const line = isPlainLanguageStyle(style)
+    ? `Reminder: ${action}. Time: ${when}.`
+    : `${action} | ${when}`;
+  return { line };
 }
 
 function normalizeSectionItems(items) {
@@ -215,7 +244,7 @@ function formatRefreshSchoologyError(error, schoologyIdp) {
 function assignmentInlineLabel(assignment, args = {}) {
   const source = assignment && typeof assignment === "object" ? assignment : {};
   const course = simplifyCourseName(source.course || args.course || "");
-  const title = String(source.title || args.title || "").trim();
+  const title = displayTitle(String(source.title || args.title || "").trim());
   if (title) return `[${course}] ${title}`;
   if (args.key) return `assignment ${args.key}`;
   return "assignment";
@@ -304,7 +333,11 @@ function listPendingRowsFromDb(db) {
 
   const isPendingStatus = (value) => {
     const lower = String(value || "").trim().toLowerCase();
-    return lower === "no grade put in yet" || lower === "waiting on teacher";
+    return (
+      lower === "no grade put in yet" ||
+      lower === "waiting on teacher" ||
+      lower === "will complete in class"
+    );
   };
 
   const isSubmittedUngraded = (row) => {
@@ -323,8 +356,34 @@ function listPendingRowsFromDb(db) {
   });
 }
 
-export function buildReadableDailySummary({ summary, reminders, state, timeZone, now } = {}) {
+export function buildReadableDailySummary({
+  summary,
+  reminders,
+  state,
+  timeZone,
+  now,
+  messageStyle = MESSAGE_STYLE.COMPACT,
+} = {}) {
+  return buildReadableDailySummaryWithStyle({
+    summary,
+    reminders,
+    state,
+    timeZone,
+    now,
+    messageStyle,
+  });
+}
+
+export function buildReadableDailySummaryWithStyle({
+  summary,
+  reminders,
+  state,
+  timeZone,
+  now,
+  messageStyle = MESSAGE_STYLE.COMPACT,
+} = {}) {
   const tz = toTimeZone(timeZone);
+  const style = normalizeMessageStyle(messageStyle);
   const nowDate = asDate(now) || new Date();
   const actionable = Array.isArray(summary?.actionable) ? summary.actionable : [];
   const pending = Array.isArray(summary?.pending) ? summary.pending : [];
@@ -338,24 +397,24 @@ export function buildReadableDailySummary({ summary, reminders, state, timeZone,
   }
 
   const doNowItems = actionable.map((item) =>
-    buildAssignmentItem(item, { timeZone: tz, nowDate, includeLink: true })
+    buildAssignmentItem(item, { timeZone: tz, nowDate, includeLink: true, messageStyle: style })
   );
 
   for (const task of [...reminderOverdue, ...reminderToday]) {
     const identity = assignmentIdentityFromTask(task);
     if (identity && knownAssignments.has(identity)) continue;
-    doNowItems.push(buildReminderItem(task, tz));
+    doNowItems.push(buildReminderItem(task, tz, style));
   }
 
   const soonItems = [];
   for (const task of reminderUpcoming) {
     const identity = assignmentIdentityFromTask(task);
     if (identity && knownAssignments.has(identity)) continue;
-    soonItems.push(buildReminderItem(task, tz));
+    soonItems.push(buildReminderItem(task, tz, style));
   }
 
   const waitingItems = pending.map((item) =>
-    buildAssignmentItem(item, { timeZone: tz, nowDate, includeLink: false })
+    buildAssignmentItem(item, { timeZone: tz, nowDate, includeLink: false, messageStyle: style })
   );
 
   const lines = [];
@@ -378,15 +437,235 @@ export function buildReadableDailySummary({ summary, reminders, state, timeZone,
   return normalizeAscii(lines.join("\n").trim());
 }
 
-export function buildReadableReminderMessage({ task, timeZone } = {}) {
+export function buildReadableReminderMessage({ task, timeZone, messageStyle } = {}) {
   const tz = toTimeZone(timeZone);
-  const item = buildReminderItem(task || {}, tz);
-  const lines = ["Do Now", `- ${item.line}`];
+  const style = normalizeMessageStyle(messageStyle);
+  const item = buildReminderItem(task || {}, tz, style);
+  const lines =
+    style === MESSAGE_STYLE.PLAIN_LANGUAGE
+      ? ["Reminder", `- ${item.line}`]
+      : ["Do Now", `- ${item.line}`];
   return normalizeAscii(lines.join("\n").trim());
 }
 
-export function buildReadableToolResponse({ executed, db, timeZone, now, schoologyIdp } = {}) {
+function getAssignmentRow(db, key) {
+  if (!db || typeof db.prepare !== "function" || !key) return null;
+  return db
+    .prepare(
+      `
+      SELECT
+        key,
+        course,
+        title,
+        status,
+        manual_status AS manualStatus,
+        raw_text AS rawText,
+        is_missing AS isMissing,
+        auto_ignored AS autoIgnored
+      FROM assignments
+      WHERE key = ?
+    `
+    )
+    .get(key);
+}
+
+function getAssignmentContext(db, args = {}, output = {}) {
+  if (!db || typeof db.prepare !== "function") return null;
+  const candidateKey =
+    output?.assignment?.key ||
+    output?.key ||
+    args?.key ||
+    args?.assignmentKey ||
+    null;
+  let assignment = getAssignmentRow(db, candidateKey);
+  if (!assignment && (args?.title || output?.assignment?.title)) {
+    const title = String(args?.title || output?.assignment?.title || "").trim();
+    if (!title) return null;
+    const course = String(args?.course || output?.assignment?.course || "").trim().toLowerCase();
+    const params = { title: `%${title.toLowerCase()}%` };
+    const filters = ["(LOWER(title) LIKE @title OR LOWER(raw_text) LIKE @title)"];
+    if (course) {
+      filters.push("LOWER(course) LIKE @course");
+      params.course = `%${course}%`;
+    }
+    assignment = db
+      .prepare(
+        `
+        SELECT
+          key,
+          course,
+          title,
+          status,
+          manual_status AS manualStatus,
+          raw_text AS rawText,
+          is_missing AS isMissing,
+          auto_ignored AS autoIgnored
+        FROM assignments
+        WHERE ${filters.join(" AND ")}
+        ORDER BY LOWER(course), due_date, LOWER(title)
+        LIMIT 1
+      `
+      )
+      .get(params);
+  }
+  if (!assignment) return null;
+
+  const noteCount = db
+    .prepare("SELECT COUNT(*) AS count FROM assignment_notes WHERE assignment_key = ?")
+    .get(assignment.key)?.count || 0;
+  const pendingReminderCount = db
+    .prepare(
+      `
+      SELECT COUNT(*) AS count
+      FROM tasks
+      WHERE assignment_key = ?
+        AND kind = 'assignment'
+        AND status = 'pending'
+    `
+    )
+    .get(assignment.key)?.count || 0;
+  const notes = db
+    .prepare(
+      `
+      SELECT note, created_at AS createdAt
+      FROM assignment_notes
+      WHERE assignment_key = ?
+      ORDER BY created_at DESC
+      LIMIT 2
+    `
+    )
+    .all(assignment.key);
+  const reminders = db
+    .prepare(
+      `
+      SELECT id, title, remind_at AS remindAt, message, recurrence_kind AS recurrenceKind
+      FROM tasks
+      WHERE assignment_key = ?
+        AND kind = 'assignment'
+        AND status = 'pending'
+      ORDER BY remind_at ASC, id ASC
+      LIMIT 2
+    `
+    )
+    .all(assignment.key);
+  return {
+    assignment,
+    noteCount,
+    pendingReminderCount,
+    notes,
+    reminders,
+  };
+}
+
+function buildAssignmentContextLines(context, { messageStyle, action, noteText, reminderText, statusText } = {}) {
+  const style = normalizeMessageStyle(messageStyle);
+  if (!context) return [];
+  const lines = [];
+  const title = displayTitle(context.assignment?.title || "assignment");
+  const course = simplifyCourseName(context.assignment?.course || "");
+  const label = `[${course}] ${title}`;
+  const manualStatus = String(context.assignment?.manualStatus || "").trim();
+  const pendingReason = manualStatus || statusText || "";
+
+  if (action === "status" && context.noteCount > 0) {
+    lines.push(
+      makeItem(
+        style === MESSAGE_STYLE.PLAIN_LANGUAGE
+          ? `Saved notes: ${context.noteCount} total.`
+          : `Saved notes: ${context.noteCount}.`
+      )
+    );
+  }
+
+  if (noteText) {
+    const note = displayTitle(String(noteText || "").trim());
+    lines.push(
+      makeItem(
+        style === MESSAGE_STYLE.PLAIN_LANGUAGE
+          ? `Saved note for ${label}: ${note}.`
+          : `Saved note for ${label}.`
+      )
+    );
+  } else if (action === "note" && context.noteCount > 0) {
+    lines.push(
+      makeItem(
+        style === MESSAGE_STYLE.PLAIN_LANGUAGE
+          ? `Saved notes: ${context.noteCount}.`
+          : `Saved notes: ${context.noteCount}.`
+      )
+    );
+  }
+
+  if (reminderText || context.pendingReminderCount > 0) {
+    if (reminderText) {
+      lines.push(
+        makeItem(
+          style === MESSAGE_STYLE.PLAIN_LANGUAGE
+            ? `Saved reminder for ${label}: ${displayTitle(reminderText)}.`
+            : `Saved reminder for ${label}.`
+        )
+      );
+    }
+    if (context.pendingReminderCount > 0) {
+      lines.push(
+        makeItem(
+          style === MESSAGE_STYLE.PLAIN_LANGUAGE
+            ? `Saved reminders: ${context.pendingReminderCount} pending reminder${context.pendingReminderCount === 1 ? "" : "s"}.`
+            : `Saved reminders: ${context.pendingReminderCount}.`
+        )
+      );
+    }
+  }
+
+    if (action === "status") {
+      if (pendingReason.toLowerCase() === "will complete in class") {
+        lines.push(
+          makeItem(
+            style === MESSAGE_STYLE.PLAIN_LANGUAGE
+            ? "Why it may still appear pending: you marked it as in-class work, so it stays visible until you finish it in class."
+            : "Why it may still appear pending: marked for in-class completion."
+        )
+      );
+    } else if (pendingReason.toLowerCase() === "waiting on teacher") {
+      lines.push(
+        makeItem(
+          style === MESSAGE_STYLE.PLAIN_LANGUAGE
+            ? "Why it may still appear pending: you are waiting on teacher feedback."
+            : "Why it may still appear pending: waiting on teacher."
+        )
+      );
+    } else if (pendingReason.toLowerCase() === "no grade put in yet") {
+      lines.push(
+        makeItem(
+          style === MESSAGE_STYLE.PLAIN_LANGUAGE
+            ? "Why it may still appear pending: Schoology has not posted a grade yet."
+            : "Why it may still appear pending: no grade has been posted yet."
+        )
+      );
+    } else if (context.assignment?.isMissing || context.assignment?.autoIgnored) {
+      lines.push(
+        makeItem(
+          style === MESSAGE_STYLE.PLAIN_LANGUAGE
+            ? "Why it may still appear pending: Schoology may not have refreshed yet."
+            : "Why it may still appear pending: Schoology has not refreshed yet."
+        )
+      );
+    }
+  }
+
+  return lines;
+}
+
+export function buildReadableToolResponse({
+  executed,
+  db,
+  timeZone,
+  now,
+  schoologyIdp,
+  messageStyle,
+} = {}) {
   const tz = toTimeZone(timeZone);
+  const style = normalizeMessageStyle(messageStyle);
   const nowDate = asDate(now) || new Date();
   const doneNow = [];
   const soon = [];
@@ -430,10 +709,22 @@ export function buildReadableToolResponse({ executed, db, timeZone, now, schoolo
           recurrenceText,
           tz
         );
-        if (when) soon.push(makeItem(`${label} | ${when}`));
+        if (when) {
+          soon.push(
+            makeItem(
+              style === MESSAGE_STYLE.PLAIN_LANGUAGE ? `Reminder: ${label}. Time: ${when}.` : `${label} | ${when}`
+            )
+          );
+        }
         if (output.deletedDuplicates) {
           info.push(makeItem(`Removed ${output.deletedDuplicates} duplicate reminder(s).`));
         }
+        const context = getAssignmentContext(db, args, output);
+        buildAssignmentContextLines(context, {
+          messageStyle: style,
+          action: "reminder",
+          reminderText: when || output.remindAtLabel || args.remindAt || "",
+        }).forEach((item) => info.push(item));
         const reminderId = output?.reminder?.id || output?.reminderId || args.id || null;
         pushAssumptionsAndCorrection(
           info,
@@ -459,7 +750,17 @@ export function buildReadableToolResponse({ executed, db, timeZone, now, schoolo
           output?.recurrenceLabel || output?.reminder?.recurrenceLabel || "",
           tz
         );
-        if (when) soon.push(makeItem(`Reminder #${id} | ${when}`));
+        if (when) {
+          soon.push(
+            makeItem(style === MESSAGE_STYLE.PLAIN_LANGUAGE ? `Reminder #${id}. Time: ${when}.` : `Reminder #${id} | ${when}`)
+          );
+        }
+        const context = getAssignmentContext(db, args, output);
+        buildAssignmentContextLines(context, {
+          messageStyle: style,
+          action: "reminder",
+          reminderText: when || output?.reminder?.remindAtLabel || args.remindAt || "",
+        }).forEach((item) => info.push(item));
         pushAssumptionsAndCorrection(info, output, `"update reminder #${id} to weekdays at 7:00 AM"`);
       } else if (output?.error) {
         doneNow.push(makeItem(`Need your input: ${output.error}`));
@@ -482,15 +783,39 @@ export function buildReadableToolResponse({ executed, db, timeZone, now, schoolo
         const pendingCount = Number(output.pendingCount || 0);
         const ignoredCount = Number(output.ignoredCount || 0);
         if (actionable > 0) {
-          doneNow.push(makeItem(`${actionable} assignment(s) still need action.`));
+          doneNow.push(
+            makeItem(
+              style === MESSAGE_STYLE.PLAIN_LANGUAGE
+                ? `Refreshed Schoology. ${actionable} assignment${actionable === 1 ? "" : "s"} still need action.`
+                : `${actionable} assignment(s) still need action.`
+            )
+          );
         } else {
-          doneNow.push(makeItem("No assignments need action right now."));
+          doneNow.push(
+            makeItem(
+              style === MESSAGE_STYLE.PLAIN_LANGUAGE
+                ? "Refreshed Schoology. No assignments need action right now."
+                : "No assignments need action right now."
+            )
+          );
         }
         if (pendingCount > 0) {
-          waiting.push(makeItem(`${pendingCount} item(s) are waiting on teacher/grade.`));
+          waiting.push(
+            makeItem(
+              style === MESSAGE_STYLE.PLAIN_LANGUAGE
+                ? `${pendingCount} item${pendingCount === 1 ? "" : "s"} are waiting on teacher or grade updates.`
+                : `${pendingCount} item(s) are waiting on teacher/grade.`
+            )
+          );
         }
         if (ignoredCount > 0) {
-          info.push(makeItem(`${ignoredCount} item(s) were archived.`));
+          info.push(
+            makeItem(
+              style === MESSAGE_STYLE.PLAIN_LANGUAGE
+                ? `${ignoredCount} item${ignoredCount === 1 ? "" : "s"} were archived.`
+                : `${ignoredCount} item(s) were archived.`
+            )
+          );
         }
         if (Number(output.submittedArchivedCount || 0) > 0) {
           info.push(
@@ -511,9 +836,13 @@ export function buildReadableToolResponse({ executed, db, timeZone, now, schoolo
         const recurrenceKind = output.recurrenceKind || args.recurrence || "none";
         doneNow.push(
           makeItem(
-            recurrenceKind !== "none"
-              ? `Created recurring reminder task: ${title}.`
-              : `Created reminder task: ${title}.`
+            style === MESSAGE_STYLE.PLAIN_LANGUAGE
+              ? recurrenceKind !== "none"
+                ? `Created recurring reminder task for ${displayTitle(title)}.`
+                : `Created reminder task for ${displayTitle(title)}.`
+              : recurrenceKind !== "none"
+                ? `Created recurring reminder task: ${title}.`
+                : `Created reminder task: ${title}.`
           )
         );
         const when = formatReminderWhen(
@@ -523,7 +852,13 @@ export function buildReadableToolResponse({ executed, db, timeZone, now, schoolo
           output.recurrenceLabel || "",
           tz
         );
-        if (when) soon.push(makeItem(`${title} | ${when}`));
+        if (when) {
+          soon.push(
+            makeItem(
+              style === MESSAGE_STYLE.PLAIN_LANGUAGE ? `${displayTitle(title)}. Time: ${when}.` : `${title} | ${when}`
+            )
+          );
+        }
         pushAssumptionsAndCorrection(
           info,
           output,
@@ -539,7 +874,13 @@ export function buildReadableToolResponse({ executed, db, timeZone, now, schoolo
       if (output?.ok) {
         const id = output?.task?.id || args.id || "task";
         const status = String(output?.task?.status || args.status || "updated").trim();
-        doneNow.push(makeItem(`Updated task #${id} -> ${status}.`));
+        doneNow.push(
+          makeItem(
+            style === MESSAGE_STYLE.PLAIN_LANGUAGE
+              ? `Updated task #${id}. New status: ${status}.`
+              : `Updated task #${id} -> ${status}.`
+          )
+        );
       } else if (output?.error) {
         doneNow.push(makeItem(`Need your input: ${output.error}`));
       }
@@ -551,7 +892,13 @@ export function buildReadableToolResponse({ executed, db, timeZone, now, schoolo
         const id = output?.task?.id || args.id || "task";
         const title = String(output?.task?.title || args.title || "").trim();
         if (title) {
-          doneNow.push(makeItem(`Updated task #${id}: ${title}.`));
+          doneNow.push(
+            makeItem(
+              style === MESSAGE_STYLE.PLAIN_LANGUAGE
+                ? `Updated task #${id}: ${displayTitle(title)}.`
+                : `Updated task #${id}: ${title}.`
+            )
+          );
         } else {
           doneNow.push(makeItem(`Updated task #${id}.`));
         }
@@ -562,7 +909,11 @@ export function buildReadableToolResponse({ executed, db, timeZone, now, schoolo
           output?.recurrenceLabel || output?.task?.recurrenceLabel || "",
           tz
         );
-        if (when) soon.push(makeItem(`Task #${id} | ${when}`));
+        if (when) {
+          soon.push(
+            makeItem(style === MESSAGE_STYLE.PLAIN_LANGUAGE ? `Task #${id}. Time: ${when}.` : `Task #${id} | ${when}`)
+          );
+        }
         pushAssumptionsAndCorrection(info, output, `"update task #${id} to daily at 4:30 PM"`);
       } else if (output?.error) {
         doneNow.push(makeItem(`Need your input: ${output.error}`));
@@ -572,7 +923,13 @@ export function buildReadableToolResponse({ executed, db, timeZone, now, schoolo
 
     if (name === "delete_task") {
       if (output?.ok) {
-        doneNow.push(makeItem(`Deleted task #${output.id || args.id}.`));
+        doneNow.push(
+          makeItem(
+            style === MESSAGE_STYLE.PLAIN_LANGUAGE
+              ? `Deleted task #${output.id || args.id}.`
+              : `Deleted task #${output.id || args.id}.`
+          )
+        );
       } else if (output?.error) {
         doneNow.push(makeItem(`Need your input: ${output.error}`));
       }
@@ -582,7 +939,19 @@ export function buildReadableToolResponse({ executed, db, timeZone, now, schoolo
     if (name === "add_assignment_note") {
       if (output?.ok) {
         const label = assignmentInlineLabel(output.assignment, args);
-        doneNow.push(makeItem(`Added note to ${label}.`));
+        doneNow.push(
+          makeItem(
+            style === MESSAGE_STYLE.PLAIN_LANGUAGE
+              ? `Saved note for ${label}.`
+              : `Added note to ${label}.`
+          )
+        );
+        const context = getAssignmentContext(db, args, output);
+        buildAssignmentContextLines(context, {
+          messageStyle: style,
+          action: "note",
+          noteText: args.note || output.note || "",
+        }).forEach((item) => info.push(item));
       } else if (output?.error) {
         doneNow.push(makeItem(`Need your input: ${output.error}`));
       }
@@ -593,7 +962,19 @@ export function buildReadableToolResponse({ executed, db, timeZone, now, schoolo
       if (output?.ok) {
         const label = assignmentInlineLabel(output.assignment, args);
         const status = formatFriendlyStatus(output.status || args.status);
-        doneNow.push(makeItem(`Updated ${label} -> ${status}.`));
+        doneNow.push(
+          makeItem(
+            style === MESSAGE_STYLE.PLAIN_LANGUAGE
+              ? `Updated status for ${label}. New status: ${status}.`
+              : `Updated ${label} -> ${status}.`
+          )
+        );
+        const context = getAssignmentContext(db, args, output);
+        buildAssignmentContextLines(context, {
+          messageStyle: style,
+          action: "status",
+          statusText: status,
+        }).forEach((item) => info.push(item));
       } else if (output?.matches?.length) {
         doneNow.push(makeItem(`Need your input: multiple matches for "${args.title || "assignment"}".`));
       } else if (output?.error) {
@@ -609,7 +990,13 @@ export function buildReadableToolResponse({ executed, db, timeZone, now, schoolo
         if (result?.ok) {
           const label = assignmentInlineLabel(result.assignment, input);
           const status = formatFriendlyStatus(result.status || input.status);
-          doneNow.push(makeItem(`Updated ${label} -> ${status}.`));
+          doneNow.push(
+            makeItem(
+              style === MESSAGE_STYLE.PLAIN_LANGUAGE
+                ? `Updated status for ${label}. New status: ${status}.`
+                : `Updated ${label} -> ${status}.`
+            )
+          );
         } else if (result?.matches?.length) {
           doneNow.push(makeItem(`Need your input: multiple matches for "${input.title || "assignment"}".`));
         } else if (result?.error) {

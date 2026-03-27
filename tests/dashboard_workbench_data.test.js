@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createDb } from "../src/db.js";
+import { STATUS_CODE_MAP } from "../src/statuses.js";
 import {
   buildAssignmentDetail,
   buildAssignmentsWorkspace,
@@ -85,6 +86,11 @@ test("buildDashboardMeta advertises parent-first views and quick actions", () =>
   assert.equal(meta.utilityViews[0].id, "admin");
   assert.ok(meta.quickActions.some((action) => action.id === "submitted"));
   assert.ok(meta.manualStatuses.some((option) => option.code === "D" && option.label === "Grade not posted yet"));
+  assert.ok(
+    meta.manualStatuses.some(
+      (option) => option.code === "F" && option.label === "Will complete in class" && option.category === "pending"
+    )
+  );
 });
 
 test("buildHomeWorkspace classifies items into tonight, coming up, waiting, and handled", () => {
@@ -145,6 +151,56 @@ test("buildAssignmentsWorkspace includes parent-friendly status labels and remin
   }
 });
 
+test("buildAssignmentsWorkspace expands MUA titles and surfaces the new pending status", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "schoology-schoolwork-mua-"));
+  try {
+    const config = makeConfig(tempDir);
+    const db = createDb(":memory:");
+    db.prepare(
+      `
+      INSERT INTO assignments (
+        key, course, title, due_date, status, score, url, raw_text,
+        first_seen_at, last_seen_at, last_missing_at, resolved_at, is_missing, manual_status, auto_ignored
+      )
+      VALUES (
+        'mua-1',
+        'Algebra: Sec 1',
+        'MUA',
+        '2/23/26 11:59pm',
+        'Missing',
+        '',
+        '',
+        'MUA Due 2/23/26 11:59pm Missing',
+        '2026-02-23T10:00:00Z',
+        '2026-02-23T10:00:00Z',
+        '2026-02-23T10:00:00Z',
+        NULL,
+        1,
+        ?,
+        0
+      )
+    `
+    ).run(STATUS_CODE_MAP.F);
+
+    const payload = buildAssignmentsWorkspace({
+      config,
+      query: { status: "missing", includePending: "true", includeIgnored: "true" },
+      dbOverride: db,
+      now: new Date("2026-02-23T20:00:00Z"),
+    });
+
+    const row = payload.rows.find((entry) => entry.key === "mua-1");
+    assert.ok(row);
+    assert.equal(row.title, "Mid-Unit Assessment");
+    assert.equal(row.displayStatusLabel, "Will complete in class");
+    assert.equal(row.bucketLabel, "Waiting on school");
+    assert.match(row.reasonText, /will complete in class/i);
+    assert.equal(payload.summary.waiting, 1);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("buildAssignmentDetail returns full note and reminder detail with parent-facing labels", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "schoology-assignment-detail-"));
   try {
@@ -163,6 +219,52 @@ test("buildAssignmentDetail returns full note and reminder detail with parent-fa
     assert.equal(detail.notes.length, 2);
     assert.equal(detail.pendingReminder.id > 0, true);
     assert.equal(detail.assignment.bucketLabel, "Needs attention");
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("buildAssignmentDetail expands display titles for MUA rows", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "schoology-assignment-detail-mua-"));
+  try {
+    const config = makeConfig(tempDir);
+    const db = createDb(":memory:");
+    db.prepare(
+      `
+      INSERT INTO assignments (
+        key, course, title, due_date, status, score, url, raw_text,
+        first_seen_at, last_seen_at, last_missing_at, resolved_at, is_missing, manual_status, auto_ignored
+      )
+      VALUES (
+        'mua-2',
+        'Algebra: Sec 1',
+        'MUA',
+        '2/23/26 11:59pm',
+        'Missing',
+        '',
+        '',
+        'MUA Due 2/23/26 11:59pm Missing',
+        '2026-02-23T10:00:00Z',
+        '2026-02-23T10:00:00Z',
+        '2026-02-23T10:00:00Z',
+        NULL,
+        1,
+        ?,
+        0
+      )
+    `
+    ).run(STATUS_CODE_MAP.F);
+
+    const detail = buildAssignmentDetail({
+      config,
+      key: "mua-2",
+      dbOverride: db,
+      now: new Date("2026-02-23T20:00:00Z"),
+    });
+
+    assert.ok(detail);
+    assert.equal(detail.assignment.title, "Mid-Unit Assessment");
+    assert.equal(detail.assignment.displayStatusLabel, "Will complete in class");
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

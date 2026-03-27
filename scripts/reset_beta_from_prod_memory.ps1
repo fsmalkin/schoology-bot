@@ -118,6 +118,99 @@ function Backup-DbSnapshot {
   ) | Out-Null
 }
 
+function Copy-BindMountedSqliteBundleSnapshot {
+  param(
+    [string]$SourceMainPath,
+    [string]$ArtifactMainPath,
+    [string]$HelperImage
+  )
+
+  if ([string]::IsNullOrWhiteSpace($SourceMainPath) -or -not (Test-Path $SourceMainPath)) {
+    return
+  }
+
+  $sourceDir = Split-Path -Parent $SourceMainPath
+  $sourceFile = Split-Path -Leaf $SourceMainPath
+  $artifactDirPath = Split-Path -Parent $ArtifactMainPath
+  $artifactFile = Split-Path -Leaf $ArtifactMainPath
+  $copyScript = @'
+if [ -f "/from/{0}" ]; then
+  cp "/from/{0}" "/work/{1}"
+fi
+for suffix in -wal -shm; do
+  if [ -f "/from/{0}${{suffix}}" ]; then
+    cp "/from/{0}${{suffix}}" "/work/{1}${{suffix}}"
+  else
+    rm -f "/work/{1}${{suffix}}"
+  fi
+done
+'@ -f $sourceFile, $artifactFile
+
+  Write-Step ("Copying bind-mounted SQLite bundle snapshot from " + $SourceMainPath + " to " + $ArtifactMainPath)
+  Invoke-Docker -DockerArgs @(
+    "run",
+    "--rm",
+    "--user",
+    "root",
+    "-v",
+    "${sourceDir}:/from",
+    "-v",
+    "${artifactDirPath}:/work",
+    $HelperImage,
+    "sh",
+    "-lc",
+    $copyScript
+  ) | Out-Null
+}
+
+function Install-BindMountedSqliteBundle {
+  param(
+    [string]$SourceMainPath,
+    [string]$TargetMainPath,
+    [string]$HelperImage
+  )
+
+  if ([string]::IsNullOrWhiteSpace($SourceMainPath) -or -not (Test-Path $SourceMainPath)) {
+    return
+  }
+
+  $sourceDir = Split-Path -Parent $SourceMainPath
+  $sourceFile = Split-Path -Leaf $SourceMainPath
+  $targetDir = Split-Path -Parent $TargetMainPath
+  $targetFile = Split-Path -Leaf $TargetMainPath
+  $repairScript = @'
+rm -f "/target/{1}" "/target/{1}-wal" "/target/{1}-shm"
+if [ -f "/from/{0}" ]; then
+  cp "/from/{0}" "/target/{1}"
+  chmod 666 "/target/{1}" 2>/dev/null || true
+  chown 1000:1000 "/target/{1}" 2>/dev/null || true
+fi
+for suffix in -wal -shm; do
+  if [ -f "/from/{0}${{suffix}}" ]; then
+    cp "/from/{0}${{suffix}}" "/target/{1}${{suffix}}"
+    chmod 666 "/target/{1}${{suffix}}" 2>/dev/null || true
+    chown 1000:1000 "/target/{1}${{suffix}}" 2>/dev/null || true
+  fi
+done
+'@ -f $sourceFile, $targetFile
+
+  Write-Step ("Installing SQLite bind-mount bundle into " + $TargetMainPath)
+  Invoke-Docker -DockerArgs @(
+    "run",
+    "--rm",
+    "--user",
+    "root",
+    "-v",
+    "${sourceDir}:/from",
+    "-v",
+    "${targetDir}:/target",
+    $HelperImage,
+    "sh",
+    "-lc",
+    $repairScript
+  ) | Out-Null
+}
+
 function Restart-BetaStack {
   param(
     [string]$ProjectRootPath,
@@ -180,6 +273,7 @@ $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $artifactDir = Join-Path $ProjectRoot ("artifacts\beta-reset\" + $timestamp)
 New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
 
+$betaDbFileName = "agent.runtime.db"
 $prodSnapshot = Join-Path $artifactDir "agent.db.prod.snapshot"
 $betaPreSnapshot = Join-Path $artifactDir "agent.db.beta.pre_reset"
 $prodPostSnapshot = Join-Path $artifactDir "agent.db.prod.post"
@@ -345,10 +439,10 @@ Backup-DbSnapshot -SourceMountSpec $ProdVolumeName -SourceRelativePath "agent.db
 Write-Step "Stopping active beta stack before replacing beta data."
 Invoke-BetaCompose -ComposeArgs @("down") | Out-Null
 
-$betaDbPath = Join-Path $betaDataDirPath "agent.db"
+$betaDbPath = Join-Path $betaDataDirPath $betaDbFileName
 if (Test-Path $betaDbPath) {
   Write-Step "Capturing beta pre-reset snapshot."
-  Backup-DbSnapshot -SourceMountSpec $betaDataDirPath -SourceRelativePath "agent.db" -ArtifactFileName "agent.db.beta.pre_reset" -HelperImage $helperImage -ArtifactDirPath $artifactDir
+  Copy-BindMountedSqliteBundleSnapshot -SourceMainPath $betaDbPath -ArtifactMainPath $betaPreSnapshot -HelperImage $helperImage
 } else {
   Write-Step "Beta DB was not present; skipping pre-reset snapshot."
 }
@@ -359,8 +453,8 @@ foreach ($suffix in @("", "-wal", "-shm")) {
     Remove-Item -Path $candidate -Force
   }
 }
-Copy-Item -Path $prodSnapshot -Destination $betaDbPath -Force
-Write-Step ("Wrote prod DB snapshot into beta DB path: " + $betaDbPath)
+Install-BindMountedSqliteBundle -SourceMainPath $prodSnapshot -TargetMainPath $betaDbPath -HelperImage $helperImage
+Write-Step ("Installed prod DB snapshot into beta DB path: " + $betaDbPath)
 
 if (Test-Path $stateSrc) {
   Copy-Item -Path $stateSrc -Destination $stateDst -Force
@@ -383,7 +477,7 @@ if (-not $SkipRestart) {
 }
 
 Write-Step "Capturing beta post-reset snapshot."
-Backup-DbSnapshot -SourceMountSpec $betaDataDirPath -SourceRelativePath "agent.db" -ArtifactFileName "agent.db.beta.post" -HelperImage $helperImage -ArtifactDirPath $artifactDir
+Copy-BindMountedSqliteBundleSnapshot -SourceMainPath $betaDbPath -ArtifactMainPath $betaPostSnapshot -HelperImage $helperImage
 
 Write-Step "Capturing live prod post-reset snapshot."
 Backup-DbSnapshot -SourceMountSpec $ProdVolumeName -SourceRelativePath "agent.db" -ArtifactFileName "agent.db.prod.post" -HelperImage $helperImage -ArtifactDirPath $artifactDir

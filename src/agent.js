@@ -4,6 +4,8 @@ import { getConfig, validateOpenAIConfig } from "./config.js";
 import {
   addAssignmentNote,
   ensureDbSeeded,
+  getAssignmentFollowUpContext,
+  getChatMemory,
   getChatState,
   getDb,
   listTasks,
@@ -24,6 +26,9 @@ import {
   getPendingAction,
   setPendingAction,
   clearPendingAction,
+  normalizeChatMessageStyle,
+  setChatMessageStyle,
+  upsertChatMemory,
   updateChatCompaction,
   updateChatState,
 } from "./db.js";
@@ -38,13 +43,22 @@ import {
 } from "./capabilities.js";
 import { buildReadableToolResponse } from "./readable_messages.js";
 
-function buildResponsePrompt(config, allowedTools = TOOL_NAMES) {
+const MESSAGE_STYLE = {
+  COMPACT: "compact",
+  PLAIN_LANGUAGE: "plain_language",
+};
+
+function buildResponsePrompt(config, allowedTools = TOOL_NAMES, { messageStyle = MESSAGE_STYLE.COMPACT } = {}) {
   const capabilitySummary = buildCapabilitySummary({ allowedTools, config });
   const configuredIdp = String(config?.schoology?.idp || "").trim().toLowerCase();
   const idpInstruction =
     configuredIdp && configuredIdp !== "auto"
       ? `Schoology sign-in is already configured as "${configuredIdp}". Do not ask the user to choose a sign-in provider unless they explicitly ask to change it.`
       : "If Schoology login fails and sign-in provider is unknown, ask whether the provider is Microsoft, Google, or Other.";
+  const styleInstruction =
+    normalizeMessageStyleValue(messageStyle) === MESSAGE_STYLE.PLAIN_LANGUAGE
+      ? "Use plain-language wording, spell out abbreviations in user-facing text, and explain the next step clearly."
+      : "Use compact wording and keep the reply brief.";
   return [
     "You are a Schoology assistant.",
     "Use the provided tool results as the source of truth.",
@@ -60,6 +74,7 @@ function buildResponsePrompt(config, allowedTools = TOOL_NAMES) {
     "Default reporting buckets: Actionable, Pending, Ignored. Hide Ignored by default unless asked.",
     "When confirming status updates, include a short list of items waiting on teacher/grade (No grade put in yet, Waiting on teacher).",
     "If the user suggests improvements or feature ideas, ask if they want you to log a feature request.",
+    styleInstruction,
     "Reply with plain text.",
     "Use simple lists (use '-' for bullets, '1.' for numbering).",
     "Do not use HTML tags or Markdown code fences.",
@@ -101,6 +116,157 @@ function isInvalidPendingAction(pending) {
   if (assignmentWriteTools.has(pending.tool) && !hasAssignmentSelector(args)) return true;
 
   return false;
+}
+
+function normalizeTextForCommand(value) {
+  return normalizeAscii(String(value || ""))
+    .trim()
+    .toLowerCase()
+    .replace(/[.!?]+$/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function collapseWhitespace(value, maxLength = 280) {
+  const text = normalizeAscii(String(value || "").trim()).replace(/\s+/g, " ");
+  if (!text) return "";
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+}
+
+function detectMessageStylePreference(text) {
+  const cleaned = normalizeTextForCommand(text);
+  if (!cleaned) return null;
+
+  const plainMention = /\b(?:please\s+)?(?:use|switch to|set|prefer|go to|turn on)\s+(plain language|plain-language)(?:\s+mode)?\b/;
+  const compactMention = /\b(?:please\s+)?(?:use|switch to|set|prefer|go to|turn on)\s+(compact|compact mode)\b/;
+
+  const plainPatterns = [
+    /^(please\s+)?(use|switch to|set|prefer|go to|turn on)\s+(plain language|plain-language)(\s+mode)?$/,
+    /^(plain language|plain-language)(\s+mode)?$/,
+  ];
+  for (const pattern of plainPatterns) {
+    if (pattern.test(cleaned)) {
+      return { style: MESSAGE_STYLE.PLAIN_LANGUAGE, pure: true };
+    }
+  }
+  if (plainMention.test(cleaned)) {
+    return { style: MESSAGE_STYLE.PLAIN_LANGUAGE, pure: false };
+  }
+
+  const compactPatterns = [
+    /^(please\s+)?(use|switch to|set|prefer|go to|turn on)\s+(compact|compact mode)$/,
+    /^(compact|compact mode)$/,
+  ];
+  for (const pattern of compactPatterns) {
+    if (pattern.test(cleaned)) {
+      return { style: MESSAGE_STYLE.COMPACT, pure: true };
+    }
+  }
+  if (compactMention.test(cleaned)) {
+    return { style: MESSAGE_STYLE.COMPACT, pure: false };
+  }
+  return null;
+}
+
+function normalizeMessageStyleValue(value) {
+  return normalizeChatMessageStyle(value, { allowNull: false }).value;
+}
+
+function buildChatMemoryContext(chatMemory, messageStyle, chatState) {
+  const parts = [`Current message style: ${messageStyle}`];
+  if (chatState?.turnCount !== undefined && chatState?.turnCount !== null) {
+    parts.push(`Turn count: ${chatState.turnCount}`);
+  }
+  if (chatMemory?.summaryText) {
+    parts.push(`Stored chat memory:\n${String(chatMemory.summaryText).trim()}`);
+  }
+  return parts.join("\n\n");
+}
+
+function findAssignmentSelector(executed = []) {
+  const selectorTools = new Set([
+    "update_assignment_status",
+    "bulk_update_assignment_statuses",
+    "add_assignment_note",
+    "schedule_reminder",
+    "update_assignment_reminder",
+    "delete_assignment_reminder",
+  ]);
+  for (const entry of executed) {
+    const toolName = entry?.call?.name;
+    if (!selectorTools.has(toolName)) continue;
+    const args = entry?.call?.arguments && typeof entry.call.arguments === "object" ? entry.call.arguments : null;
+    if (!args) continue;
+    const key = String(args.key || "").trim();
+    const title = String(args.title || "").trim();
+    const course = String(args.course || "").trim();
+    if (key || title) {
+      return {
+        key: key || null,
+        title: title || null,
+        course: course || null,
+      };
+    }
+  }
+  return null;
+}
+
+function buildChatMemorySnapshot({ text, reply, executed, db, messageStyle }) {
+  const lines = [`Style: ${messageStyle || MESSAGE_STYLE.COMPACT}`];
+  const compactUserText = collapseWhitespace(text, 260);
+  if (compactUserText) lines.push(`Last user: ${compactUserText}`);
+  const compactReply = collapseWhitespace(reply, 420);
+  if (compactReply) lines.push(`Last reply: ${compactReply}`);
+
+  const toolNames = [...new Set((executed || []).map((entry) => entry?.call?.name).filter(Boolean))];
+  if (toolNames.length > 0) {
+    lines.push(`Tools: ${toolNames.join(", ")}`);
+  }
+
+  const selector = findAssignmentSelector(executed);
+  if (selector && db) {
+    const context = getAssignmentFollowUpContext(db, selector);
+    if (context?.ok) {
+      const assignment = context.assignment || {};
+      const summaryBits = [];
+      if (assignment.course) summaryBits.push(assignment.course);
+      if (assignment.title) summaryBits.push(assignment.title);
+      if (summaryBits.length > 0) {
+        lines.push(`Assignment: ${collapseWhitespace(summaryBits.join(" - "), 220)}`);
+      }
+      if (assignment.effectiveStatus) {
+        lines.push(`Status: ${collapseWhitespace(assignment.effectiveStatus, 180)}`);
+      }
+      if (context.latestNote?.note) {
+        lines.push(`Latest note: ${collapseWhitespace(context.latestNote.note, 220)}`);
+      }
+      if (context.pendingReminder) {
+        const reminderLabel =
+          context.pendingReminder.remindAtLabel || context.pendingReminder.remindAt || "";
+        if (reminderLabel) {
+          lines.push(`Pending reminder: ${collapseWhitespace(reminderLabel, 220)}`);
+        }
+      }
+    }
+  }
+
+  const snapshot = lines.join("\n").trim();
+  if (!snapshot) {
+    return `Style: ${messageStyle || MESSAGE_STYLE.COMPACT}`;
+  }
+  return snapshot;
+}
+
+function buildToggleReply(messageStyle) {
+  return messageStyle === MESSAGE_STYLE.PLAIN_LANGUAGE
+    ? "Okay, I'll use plain language."
+    : "Okay, I'll use compact mode.";
+}
+
+function approxInputTokens(value) {
+  const text = String(value || "");
+  if (!text) return 0;
+  return Math.max(1, Math.ceil(text.length / 4));
 }
 
 
@@ -1066,8 +1232,12 @@ function hasWriteTool(executed) {
   return executed.some((item) => writeTools.has(item.call?.name));
 }
 
-function buildPlanInput(text, pending, bootstrap) {
-  const base = bootstrap ? `${bootstrap}\\n\\nUser message:\\n${text}` : text;
+function buildPlanInput(text, pending, bootstrap, memoryText = "") {
+  const parts = [];
+  if (bootstrap) parts.push(bootstrap);
+  if (memoryText) parts.push(`Stored chat memory:\n${memoryText}`);
+  parts.push(`User message:\n${text}`);
+  const base = parts.join("\n\n");
   if (!pending) return base;
   const pendingSummary = {
     tool: pending.tool,
@@ -1341,7 +1511,7 @@ function shouldStorePendingAction(toolName, output) {
   return false;
 }
 
-function formatUpdateSummary(results, db) {
+function formatUpdateSummary(results, db, messageStyle = MESSAGE_STYLE.COMPACT) {
   const config = getConfig();
   const timeZone = config?.schedule?.timezone || "America/New_York";
   return buildReadableToolResponse({
@@ -1350,6 +1520,7 @@ function formatUpdateSummary(results, db) {
     timeZone,
     now: new Date(),
     schoologyIdp: config?.schoology?.idp || "auto",
+    messageStyle,
   });
 }
 
@@ -1365,9 +1536,12 @@ function hasToolErrors(results = []) {
   });
 }
 
-async function maybeCompact(client, config, chatId, chatState, responseId) {
+async function maybeCompact(client, config, chatId, chatState, responseId, { inputTokenEstimate = 0 } = {}) {
   const threshold = config.openai.compactAfterTurns;
-  if (!threshold || chatState.turnCount < threshold) return responseId;
+  const compactAfterTokens = Number(config.openai.compactAfterInputTokens || 0);
+  const shouldCompactByTurns = Boolean(threshold && chatState.turnCount >= threshold);
+  const shouldCompactByTokens = Boolean(compactAfterTokens && inputTokenEstimate >= compactAfterTokens);
+  if (!shouldCompactByTurns && !shouldCompactByTokens) return responseId;
   if (typeof client.responses.compact !== "function") return responseId;
 
   try {
@@ -1386,13 +1560,44 @@ async function maybeCompact(client, config, chatId, chatState, responseId) {
 
 export async function runAgentMessage({ chatId, text, clientOverride, debug = false }) {
   const config = getConfig();
-  validateOpenAIConfig();
-
   const db = getDb(config);
   ensureDbSeeded(db, config.paths.statePath);
 
   const chatState = getChatState(db, chatId);
+  const chatMemory = getChatMemory(db, chatId);
   const pendingAction = getPendingAction(db, chatId);
+  const stylePreference = detectMessageStylePreference(text);
+  const currentStyle = normalizeMessageStyleValue(stylePreference?.style || chatState.messageStyle);
+
+  if (stylePreference?.style) {
+    setChatMessageStyle(db, chatId, stylePreference.style);
+    if (stylePreference.pure) {
+      const reply = buildToggleReply(stylePreference.style);
+      const memorySnapshot = buildChatMemorySnapshot({
+        chatId,
+        text,
+        reply,
+        executed: [],
+        db,
+        messageStyle: stylePreference.style,
+      });
+      upsertChatMemory(db, {
+        chatId,
+        summaryText: memorySnapshot,
+        sourceResponseId: chatState.lastResponseId || null,
+      });
+      if (debug) {
+        return {
+          reply,
+          executed: [],
+          responseId: chatState.lastResponseId || null,
+        };
+      }
+      return reply;
+    }
+  }
+
+  validateOpenAIConfig();
   const client = clientOverride || new OpenAI({ apiKey: config.openai.apiKey });
 
   const previousResponseId = chatState.lastResponseId || undefined;
@@ -1427,7 +1632,8 @@ export async function runAgentMessage({ chatId, text, clientOverride, debug = fa
     }
   }
 
-  const planText = buildPlanInput(text, activePending, getBootstrapContext());
+  const conversationMemory = buildChatMemoryContext(chatMemory, currentStyle, chatState);
+  const planText = buildPlanInput(text, activePending, getBootstrapContext(), conversationMemory);
   const allowedToolsOverride =
     activePending && pendingDecision === "proceed" ? [activePending.tool] : null;
   const allowedToolNames =
@@ -1459,7 +1665,20 @@ export async function runAgentMessage({ chatId, text, clientOverride, debug = fa
         const blockedResponseId = guardResponseId || previousResponseId || chatState.lastResponseId || "";
         if (blockedResponseId) {
           updateChatState(db, chatId, blockedResponseId);
+          setChatMessageStyle(db, chatId, currentStyle);
         }
+        upsertChatMemory(db, {
+          chatId,
+          summaryText: buildChatMemorySnapshot({
+            chatId,
+            text,
+            reply: blockedMessage,
+            executed: [],
+            db,
+            messageStyle: currentStyle,
+          }),
+          sourceResponseId: blockedResponseId || null,
+        });
         if (debug) {
           return {
             reply: blockedMessage,
@@ -1480,11 +1699,12 @@ export async function runAgentMessage({ chatId, text, clientOverride, debug = fa
   }
 
   const toolLoopInstructions = [
-    buildResponsePrompt(config, allowedToolNames),
+    buildResponsePrompt(config, allowedToolNames, { messageStyle: currentStyle }),
     "Tools are available. Use tools to read/update the local DB.",
     "Do not claim you cannot apply updates. Notes/statuses/reminders are local and always writable.",
     "If a tool output indicates missing details or multiple matches, ask a clarifying question and stop calling tools until the user responds.",
   ].join("\n");
+  const estimatedInputTokens = approxInputTokens(`${toolLoopInstructions}\n\n${planText}`);
 
   const executed = [];
   let response = null;
@@ -1572,7 +1792,7 @@ export async function runAgentMessage({ chatId, text, clientOverride, debug = fa
   }
 
   if (!finalText) {
-    finalText = formatUpdateSummary(executed, db) || "Done.";
+    finalText = formatUpdateSummary(executed, db, currentStyle) || "Done.";
   }
   const sanitized = sanitizeRepeatedText(finalText);
   const normalized = normalizeAscii(sanitized);
@@ -1581,37 +1801,47 @@ export async function runAgentMessage({ chatId, text, clientOverride, debug = fa
     updateChatState(db, chatId, responseIdToStore);
   }
 
-  if (responseIdToStore) {
-    const compactedId = await maybeCompact(
+  const compactedId = responseIdToStore
+    ? await maybeCompact(
       client,
       config,
       chatId,
       getChatState(db, chatId),
-      responseIdToStore
-    );
-    if (compactedId !== responseIdToStore) {
-      updateChatCompaction(db, chatId, compactedId);
-    }
+      responseIdToStore,
+      { inputTokenEstimate: estimatedInputTokens }
+    )
+    : responseIdToStore;
+  if (compactedId && compactedId !== responseIdToStore) {
+    updateChatCompaction(db, chatId, compactedId);
+  }
+  if (responseIdToStore || compactedId) {
+    setChatMessageStyle(db, chatId, currentStyle);
   }
 
-  if (!normalized || isRepetitiveOutput(finalText) || isToolingLoop(finalText)) {
-    const summary = formatUpdateSummary(executed, db);
-    const reply = normalizeAscii(summary || normalized || "Done.");
-    if (debug) {
-      return {
-        reply,
-        executed,
-        responseId: responseIdToStore || null,
-      };
-    }
-    return reply;
-  }
+  const fallbackSummary = formatUpdateSummary(executed, db, currentStyle);
+  const reply =
+    !normalized || isRepetitiveOutput(finalText) || isToolingLoop(finalText)
+      ? normalizeAscii(fallbackSummary || normalized || "Done.")
+      : normalized;
+  const memorySnapshot = buildChatMemorySnapshot({
+    chatId,
+    text,
+    reply,
+    executed,
+    db,
+    messageStyle: currentStyle,
+  });
+  upsertChatMemory(db, {
+    chatId,
+    summaryText: memorySnapshot,
+    sourceResponseId: compactedId || responseIdToStore || previousResponseId || null,
+  });
   if (debug) {
     return {
-      reply: normalized,
+      reply,
       executed,
-      responseId: responseIdToStore || null,
+      responseId: compactedId || responseIdToStore || null,
     };
   }
-  return normalized;
+  return reply;
 }
