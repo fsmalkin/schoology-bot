@@ -3,17 +3,32 @@
 This file tracks active and proposed work items with GitHub issue linkage.
 
 ## P1 (Current)
-1. Recurring reminders release gate and rollout
+1. Agent shell/runtime decision gate
+   - Status: In progress
+   - Outcome target: Choose Claude App, GPT app, or managed agent as the next user-facing/runtime path while preserving the existing Schoology core functions.
+   - Core functions to preserve:
+     - Schoology refresh/scrape and login/session handling.
+     - Assignment normalization and stable identity.
+     - Manual statuses, notes, reminders/tasks, and pending confirmations.
+     - Daily summaries and reminder delivery.
+     - Dashboard health/status visibility.
+     - Deterministic app-executed tool actions.
+     - Local/server state ownership unless explicitly migrated.
+   - Acceptance gate:
+     - Short decision memo compares Claude App, GPT app, and managed agent.
+     - Memo identifies selected path, rejected alternatives, migration steps, and rollback plan.
+     - Parity checklist covers refresh, summary, reminders, status updates, notes, dashboard health, and failure alerts.
+2. Recurring reminders release gate and rollout
    - Status: In progress
    - Outcome target: Complete beta reset, story suite, one-pass GPT-5.2 judge evidence, user UAT, and production rollout.
    - Acceptance gate:
      - `scripts/reset_beta_from_prod_memory.ps1` report artifact produced.
      - Agentic story suite artifacts produced.
      - One GPT-5.2 judge JSON artifact produced with required stories passing.
-2. OpenClaw beta UAT and production promotion readiness
+3. OpenClaw beta UAT and production promotion readiness
    - Status: In progress
    - Outcome target: Confirm parity for refresh/chat/reminders and complete a low-risk production cutover checklist.
-3. Dashboard Phase 1 — foundation polish
+4. Dashboard Phase 1 — foundation polish
    - Status: In progress
    - Design reference: `docs/DASHBOARD_DESIGN.md` Phase 1
    - Items:
@@ -21,14 +36,14 @@ This file tracks active and proposed work items with GitHub issue linkage.
      b. Course color stripes on assignment rows (left border, hashed from course name)
      c. Mobile bottom tab bar (replaces hidden sidebar on ≤ 860px)
      d. System status dot in Tonight right column (green/amber/red, links to system panel)
-4. #14 DB-backed context compaction and long-thread memory
+5. #14 DB-backed context compaction and long-thread memory
    - Status: Open
    - Outcome target: Long chats retain critical context with bounded token use.
-5. #15 Detail-page fallback for ambiguous submission status
+6. #15 Detail-page fallback for ambiguous submission status
    - Status: Open
    - Outcome target: Submission state classification remains accurate when list view is ambiguous.
    - Known ambiguity: title suffixes like `(Graded: <date>)` may describe assignment-level timing and are not reliable proof that the current student's work is graded/resolved.
-6. #10 Auto-cancel reminders for inactive/resolved assignments
+7. #10 Auto-cancel reminders for inactive/resolved assignments
    - Status: Open
    - Outcome target: Assignment-linked reminders do not fire after item becomes inactive.
 
@@ -51,9 +66,9 @@ This file tracks active and proposed work items with GitHub issue linkage.
 5. Scheduled auto-update task decision
    - Status: Not yet filed
    - Outcome target: Decide manual-only vs scheduled update path.
-6. Agents SDK evaluation
+6. Provider/SDK follow-through after agent shell/runtime decision
    - Status: Not yet filed
-   - Outcome target: Decision memo on staying with current architecture vs adopting SDK.
+   - Outcome target: Implement selected provider/runtime path without weakening the deterministic Schoology tool boundary.
 7. Cross-project rollout of the agentic release pattern
    - Status: Not yet filed
    - Outcome target: Reuse beta reset + story gate + judge evidence flow in other repos as a standard release template.
@@ -67,6 +82,7 @@ This file tracks active and proposed work items with GitHub issue linkage.
 6. #13 Completed in code: capability registry + planner/agent guardrails.
 7. Dashboard redesign (2026-03-15): sidebar nav, metric row, 2-column home layout shipped to prod. All 111 tests pass.
 8. Schoology title derivation (2026-03-15): clean display names for no-link Schoology rows shipped to prod.
+9. Agent shell/runtime choice elevated to P1 (2026-05-17): choose Claude App, GPT app, or managed agent before further wrapper/runtime promotion.
 
 ## Planning Governance
 - Canonical backlog lives on `main`.
@@ -79,4 +95,3 @@ This file tracks active and proposed work items with GitHub issue linkage.
 1. Local server migration off laptop runtime
    - Status: Completed (2026-02-18)
    - Outcome: Production runtime now runs on local server Docker with persistent data and health checks.
-
