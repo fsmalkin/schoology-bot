@@ -1,7 +1,7 @@
 # Roadmap
 
 ## Goal
-Run a reliable Schoology assistant on the local server that refreshes assignments, keeps actionable status clean, and delivers clear daily/reminder updates via Telegram.
+Run a reliable Schoology assistant on the local server that refreshes assignments, keeps actionable status clean, and delivers clear daily/reminder updates via Telegram while preserving the core Schoology workflow as the agent shell/runtime is evaluated.
 
 ## Current Decisions
 - Login uses Mayari username and password directly.
@@ -15,13 +15,15 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 - Incoming Telegram messages are batched briefly and the oldest dropped if too long.
 - Agent tool routing uses a multi-step structured-output planner (tool group -> tool picker -> augment).
 - Tool execution is handled by app code (not model tool-calling).
+- Product boundary: preserve core functions regardless of agent shell/runtime choice: Schoology refresh/scrape, assignment normalization, manual statuses, notes, reminders/tasks, daily summaries, dashboard health, deterministic tool execution, local state, and Telegram delivery until intentionally replaced.
+- Next strategic decision: choose the default agent shell/runtime path before further wrapper/runtime promotion: Claude App, GPT app, or managed agent.
 - Availability target: run via Docker with restart policy + health check; update with `docker compose -p schoology-prod up -d --build`.
 - Production runtime is hosted on the local server (Docker Compose).
 - If using Twilio later, use Auth Token for now; plan to switch to API Key for server move.
 - Session-based login: use one-time interactive login and refresh when session expires.
 - Add Telegram alert when re-authentication is required.
 - Daily summary lists only unresolved items (Missing, Incomplete, Not completed/submitted, Absent).
-- Agent model choice: GPT-5.2 (not mini or pro).
+- Current production agent model choice: GPT-5.2 (not mini or pro); the upcoming runtime decision may change the app shell and/or provider, but not the core Schoology tool boundary.
 - Maintain offline unit + E2E tests using fixtures (no live Schoology needed).
 - Daily summary includes tasks scheduled for today.
 - One-time tasks roll over by 24 hours if not completed.
@@ -60,14 +62,36 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
   - Reminder-scope release gate completed for this wave: `npm run beta:reset-memory`, `npm run stories:run`, `npm run stories:judge`, prod rebuild, and beta/prod dashboard health checks.
   - Full dashboard design plan written (`docs/DASHBOARD_DESIGN.md`): user stories, navigation architecture, view designs, interaction patterns, mobile layout, and implementation phases.
 - In progress:
+  - Agent shell/runtime decision: choose Claude App, GPT app, or managed agent while preserving the existing Schoology core functions and deterministic tool boundary.
   - Dashboard Phase 1 polish: sidebar nav fix, course color stripes, mobile bottom tab bar.
   - OpenClaw cron bootstrap reliability (`openclaw_cron_sync`) still relies on runtime retries/log validation rather than deterministic integration coverage.
 
+## Agent Shell/Runtime Decision Gate (Next Step)
+Choose the default user-facing agent shell/runtime before further promotion of the OpenClaw beta path or a new Telegram wrapper. The decision should compare:
+
+1. Claude App path
+   - Can it preserve the current parent-facing workflow with minimal custom runtime surface?
+   - Can it call the Schoology tool boundary safely through MCP/tool API or another deterministic bridge?
+2. GPT app path
+   - Can it preserve the current Telegram/dashboard experience or replace it with an acceptable GPT-native surface?
+   - Can it retain reliable scheduled summaries, reminders, and local/server state?
+3. Managed agent path
+   - Can it run long-lived or scheduled Schoology workflows without weakening credential/session handling?
+   - Does it reduce runtime burden enough to justify added platform coupling?
+
+Decision requirements:
+- Preserve core functions listed in Current Decisions.
+- Keep Schoology actions deterministic and app-executed; the model may plan, but code performs writes.
+- Keep local/server data ownership unless an explicit migration decision is made.
+- Require parity checks for refresh, summary, reminders, status updates, notes, dashboard health, and failure alerts.
+- Produce a short decision memo with selected path, rejected alternatives, migration steps, and rollback plan.
+
 ## Active Queue (P1)
-1. OpenClaw beta UAT and production promotion readiness.
-2. Dashboard Phase 1: sidebar nav fix, course color stripes, mobile bottom tab bar, system status dot in right column.
-3. OpenClaw cron bootstrap hardening and explicit test coverage.
-4. Login/session resilience follow-up while keeping secrets-based unattended login (#18) parked unless strategy changes.
+1. Agent shell/runtime decision gate: choose Claude App, GPT app, or managed agent while preserving core Schoology functions.
+2. OpenClaw beta UAT and production promotion readiness.
+3. Dashboard Phase 1: sidebar nav fix, course color stripes, mobile bottom tab bar, system status dot in right column.
+4. OpenClaw cron bootstrap hardening and explicit test coverage.
+5. Login/session resilience follow-up while keeping secrets-based unattended login (#18) parked unless strategy changes.
 
 ## Ready Next (P2)
 1. Dashboard Phase 2: This Week view (calendar strip + day-lane layout).
@@ -75,7 +99,7 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 3. Dashboard Phase 4: Command palette (⌘K).
 4. OpenClaw upstream sync SOP (what to pull, how to validate, when to promote).
 5. Scheduled auto-update task decision (Windows Task Scheduler).
-6. Agents SDK evaluation versus current direct Responses architecture.
+6. Provider/SDK follow-through after agent shell/runtime decision.
 7. Extend the agentic release pattern to other projects and templates.
 
 ## Later (P3)
