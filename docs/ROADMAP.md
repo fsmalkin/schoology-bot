@@ -17,6 +17,7 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 - Tool execution is handled by app code (not model tool-calling).
 - Product boundary: preserve core functions regardless of agent shell/runtime choice: Schoology refresh/scrape, assignment normalization, manual statuses, notes, reminders/tasks, daily summaries, dashboard health, deterministic tool execution, local state, and Telegram delivery until intentionally replaced.
 - Next strategic decision: choose the default agent shell/runtime path before further wrapper/runtime promotion: Claude App, GPT app, or managed agent.
+- Implementation accelerator is part of the strategic decision: evaluate whether this ChatGPT/GitHub workflow can support a safe, auditable feedback loop with the dev environment that speeds validation while preserving approvals, auditability, and runtime boundaries.
 - Availability target: run via Docker with restart policy + health check; update with `docker compose -p schoology-prod up -d --build`.
 - Production runtime is hosted on the local server (Docker Compose).
 - If using Twilio later, use Auth Token for now; plan to switch to API Key for server move.
@@ -63,6 +64,7 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
   - Full dashboard design plan written (`docs/DASHBOARD_DESIGN.md`): user stories, navigation architecture, view designs, interaction patterns, mobile layout, and implementation phases.
 - In progress:
   - Agent shell/runtime decision: choose Claude App, GPT app, or managed agent while preserving the existing Schoology core functions and deterministic tool boundary.
+  - Implementation accelerator evaluation: determine whether a safe, auditable dev feedback loop can materially speed implementation enough to influence the runtime choice.
   - Dashboard Phase 1 polish: sidebar nav fix, course color stripes, mobile bottom tab bar.
   - OpenClaw cron bootstrap reliability (`openclaw_cron_sync`) still relies on runtime retries/log validation rather than deterministic integration coverage.
 
@@ -75,19 +77,22 @@ Choose the default user-facing agent shell/runtime before further promotion of t
 2. GPT app path
    - Can it preserve the current Telegram/dashboard experience or replace it with an acceptable GPT-native surface?
    - Can it retain reliable scheduled summaries, reminders, and local/server state?
+   - Does the existing ChatGPT/GitHub workflow offer a faster implementation loop if paired with an auditable dev feedback path?
 3. Managed agent path
    - Can it run long-lived or scheduled Schoology workflows without weakening credential/session handling?
    - Does it reduce runtime burden enough to justify added platform coupling?
+   - Does it offer more acceleration than a lighter dev feedback path while preserving the same runtime guardrails?
 
 Decision requirements:
 - Preserve core functions listed in Current Decisions.
 - Keep Schoology actions deterministic and app-executed; the model may plan, but code performs writes.
 - Keep local/server data ownership unless an explicit migration decision is made.
 - Require parity checks for refresh, summary, reminders, status updates, notes, dashboard health, and failure alerts.
-- Produce a short decision memo with selected path, rejected alternatives, migration steps, and rollback plan.
+- Evaluate implementation acceleration as a first-class factor, including GitHub relay, OpenClaw gateway, MCP-style options, and managed-agent alternatives.
+- Produce a short decision memo with selected path, rejected alternatives, migration steps, rollback plan, and implementation-acceleration recommendation.
 
 ## Active Queue (P1)
-1. Agent shell/runtime decision gate: choose Claude App, GPT app, or managed agent while preserving core Schoology functions.
+1. Agent shell/runtime decision gate: choose Claude App, GPT app, or managed agent while preserving core Schoology functions and evaluating implementation-accelerator options.
 2. OpenClaw beta UAT and production promotion readiness.
 3. Dashboard Phase 1: sidebar nav fix, course color stripes, mobile bottom tab bar, system status dot in right column.
 4. OpenClaw cron bootstrap hardening and explicit test coverage.
