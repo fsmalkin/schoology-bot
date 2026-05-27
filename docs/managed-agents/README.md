@@ -174,6 +174,17 @@ Live dev API smoke completed:
   poorly in chat. The sender now converts Markdown pipe tables to compact lists,
   and the dev cloud agent version `3` instructs Claude not to use tables. A live
   beta-thread formatting smoke sent message id `208`.
+- Submitted/ungraded UAT gap was closed after beta UAT exposed a bad "no
+  submitted-but-ungraded rows" answer. `list_assignments` now has a
+  `submitted_awaiting_grade` filter, the dev cloud agent version `4` routes
+  these questions to that filter, and story-gate `S9` covers the behavior.
+  Legacy story gate passed at `artifacts/agentic-story-suite/20260527-051545`;
+  Managed Agents story gate and judge passed at
+  `artifacts/agentic-story-suite/20260527-052502`.
+- Managed Agents bridge now drops speculative assistant text emitted before a
+  required custom-tool result. This prevents Telegram replies from combining a
+  pre-tool guess with the confirmed tool result; the regression is covered in
+  `tests/managed_agent_bridge.test.js`.
 
 ## API Management
 Tracked by [#30](https://github.com/fsmalkin/schoology-bot/issues/30).

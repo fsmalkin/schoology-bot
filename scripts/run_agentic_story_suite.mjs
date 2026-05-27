@@ -63,6 +63,22 @@ function seedState() {
         resolvedAt: null,
         isMissing: true,
       },
+      language_arts_submitted_essay: {
+        key: "language_arts_submitted_essay",
+        course: "Language Arts",
+        title: "Info Essay",
+        dueDate: "2/27/26 11:59pm",
+        status: "Submitted, awaiting grade",
+        score: "—",
+        url: "",
+        rawText:
+          "Info Essay assignment Due 2/27/26 11:59pm — This student has made a submission that has not been graded.",
+        firstSeenAt: "2026-02-20T00:00:00Z",
+        lastSeenAt: "2026-02-22T00:00:00Z",
+        lastMissingAt: "2026-02-21T00:00:00Z",
+        resolvedAt: "2026-02-22T00:00:00Z",
+        isMissing: false,
+      },
     },
   };
 }
@@ -464,6 +480,74 @@ async function main() {
             beforeRemindAt: beforeLabel,
             afterRemindAt: afterLabel,
             postTask: updated || null,
+          },
+        };
+      },
+    },
+    {
+      id: "S9",
+      title: "Submitted but ungraded icon query",
+      required: true,
+      judgeTarget:
+        "Agent should answer submitted-but-ungraded questions by using the Schoology submitted/awaiting-grade icon filter, not by inferring from the active missing list.",
+      prompts: ["What work has been submitted but not graded yet?"],
+      check: ({ outputs, turns }) => {
+        const listOutput = outputs.find((output) => Array.isArray(output?.assignments));
+        const assignments = Array.isArray(listOutput?.assignments) ? listOutput.assignments : [];
+        const submittedRows = assignments.filter((assignment) =>
+          /submitted, awaiting grade|submission that has not been graded|assignment submitted/i.test(
+            `${assignment.effectiveStatus || ""} ${assignment.status || ""} ${assignment.rawText || ""}`
+          )
+        );
+        const toolArgs = turns.flatMap((turn) =>
+          (turn.executed || []).map((entry) => entry?.call?.arguments || {})
+        );
+        const usedSubmittedFilter = toolArgs.some(
+          (args) => String(args?.status || "") === "submitted_awaiting_grade"
+        );
+        const includedIgnored = toolArgs.some((args) => args?.includeIgnored === true);
+        const replyText = turns.map((turn) => String(turn.assistant || "")).join("\n");
+        const noFalseNoneClaim = !/no assignments|none|everything already has a score|all .*score/i.test(replyText);
+        return {
+          checks: [
+            {
+              name: "submitted_filter_used",
+              pass: usedSubmittedFilter,
+              detail: usedSubmittedFilter
+                ? "Tool call used status=submitted_awaiting_grade."
+                : `Tool args were ${JSON.stringify(toolArgs)}.`,
+            },
+            {
+              name: "ignored_rows_included",
+              pass: includedIgnored,
+              detail: includedIgnored
+                ? "Tool call included ignored/auto-filed rows."
+                : "Tool call did not include includeIgnored=true.",
+            },
+            {
+              name: "submitted_row_returned",
+              pass: submittedRows.length >= 1,
+              detail:
+                submittedRows.length >= 1
+                  ? `Returned ${submittedRows.length} submitted-awaiting-grade row(s).`
+                  : "No submitted-awaiting-grade rows returned.",
+            },
+            {
+              name: "no_false_empty_claim",
+              pass: noFalseNoneClaim,
+              detail: noFalseNoneClaim
+                ? "Assistant did not make a false empty/all-scored claim."
+                : "Assistant reply included an empty/all-scored claim.",
+            },
+          ],
+          evidence: {
+            submittedRows: submittedRows.map((assignment) => ({
+              key: assignment.key,
+              title: assignment.title,
+              effectiveStatus: assignment.effectiveStatus,
+              statusCategory: assignment.statusCategory,
+            })),
+            toolArgs,
           },
         };
       },

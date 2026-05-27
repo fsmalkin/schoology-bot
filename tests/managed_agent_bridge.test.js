@@ -247,6 +247,63 @@ test("managed agent bridge executes repeated action event ids only once", async 
   db.close();
 });
 
+test("managed agent bridge drops speculative assistant text before tool results", async () => {
+  const db = createDb();
+  const client = makeMockClient({
+    streams: [
+      [
+        {
+          id: "msg_pre",
+          type: "agent.message",
+          content: [{ type: "text", text: "I'll set that for 4:30 PM." }],
+        },
+        {
+          id: "tool_evt_1",
+          type: "agent.custom_tool_use",
+          name: "schoology_create_task",
+          input: {
+            title: "Check Schoology for missing assignments",
+            remindAt: "16:30",
+            message: "Review missing assignments.",
+            recurrence: "weekdays",
+            recurrenceTz: "America/New_York",
+          },
+        },
+        {
+          id: "idle_tool",
+          type: "session.status_idle",
+          stop_reason: { type: "requires_action", event_ids: ["tool_evt_1"] },
+        },
+        {
+          id: "msg_done",
+          type: "agent.message",
+          content: [{ type: "text", text: "Created for 9:00 PM." }],
+        },
+        {
+          id: "idle_done",
+          type: "session.status_idle",
+          stop_reason: { type: "end_turn" },
+        },
+      ],
+    ],
+  });
+
+  const result = await runManagedAgentMessage({
+    chatId: "chat-speculative",
+    text: "Set a recurring reminder to check Schoology for missing assignments.",
+    clientOverride: client,
+    configOverride: makeConfig(),
+    dbOverride: db,
+    toolNow: "2026-05-27T12:00:00-04:00",
+    debug: true,
+  });
+
+  assert.equal(result.reply, "Created for 9:00 PM.");
+  assert.doesNotMatch(result.reply, /4:30/);
+  assert.equal(result.executed[0].output.remindAtLabel, "May 27, 2026, 9:00 PM EDT");
+  db.close();
+});
+
 test("managed agent bridge returns unsupported custom tool errors without hanging", async () => {
   const db = createDb();
   const client = makeMockClient({

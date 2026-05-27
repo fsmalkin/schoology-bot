@@ -292,6 +292,8 @@ export async function runManagedAgentMessage({
               }
             }
             if (actionEvents.length > 0) {
+              replyParts.length = 0;
+              seenTextEvents.clear();
               await client.sendEvents(sessionId, actionEvents);
               sentActions = true;
             } else if (actionIds.length > 0 && actionIds.every((actionId) => completedActionIds.has(actionId))) {

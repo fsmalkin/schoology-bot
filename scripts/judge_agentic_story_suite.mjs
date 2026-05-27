@@ -54,6 +54,14 @@ function compactStoryEvidence(story) {
       assumptions: Array.isArray(output.assumptions) ? output.assumptions : [],
       warnings: Array.isArray(output.warnings) ? output.warnings : [],
       sentCount: Number.isFinite(output.count) ? output.count : null,
+      assignmentCount: Array.isArray(output.assignments) ? output.assignments.length : null,
+      assignments: Array.isArray(output.assignments)
+        ? output.assignments.slice(0, 5).map((assignment) => ({
+            title: assignment.title || "",
+            effectiveStatus: assignment.effectiveStatus || "",
+            statusCategory: assignment.statusCategory || "",
+          }))
+        : [],
     };
   };
 
@@ -160,6 +168,7 @@ async function main() {
         "Unsupported cadence should use weekly fallback with explicit evidence.",
         "DST weekly recurrence should preserve local wall-clock time.",
         "One-time reminders should preserve existing rollover behavior.",
+        "Submitted-but-ungraded assignment questions should use the submitted_awaiting_grade filter and return icon-derived rows.",
       ],
       verdictRule: "Fail required story on any material miss or missing evidence.",
     },
@@ -199,7 +208,7 @@ async function main() {
   };
 
   const instructions = [
-    "You are an acceptance judge for recurring reminder stories.",
+    "You are an acceptance judge for Schoology Bot UAT stories.",
     "Return JSON only and follow the schema exactly.",
     "Evaluate each story against its judgeTarget and rubric using only provided evidence.",
     "Treat turns, checks, derivedEvidence, and snapshots as valid evidence sources.",
