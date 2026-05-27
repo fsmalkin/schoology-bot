@@ -81,8 +81,8 @@ Schoology scraping (live)
 
 Telegram end-to-end
 - Unit coverage verifies Telegram forum-topic/thread option normalization and per-thread target keys.
-- Automated live inbound Telegram receive -> tool -> send is still not covered.
-- Manual UAT is required after changes to agent or formatting. Current beta-thread outbound smoke passed with `.env.managed-dev`; no recent inbound user updates were available to consume.
+- Automated live inbound Telegram receive -> tool -> send is still not covered by a repeatable test harness.
+- Manual UAT is required after changes to agent or formatting. Current beta-thread outbound smoke passed with `.env.managed-dev`; one inbound beta-thread message was handled by the Managed Agents path and recorded a `schoology-dev` managed session. One more inbound message should be captured against the current Dockerized managed-dev container instance.
 
 Reminder delivery timing
 - Automated test covers delivery + rollover with a fixed clock.
@@ -100,7 +100,8 @@ Managed Agents stack
 - `tests/managed_agent_tools.test.js` verifies exported Managed Agents custom tool definitions cover the current Schoology tool surface.
 - `tests/managed_agent_definitions.test.js` verifies the Managed Agents system prompt keeps the reminder-default policy needed by parity stories.
 - Live Managed Agents parity now has artifacts from the story suite and judge (`20260527-022952`) using Claude sessions and local Schoology custom tools.
-- Live Telegram outbound to the beta thread was smoke-tested through `.env.managed-dev`; live inbound Managed Agents Telegram E2E still needs a user-sent beta-thread message.
+- A broader isolated live Managed Agents JTBD UAT passed with Claude session `sesn_01HpAfEZH9345jZQC5Fh9dbB`, covering seeded assignment listing, manual status update, assignment note, assignment-linked reminder, standalone recurring reminder, correction/update, unsupported monthly fallback, daily summary, and due-reminder drain.
+- Live Telegram outbound to the beta thread was smoke-tested through `.env.managed-dev`; one inbound beta-thread message was handled by the Managed Agents path before the poller was moved into the current Docker container.
 - No automated coverage yet for managed-session event history beyond the local store or idle/termination policy.
 - No dashboard health coverage yet for Managed Agents bridge/session status.
 - OpenClaw-specific coverage is legacy rollback-only; do not expand it unless OpenClaw is explicitly revived.

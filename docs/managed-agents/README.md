@@ -50,8 +50,10 @@ Acceptance criteria:
 - Clarification turns work for shorthand and partial inputs.
 - Tool-call loops fail closed with friendly text.
 - Event history is inspectable enough for debugging and judge artifacts.
-- Idle sessions terminate or pause predictably.
-- Health dashboard can show bridge/session status.
+- Idle sessions terminate or pause predictably. Tracked as the next
+  health/cost-controls slice, not a blocker for dev Telegram UAT.
+- Health dashboard can show bridge/session status. Tracked as the next
+  health/cost-controls slice, not a blocker for dev Telegram UAT.
 - Legacy prod Docker runtime can be restored without data loss.
 
 ## Dev Config
@@ -147,9 +149,18 @@ Live dev API smoke completed:
 - Live dashboard browser smoke passed with Playwright against
   `http://127.0.0.1:8787` with no console/page errors.
 - Telegram beta-thread outbound smoke sent successfully through
-  `.env.managed-dev` (message id `196`). Full inbound Telegram E2E still needs a
-  real user message in the beta thread; `telegram_updates` found no recent user
-  updates to consume.
+  `.env.managed-dev` (message id `196`).
+- Legacy beta/OpenClaw was stopped and beta Telegram was moved to the Managed
+  Agents bridge. The first inbound beta-thread message was handled by the
+  Managed Agents path and created an active `schoology-dev` Claude session
+  (`sesn_01USppax1VA7hznML5paSh9C`). A follow-up inbound message is still
+  useful to prove the current Dockerized managed-dev container instance after
+  the foreground poller was replaced.
+- A full scoped programmatic Managed Agents JTBD UAT passed against isolated
+  state and live Claude session `sesn_01HpAfEZH9345jZQC5Fh9dbB`, covering
+  seeded assignment listing, manual status update, assignment note, assignment
+  reminder, standalone recurring task, task correction, unsupported monthly
+  fallback, daily summary, and due-reminder drain.
 
 ## API Management
 Tracked by [#30](https://github.com/fsmalkin/schoology-bot/issues/30).
@@ -195,6 +206,14 @@ The Managed Agents dev runtime must pass the same user-facing stories before UAT
 6. Generate the daily summary with manual statuses honored.
 7. Handle login/session failure with a clear user alert.
 8. Avoid tool-call loops and repeated clarification loops.
+
+Current status:
+- Reminder/recurrence parity story suite and judge passed for both legacy and
+  Managed Agents runtimes.
+- The broader Managed Agents JTBD UAT listed above covers items 2-6 plus
+  assignment listing. Live scrape/refresh and login-failure alerting remain
+  deterministic-test covered only in this slice; they should be included in a
+  later live smoke before prod canary.
 
 ## Rollout Gates
 1. Dev bridge implemented behind explicit env/config switches.
