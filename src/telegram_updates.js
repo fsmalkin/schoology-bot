@@ -21,11 +21,14 @@ try {
     const msg = update.message || update.edited_message || update.channel_post;
     if (!msg || !msg.chat) continue;
     const chatId = String(msg.chat.id);
-    if (seen.has(chatId)) continue;
-    seen.add(chatId);
+    const threadId = msg.message_thread_id ? String(msg.message_thread_id) : "";
+    const seenKey = threadId ? `${chatId}:thread:${threadId}` : chatId;
+    if (seen.has(seenKey)) continue;
+    seen.add(seenKey);
     const name = [msg.chat.first_name, msg.chat.last_name].filter(Boolean).join(" ");
     const label = msg.chat.username ? `@${msg.chat.username}` : name || msg.chat.title || "";
-    console.log(`chat_id=${chatId} ${label}`.trim());
+    const thread = threadId ? ` thread_id=${threadId}` : "";
+    console.log(`chat_id=${chatId}${thread} ${label}`.trim());
   }
 
   if (seen.size === 0) {

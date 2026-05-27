@@ -118,7 +118,7 @@ test("beta dashboard boots cleanly and keeps assignment drawer flows explicit", 
 
   const toolExecutor = async (toolDb, tool, args, context) => {
     if (tool === "refresh_schoology") {
-      await new Promise((resolve) => setTimeout(resolve, 120));
+      await new Promise((resolve) => setTimeout(resolve, 1200));
       return { ok: true, actionableCount: 1, pendingCount: 1, ignoredCount: 0 };
     }
     return runToolByName(toolDb, tool, args, context);
@@ -167,8 +167,14 @@ test("beta dashboard boots cleanly and keeps assignment drawer flows explicit", 
 
     const refreshButton = page.getByRole("button", { name: "Refresh Schoology" });
     await refreshButton.click();
-    await page.waitForSelector("text=Refreshing Schoology...");
-    await page.waitForSelector("text=Refresh complete. 1 need attention, 1 waiting on school, 0 handled for now.");
+    await page.waitForFunction(() => {
+      const text = document.querySelector('[data-view-panel="admin"] [data-action="refresh-assignments"]')?.textContent || "";
+      return /Refreshing\.\.\./.test(text);
+    });
+    await page.waitForFunction(() => {
+      const text = document.getElementById("flash")?.textContent || "";
+      return /Refresh complete\. 1 need attention, 1 waiting on school, 0 handled for now\. Finished in /.test(text);
+    });
     assert.match((await refreshButton.textContent()) || "", /Refresh Schoology/);
 
     await page.locator('.nav-item[data-view="schoolwork"]').click();

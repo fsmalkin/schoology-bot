@@ -22,7 +22,7 @@ Unit tests
 - Dashboard health/data builders (heartbeat + snapshot shaping).
 - Dashboard parent-home and schoolwork data builders (home section classification, parent-facing labels, assignment notes preview, reminder summary, task-only filtering, and raw-text title fallback when stored titles are blank).
 - Dashboard read models for `Will complete in class` and MUA display-title expansion.
-- Dashboard browser smoke coverage for click-to-open cards, the minimal card surface, collapsed drawer sections, explicit assignment status saves, visible Schoology refresh busy/success feedback, backdrop/escape close behavior, and bulk-mode reveal.
+- Dashboard browser smoke coverage for click-to-open cards, the minimal card surface, collapsed drawer sections, explicit assignment status saves, long-running Schoology refresh busy/success feedback, backdrop/escape close behavior, and bulk-mode reveal.
 - Beta dashboard client-state safeguards in `beta_dashboard.js` (draft-preserving rerenders, focus-return fallback when cards move buckets, and safer `Submitted` partial-failure handling) are covered through dedicated browser smoke and regression scenarios.
 - Time parsing and timezone formatting (local labels, shorthand).
 - Reminder rollovers (one-time + recurring cadence next-run math, DST wall-clock checks).
@@ -43,6 +43,8 @@ Integration tests
 - Dashboard beta HTTP integration (`tests/dashboard_server.test.js`) for `/beta`, `/beta/assets/beta.css`, and `/beta/assets/beta.js`.
 - Dashboard beta browser smoke (`tests/dashboard_beta_ui_smoke.test.js`) for beta boot, view switching, assignment/task drawer flows, reminder CRUD, task CRUD, mobile drawer sizing, focus return, `Submitted` partial-failure feedback, draft preservation across rerendered view switches, stale assignment-detail response races, close-before-response behavior, and timer-driven health-poll rerenders.
 - Agentic story suite runner (`scripts/run_agentic_story_suite.mjs`) for chat-only release stories.
+- Story suite runner now routes through `runChatMessage`, so it can exercise the Managed Agents bridge when that runtime is selected by env.
+- Story suite runner uses deterministic `AGENTIC_STORY_NOW` for reminder/date parsing in both legacy and Managed Agents runtime paths.
 - Single-pass acceptance judge (`scripts/judge_agentic_story_suite.mjs`) producing strict JSON evidence.
 
 Smoke tests
@@ -59,10 +61,10 @@ Smoke tests
 CLI checks
 - Manual CLI runs via `npm run agent:cli -- "..."` for basic flows.
 - Release gate scripts:
-  - `npm run beta:reset-memory`
+  - `npm run beta:reset-memory` (legacy OpenClaw beta only until Managed Agents dev runtime replaces this gate)
   - `npm run stories:run`
   - `npm run stories:judge`
-- Beta reset now validates against the beta runtime DB file `data/beta/agent.runtime.db`; `stories:judge` must run after `stories:run` completes because it consumes the completed artifact directory.
+- Managed Agents migration must add dev parity artifacts before this becomes the runtime release gate. `stories:judge` must run after `stories:run` completes because it consumes the completed artifact directory.
 - Recovery/operations scripts:
   - `powershell -ExecutionPolicy Bypass -File scripts/start_schoology_stacks.ps1 -RuntimeMode docker`
   - `powershell -ExecutionPolicy Bypass -File scripts/create_schoology_pre_cutover_snapshot.ps1`
@@ -78,8 +80,9 @@ Schoology scraping (live)
 - Playwright flow can regress if Schoology UI changes.
 
 Telegram end-to-end
-- No automated E2E tests for Telegram receive -> tool -> send.
-- Manual UAT required after changes to agent or formatting.
+- Unit coverage verifies Telegram forum-topic/thread option normalization and per-thread target keys.
+- Automated live inbound Telegram receive -> tool -> send is still not covered.
+- Manual UAT is required after changes to agent or formatting. Current beta-thread outbound smoke passed with `.env.managed-dev`; no recent inbound user updates were available to consume.
 
 Reminder delivery timing
 - Automated test covers delivery + rollover with a fixed clock.
@@ -89,11 +92,18 @@ Bug filing to GitHub
 - No automated integration test for GitHub issue creation (avoids live API calls).
 - Relies on unit guards + manual verification.
 
-OpenClaw stack
-- Tool API cron-facing flows covered by unit tests (`tests/tool_runner_openclaw_cron.test.js`).
-- No automated tests for OpenClaw gateway UI.
-- Cron bootstrap behavior (`scripts/openclaw_cron_sync.mjs`) is validated via docker runtime logs, not unit tests.
-- Beta runtime DB bind-mount recovery is covered by live CLI release-gate execution (`npm run beta:reset-memory`), not automated unit tests.
+Managed Agents stack
+- Tracking: [#25 parent](https://github.com/fsmalkin/schoology-bot/issues/25), [#30 parity gate](https://github.com/fsmalkin/schoology-bot/issues/30), [Managed Agents migration doc](managed-agents/README.md).
+- Config parsing/validation and chat-to-session mapping are covered by `tests/managed_agent_sessions.test.js`.
+- Migration coverage verifies `managed_agent_sessions` creation in `tests/migrations.test.js`.
+- Mock Managed Agents bridge coverage in `tests/managed_agent_bridge.test.js` verifies session creation/reuse, Telegram text event send, assistant text collection, local custom Schoology tool result handling, unsupported custom tool errors, built-in tool denial, deterministic invalid-arg errors, bounded large result payloads, and tool-round limits.
+- `tests/managed_agent_tools.test.js` verifies exported Managed Agents custom tool definitions cover the current Schoology tool surface.
+- `tests/managed_agent_definitions.test.js` verifies the Managed Agents system prompt keeps the reminder-default policy needed by parity stories.
+- Live Managed Agents parity now has artifacts from the story suite and judge (`20260527-022952`) using Claude sessions and local Schoology custom tools.
+- Live Telegram outbound to the beta thread was smoke-tested through `.env.managed-dev`; live inbound Managed Agents Telegram E2E still needs a user-sent beta-thread message.
+- No automated coverage yet for managed-session event history beyond the local store or idle/termination policy.
+- No dashboard health coverage yet for Managed Agents bridge/session status.
+- OpenClaw-specific coverage is legacy rollback-only; do not expand it unless OpenClaw is explicitly revived.
 
 Performance and reliability
 - No load or soak tests.

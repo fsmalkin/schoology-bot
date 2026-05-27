@@ -71,6 +71,8 @@ const state = {
 };
 
 let flashTimer = null;
+let refreshBusyTimer = null;
+let refreshBusyStartedAt = 0;
 let renderSequence = 0;
 let assignmentDrawerRequestSeq = 0;
 
@@ -174,7 +176,7 @@ function toolHeaders() {
   };
 }
 
-function setRefreshButtonsBusy(busy) {
+function setRefreshButtonsBusyWithProgress(busy) {
   document.querySelectorAll('[data-action="refresh-assignments"]').forEach((node) => {
     if (!(node instanceof HTMLButtonElement)) return;
     node.disabled = busy;
@@ -221,6 +223,72 @@ function showFlash(message, tone = "info") {
     }, 4400);
   }
 }
+
+function formatElapsedLabel(elapsedMs) {
+  const totalSeconds = Math.max(0, Math.round(Number(elapsedMs || 0) / 1000));
+  if (totalSeconds < 1) return "<1s";
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
+}
+
+function refreshButtonBusyLabel() {
+  if (!refreshBusyStartedAt) return "Refreshing...";
+  return `Refreshing... ${formatElapsedLabel(Date.now() - refreshBusyStartedAt)}`;
+}
+
+function renderRefreshButtonsBusyState() {
+  document.querySelectorAll('[data-action="refresh-assignments"]').forEach((node) => {
+    if (!(node instanceof HTMLButtonElement)) return;
+    node.disabled = true;
+    if (node.classList.contains("icon-btn")) return;
+    if (!node.dataset.defaultLabel) {
+      node.dataset.defaultLabel = node.textContent?.trim() || "Refresh Schoology";
+    }
+    node.textContent = refreshButtonBusyLabel();
+  });
+}
+
+function setRefreshButtonsBusy(busy) {
+  if (refreshBusyTimer) {
+    clearInterval(refreshBusyTimer);
+    refreshBusyTimer = null;
+  }
+  document.querySelectorAll('[data-action="refresh-assignments"]').forEach((node) => {
+    if (!(node instanceof HTMLButtonElement)) return;
+    node.disabled = busy;
+    if (!node.dataset.defaultLabel) {
+      node.dataset.defaultLabel = node.textContent?.trim() || "Refresh Schoology";
+    }
+    if (!busy && !node.classList.contains("icon-btn")) {
+      node.textContent = node.dataset.defaultLabel;
+    }
+  });
+  if (!busy) {
+    refreshBusyStartedAt = 0;
+    return;
+  }
+  refreshBusyStartedAt = Date.now();
+  renderRefreshButtonsBusyState();
+  refreshBusyTimer = window.setInterval(renderRefreshButtonsBusyState, 1000);
+}
+
+function showFlashWithOptions(message, tone = "info", options = {}) {
+  const slot = document.getElementById("flash");
+  if (!slot) return;
+  if (flashTimer) clearTimeout(flashTimer);
+  flashTimer = null;
+  slot.innerHTML = message ? `<div class="flash ${esc(tone)}">${esc(message)}</div>` : "";
+  if (message && options.persist !== true) {
+    const durationMs = Number(options.durationMs || 4400);
+    flashTimer = setTimeout(() => {
+      slot.innerHTML = "";
+    }, durationMs);
+  }
+}
+
+showFlash = showFlashWithOptions;
 
 function setTopbarLabel(view) {
   const labels = {
@@ -1897,7 +1965,7 @@ async function toggleTaskStatus(id, nextStatus) {
   await refreshTaskViews(id);
 }
 
-async function refreshSchoology() {
+async function refreshSchoologyWithProgress() {
   setRefreshButtonsBusy(true);
   showFlash("Refreshing Schoology...", "info");
   try {
@@ -1917,6 +1985,50 @@ async function refreshSchoology() {
       });
     }
     showFlash(refreshSuccessMessage(output), "success");
+  } finally {
+    setRefreshButtonsBusy(false);
+  }
+}
+
+async function refreshSchoology() {
+  const startedAt = Date.now();
+  setRefreshButtonsBusy(true);
+  showFlash("Refreshing Schoology. This can take up to a minute.", "info", { persist: true });
+  try {
+    const output = await runTool("refresh_schoology", {});
+    if (output.ok === false) {
+      showFlash(
+        `Schoology refresh failed after ${formatElapsedLabel(Date.now() - startedAt)}. ${
+          output.error || "Please try again."
+        }`,
+        "error",
+        { durationMs: 12000 }
+      );
+      return;
+    }
+    await Promise.all([loadHome(), loadAssignments(), loadHealth(), loadTasks()]);
+    if (state.drawer.kind === "assignment" && state.drawer.key) {
+      await openAssignmentDrawer(state.drawer.key, {
+        focus: state.drawer.focus || null,
+        section: state.drawer.section || "status",
+        openerId: state.drawer.returnFocusId || null,
+        keepCurrentWhileLoading: true,
+        focusInitialTarget: false,
+      });
+    }
+    showFlash(
+      `${refreshSuccessMessage(output)} Finished in ${formatElapsedLabel(Date.now() - startedAt)}.`,
+      "success",
+      { durationMs: 12000 }
+    );
+  } catch (error) {
+    showFlash(
+      `Schoology refresh failed after ${formatElapsedLabel(Date.now() - startedAt)}. ${
+        error?.message || String(error)
+      }`,
+      "error",
+      { durationMs: 12000 }
+    );
   } finally {
     setRefreshButtonsBusy(false);
   }

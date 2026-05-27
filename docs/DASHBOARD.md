@@ -20,7 +20,7 @@ Purpose: local-first parent dashboard for managing one child's schoolwork after 
   - Bulk status updates are available only after turning on `Bulk select`.
   - Shared review drawer for status saves, note history, reminder edit/delete, and follow-up edits.
 - `System Health` (Admin)
-  - Service health for legacy or OpenClaw runtime.
+  - Service health for the current prod runtime, with Managed Agents bridge status to be added during migration.
   - Last scrape and summary freshness.
   - Assignment/follow-up snapshot counts.
   - Common Docker commands, docs pointers, and runtime explanation.
@@ -60,8 +60,9 @@ Purpose: local-first parent dashboard for managing one child's schoolwork after 
 Heartbeat writers:
 - Scheduler writes `scheduler.heartbeat.json`.
 - Telegram agent writes `telegram-agent.heartbeat.json`.
-- Schoology Tool API writes `schoology-tool-api.heartbeat.json`.
-- OpenClaw gateway monitor writes `openclaw-gateway.heartbeat.json`.
+- Schoology Tool API writes `schoology-tool-api.heartbeat.json` in legacy beta/sidecar modes.
+- Managed Agents bridge heartbeat is tracked in [#31](https://github.com/fsmalkin/schoology-bot/issues/31).
+- OpenClaw gateway monitor heartbeat is rollback-only historical context.
 - Dashboard writes `dashboard.heartbeat.json`.
 
 ## Run
@@ -94,12 +95,13 @@ If `Home` or `All Schoolwork` looks stale or wrong:
 4. If a card title includes `(Graded: <date>)` but still shows `Needs attention`, do not assume the item is resolved. The dashboard follows current missing/submission signals, because that title text can be assignment-level context rather than a confirmed per-student grade.
 
 If `Admin` shows stale/down services:
-1. Check service logs for your runtime mode:
-   - Legacy: `docker compose -f docker-compose.yml -p schoology-prod logs --tail 200 schoology` and `docker compose -f docker-compose.yml -p schoology-prod logs --tail 200 telegram-agent`
-   - OpenClaw beta: `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p schoology-openclaw-beta logs --tail 200 schoology-tool-api`
+1. Check service logs for the current prod runtime:
+   - `docker compose -f docker-compose.yml -p schoology-prod logs --tail 200 schoology`
+   - `docker compose -f docker-compose.yml -p schoology-prod logs --tail 200 telegram-agent`
+   - Managed Agents bridge logs/health will be added during [#31](https://github.com/fsmalkin/schoology-bot/issues/31).
 2. Confirm heartbeat files are updating:
-   - Legacy: `data/health/scheduler.heartbeat.json` and `data/health/telegram-agent.heartbeat.json`
-   - OpenClaw: `data/beta/health/schoology-tool-api.heartbeat.json` and `data/beta/health/openclaw-gateway.heartbeat.json`
+   - `data/health/scheduler.heartbeat.json` and `data/health/telegram-agent.heartbeat.json`
+   - Managed Agents bridge heartbeat path is tracked in [#31](https://github.com/fsmalkin/schoology-bot/issues/31).
 3. Rebuild/restart services:
    - `docker compose -f docker-compose.yml -p schoology-prod up -d --build`
 

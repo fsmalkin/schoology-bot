@@ -83,12 +83,12 @@ services:
       - "127.0.0.1:${DASHBOARD_PORT:-8787}:8787"
     restart: unless-stopped
     init: true
-    mem_limit: 192m
-    memswap_limit: 768m
-    mem_reservation: 96m
+    mem_limit: 256m
+    memswap_limit: 1024m
+    mem_reservation: 128m
     mem_swappiness: 100
-    cpus: 0.25
-    cpu_shares: 96
+    cpus: 0.35
+    cpu_shares: 128
     oom_score_adj: 500
     depends_on:
       - schoology

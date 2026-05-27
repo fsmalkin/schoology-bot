@@ -103,6 +103,142 @@ Notes:
 ---
 
 Title:
+Managed Agents Dev Runtime UAT
+
+Last updated:
+2026-05-27
+
+Goal:
+- Finish the Claude Managed Agents dev runtime so it can replace the legacy agent path for UAT while preserving the current Docker prod runtime as rollback.
+- Prove existing Schoology Bot jobs-to-be-done work through local tests, parity stories, Docker smoke checks, live Claude API smoke, and beta Telegram UAT when credentials and a safe target are available.
+
+Scope:
+In scope:
+- Managed Agents config, session mapping, Telegram runtime routing, Claude REST/SSE client, and custom Schoology tool loop.
+- Deterministic tool execution through existing `runToolByName` behavior for assignments, statuses, notes, reminders, tasks, summaries, and reminder drains.
+- Local/mock coverage for session reuse, custom tool calls, unsupported tools, tool confirmation denial, invalid args, payload bounding, and loop limits.
+- Story-suite routing through `runChatMessage` so legacy OpenAI and Managed Agents can be tested with the same user-facing stories.
+- Docker rebuild/smoke validation for the current production compose stack.
+- Beta Telegram UAT through existing beta bot/thread/channel if the env has a valid token/chat and the target is safe.
+- Worklog, test coverage, and GitHub issue handoff updates for the active migration slice.
+Out of scope:
+- Promoting Managed Agents to prod.
+- Adding new OpenClaw UAT, cron hardening, or upstream sync work.
+- Replacing the local scheduler/reminder authority with Managed Agents.
+- Broad dashboard redesign beyond validating existing flows.
+
+Constraints and assumptions:
+- Prod remains on the current Docker runtime until explicit UAT and rollout gates pass.
+- Managed Agents stays opt-in through `MANAGED_AGENTS_ENABLED=1` or `RUNTIME_STACK=managed-agents`.
+- Claude custom tool requests must route through deterministic Schoology tools and must not bypass DB/status/reminder rules.
+- The branch starts with prior-session uncommitted work; preserve it unless a change is clearly unsafe.
+- The local Codex Telegram route for this repo may be unavailable; app-level beta Telegram validation is independent of that route.
+- Secrets in `.env*` files must not be printed.
+
+Risks and mitigations:
+Risk:
+- Managed Agents API event shapes differ from mocks.
+Impact:
+- Live sessions could hang, miss tool actions, or return partial replies.
+Mitigation:
+- Run live no-tool and custom-tool smoke sessions using the ignored managed-dev env, keep stream timeout/round limits, and fail closed with explicit errors.
+
+Risk:
+- The custom tool loop writes or repeats actions unexpectedly.
+Impact:
+- Assignment statuses, notes, tasks, or reminders could be duplicated or corrupted during UAT.
+Mitigation:
+- Reuse deterministic `runToolByName`, test invalid/unsupported calls, run story suite against isolated artifact DBs first, and use beta/dev runtime data for Telegram UAT.
+
+Risk:
+- Telegram routing creates duplicate replies or loses queued text.
+Impact:
+- Parent-facing chat becomes confusing and hard to trust.
+Mitigation:
+- Keep existing Telegram queue/batching boundary, route only the agent runtime call through `runChatMessage`, check Docker logs, and run beta bot interaction when safe.
+
+Risk:
+- Local docs and planning drift from remote `main`.
+Impact:
+- Merge or handoff confusion.
+Mitigation:
+- Reconcile planning docs against `main`, include commit checkpoints, and record validation/worklog evidence before handoff.
+
+Plan:
+Phase 1 - Baseline and plan
+Tasks:
+- Read repo/global guidance, current managed-agent docs, changed files, and branch state.
+- Run targeted managed-agent tests to establish the current baseline.
+- Update this ExecPlan for the active migration pass.
+Dependencies:
+- Existing prior-session patch in the working tree.
+End state:
+- Current risks, validation scope, and next work are explicit.
+
+Phase 2 - Harden local behavior
+Tasks:
+- Fix any targeted test failures or obvious bridge/config/DB gaps.
+- Add focused coverage for new behavior or discovered edge cases.
+- Create a checkpoint commit once the local managed-agent slice is coherent.
+Dependencies:
+- Phase 1 complete.
+End state:
+- Managed-agent bridge behavior is covered locally and committed in a reversible slice.
+
+Phase 3 - Full validation
+Tasks:
+- Run full `npm test`.
+- Run `git diff --check`.
+- Run legacy story suite and Managed Agents story/judge gate where credentials allow.
+- Rebuild and smoke Docker services with `docker compose -p schoology-prod up -d --build`.
+- Check `telegram-agent`, `schoology`, and `dashboard` logs for runtime errors.
+Dependencies:
+- Phase 2 complete.
+End state:
+- Existing runtime functionality has automated and Docker evidence, with failures fixed or explicitly documented.
+
+Phase 4 - Live UAT readiness
+Tasks:
+- Inspect env key presence without printing secrets.
+- Run live Claude no-tool/custom-tool smoke using `.env.managed-dev`.
+- Attempt beta Telegram UAT through the existing beta bot/thread/channel if token/chat configuration is present and safe.
+- Update docs, test coverage, worklog, and active GitHub issue handoff.
+Dependencies:
+- Phase 3 complete.
+End state:
+- Fred has a UAT-ready handoff or a precise external blocker with validation evidence.
+
+Validation plan:
+Unit tests:
+- `node --test --test-concurrency=1 tests/managed_agent_sessions.test.js tests/managed_agent_tools.test.js tests/managed_agent_bridge.test.js`
+- `npm test`
+Integration tests:
+- Managed Agents bridge mock integration through `runChatMessage`.
+- Story suite and judge artifacts for legacy and Managed Agents where credentials allow.
+Smoke tests:
+- `git diff --check`
+- `docker compose -p schoology-prod up -d --build`
+- Dashboard health check.
+- Docker logs for `telegram-agent`, `schoology`, and `dashboard`.
+Manual checks (if any):
+- Beta Telegram prompt/response through existing beta bot/thread/channel if configured.
+
+Rollback plan:
+- Revert to the last committed stable state and rebuild: `git checkout .` then `docker compose -p schoology-prod up -d --build`.
+- Keep OpenClaw compose files rollback-only and do not add new OpenClaw work.
+- Managed Agents can be disabled by removing `MANAGED_AGENTS_ENABLED=1` and `RUNTIME_STACK=managed-agents`.
+
+Open questions:
+- Is the existing beta Telegram bot/chat target configured in local env and safe for a live UAT message?
+- Does the live Claude API still accept the current beta header and managed agent resource IDs?
+
+Notes:
+- 2026-05-27: Prior-session patch already includes Managed Agents config/session/bridge/tool-loop foundations plus live smoke evidence in docs; this pass continues from that state and will not reset unrelated working tree changes.
+- 2026-05-27: Managed Agents dev agent updated to version 2, legacy and Managed Agents story gates passed, Docker/browser smoke passed, and beta-thread outbound Telegram smoke sent. Remaining UAT item is an inbound user message in the beta thread.
+
+---
+
+Title:
 Card-First Parent Dashboard Redesign
 
 Last updated:

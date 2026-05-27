@@ -1,5 +1,6 @@
 import TelegramBot from "node-telegram-bot-api";
 import { renderTelegramHtml, renderTelegramPlain } from "./telegram_format.js";
+import { buildTelegramThreadOptions } from "./telegram_threading.js";
 
 function trimToLimit(text, limit) {
   const lines = String(text || "")
@@ -34,13 +35,17 @@ export async function sendTelegramMessage(config, text) {
   for (const chatId of config.telegram.chatIds) {
     try {
       const message = await bot.sendMessage(chatId, formatted, {
-        disable_web_page_preview: true,
-        parse_mode: "HTML",
+        ...buildTelegramThreadOptions(config.telegram.messageThreadId, {
+          disable_web_page_preview: true,
+          parse_mode: "HTML",
+        }),
       });
       results.push(message.message_id);
     } catch (err) {
       const message = await bot.sendMessage(chatId, plain, {
-        disable_web_page_preview: true,
+        ...buildTelegramThreadOptions(config.telegram.messageThreadId, {
+          disable_web_page_preview: true,
+        }),
       });
       results.push(message.message_id);
     }

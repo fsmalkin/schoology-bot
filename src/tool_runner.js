@@ -114,6 +114,15 @@ function hasValue(value) {
   return value !== undefined && value !== null && String(value).trim() !== "";
 }
 
+function resolveNow(value) {
+  if (value instanceof Date && Number.isFinite(value.getTime())) return value;
+  if (value !== undefined && value !== null && String(value).trim() !== "") {
+    const parsed = new Date(String(value));
+    if (Number.isFinite(parsed.getTime())) return parsed;
+  }
+  return new Date();
+}
+
 function combineDateWithDefaultTime({ dateLike, timeLike, timeZone }) {
   const date = new Date(dateLike);
   const time = new Date(timeLike);
@@ -155,7 +164,7 @@ function normalizeReminderArgs(args, timeZone, options = {}) {
     args: nextArgs,
     userText,
     timeZone,
-    now: options?.now || new Date(),
+    now: resolveNow(options?.now),
     allowCreateDefaults: options?.allowCreateDefaults === true,
   });
   if (inferred?.error) {
@@ -186,7 +195,7 @@ function normalizeReminderArgs(args, timeZone, options = {}) {
     String(mergedArgs.remindAt).trim() !== ""
   ) {
     const originalRemindAt = String(mergedArgs.remindAt);
-    const originalParsed = parseReminderTime(originalRemindAt, timeZone, options?.now || new Date());
+    const originalParsed = parseReminderTime(originalRemindAt, timeZone, resolveNow(options?.now));
     const shouldPreserveDate =
       hasDateCue(originalRemindAt) &&
       originalParsed?.ok === true &&
@@ -198,7 +207,7 @@ function normalizeReminderArgs(args, timeZone, options = {}) {
       args: mergedArgs,
       userText,
       timeZone,
-      now: options?.now || new Date(),
+      now: resolveNow(options?.now),
       allowCreateDefaults: true,
     });
     if (fallbackAssumed?.error) {
@@ -268,7 +277,7 @@ function normalizeReminderArgs(args, timeZone, options = {}) {
     };
   }
 
-  const parsed = parseReminderTime(raw, timeZone);
+  const parsed = parseReminderTime(raw, timeZone, resolveNow(options?.now));
   let assumption = assumptions[0]?.reason || null;
   if (parsed.ok && parsed.date) {
     mergedArgs.remindAt = formatIsoWithOffset(parsed.date, timeZone);
@@ -360,6 +369,7 @@ export async function runToolByName(db, toolName, args, context = {}) {
       {
         const normalized = normalizeReminderArgs(args, timeZone, {
           userText: context?.userText || "",
+          now: context?.now,
           allowCreateDefaults: true,
         });
         if (normalized.error) {
@@ -388,6 +398,7 @@ export async function runToolByName(db, toolName, args, context = {}) {
       {
         const normalized = normalizeReminderArgs(args, timeZone, {
           userText: context?.userText || "",
+          now: context?.now,
           allowCreateDefaults: false,
         });
         if (normalized.error) {
@@ -407,6 +418,7 @@ export async function runToolByName(db, toolName, args, context = {}) {
       {
         const normalized = normalizeReminderArgs(args, timeZone, {
           userText: context?.userText || "",
+          now: context?.now,
           allowCreateDefaults: true,
         });
         if (normalized.error) {
@@ -453,6 +465,7 @@ export async function runToolByName(db, toolName, args, context = {}) {
       {
         const normalized = normalizeReminderArgs(args, timeZone, {
           userText: context?.userText || "",
+          now: context?.now,
           allowCreateDefaults: false,
         });
         if (normalized.error) {

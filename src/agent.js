@@ -1558,7 +1558,7 @@ async function maybeCompact(client, config, chatId, chatState, responseId, { inp
   return responseId;
 }
 
-export async function runAgentMessage({ chatId, text, clientOverride, debug = false }) {
+export async function runAgentMessage({ chatId, text, clientOverride, now = null, debug = false }) {
   const config = getConfig();
   const db = getDb(config);
   ensureDbSeeded(db, config.paths.statePath);
@@ -1757,6 +1757,7 @@ export async function runAgentMessage({ chatId, text, clientOverride, debug = fa
       const normalizedArgs = normalizeToolArgs(normalizedTool, mergedArgs);
       const output = await runToolByName(db, normalizedTool, normalizedArgs, {
         userText: text,
+        now,
       });
       executed.push({ call: { name: normalizedTool, arguments: normalizedArgs }, output });
 

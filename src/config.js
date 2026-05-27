@@ -1,8 +1,8 @@
 import "dotenv/config";
 import path from "path";
 
-function env(name, fallback = "") {
-  const value = process.env[name];
+function env(name, fallback = "", source = process.env) {
+  const value = source[name];
   if (value === undefined || value === null || value === "") return fallback;
   const trimmed = String(value).trim();
   if (
@@ -14,21 +14,21 @@ function env(name, fallback = "") {
   return trimmed;
 }
 
-function boolEnv(name, fallback = false) {
-  const raw = env(name, "");
+function boolEnv(name, fallback = false, source = process.env) {
+  const raw = env(name, "", source);
   if (raw === "") return fallback;
   return ["1", "true", "yes", "y", "on"].includes(raw.toLowerCase());
 }
 
-function numEnv(name, fallback) {
-  const raw = env(name, "");
+function numEnv(name, fallback, source = process.env) {
+  const raw = env(name, "", source);
   if (raw === "") return fallback;
   const n = Number(raw);
   return Number.isFinite(n) ? n : fallback;
 }
 
-function listEnv(name) {
-  const raw = env(name, "");
+function listEnv(name, source = process.env) {
+  const raw = env(name, "", source);
   if (raw === "") return [];
   return raw
     .split(",")
@@ -39,6 +39,31 @@ function listEnv(name) {
 const cwd = process.cwd();
 
 const dataDir = env("DATA_DIR", path.join(cwd, "data"));
+
+export function buildManagedAgentsConfig(source = process.env) {
+  const environment = env("MANAGED_AGENTS_ENV", env("RUNTIME_STACK", "dev", source), source)
+    .trim()
+    .toLowerCase();
+  return {
+    enabled: boolEnv("MANAGED_AGENTS_ENABLED", false, source),
+    environment: environment || "dev",
+    apiKey: env("ANTHROPIC_API_KEY", env("CLAUDE_API_KEY", "", source), source),
+    agentId: env("CLAUDE_MANAGED_AGENT_ID", "", source),
+    environmentId: env(
+      "CLAUDE_MANAGED_ENVIRONMENT_ID",
+      env("MANAGED_AGENTS_ENVIRONMENT_ID", "", source),
+      source
+    ),
+    baseUrl: env("ANTHROPIC_BASE_URL", "https://api.anthropic.com", source),
+    betaHeader: env("CLAUDE_MANAGED_AGENTS_BETA", "managed-agents-2026-04-01", source),
+    sessionTtlMinutes: numEnv("MANAGED_AGENT_SESSION_TTL_MINUTES", 1440, source),
+    idleTimeoutMinutes: numEnv("MANAGED_AGENT_IDLE_TIMEOUT_MINUTES", 30, source),
+    streamTimeoutMs: numEnv("MANAGED_AGENT_STREAM_TIMEOUT_MS", 120000, source),
+    maxToolRounds: numEnv("MANAGED_AGENT_MAX_TOOL_ROUNDS", 8, source),
+    toolResultMaxChars: numEnv("MANAGED_AGENT_TOOL_RESULT_MAX_CHARS", 20000, source),
+    sessionNamespace: env("MANAGED_AGENT_SESSION_NAMESPACE", environment || "dev", source),
+  };
+}
 
 const config = {
   schoology: {
@@ -80,6 +105,7 @@ const config = {
   telegram: {
     botToken: env("TELEGRAM_BOT_TOKEN"),
     chatIds: listEnv("TELEGRAM_CHAT_IDS"),
+    messageThreadId: env("TELEGRAM_MESSAGE_THREAD_ID", env("TELEGRAM_THREAD_ID")),
   },
   github: {
     repo: env("GITHUB_REPO"),
@@ -95,6 +121,7 @@ const config = {
     compactAfterInputTokens: numEnv("OPENAI_COMPACT_AFTER_INPUT_TOKENS", 6000),
     capabilityGuard: boolEnv("OPENAI_CAPABILITY_GUARD", true),
   },
+  managedAgents: buildManagedAgentsConfig(),
   autoIgnore: {
     enabled: boolEnv("AUTO_IGNORE_ENABLED", true),
     oldDays: numEnv("AUTO_IGNORE_OLD_DAYS", 120),
@@ -192,6 +219,32 @@ export function validateOpenAIConfig() {
   if (!config.openai.apiKey) {
     throw new Error("Missing OPENAI_API_KEY in .env");
   }
+}
+
+export function isManagedAgentsRuntime(configValue = config) {
+  return Boolean(
+    configValue?.managedAgents?.enabled ||
+      String(configValue?.runtime?.stack || "").trim().toLowerCase() === "managed-agents"
+  );
+}
+
+export function validateManagedAgentsConfig(configValue = config) {
+  if (!isManagedAgentsRuntime(configValue)) return;
+  const missing = [];
+  if (!configValue.managedAgents.apiKey) missing.push("ANTHROPIC_API_KEY");
+  if (!configValue.managedAgents.agentId) missing.push("CLAUDE_MANAGED_AGENT_ID");
+  if (!configValue.managedAgents.environmentId) missing.push("CLAUDE_MANAGED_ENVIRONMENT_ID");
+  if (missing.length > 0) {
+    throw new Error(`Missing Managed Agents config in .env: ${missing.join(", ")}`);
+  }
+}
+
+export function validateAgentRuntimeConfig(configValue = config) {
+  if (isManagedAgentsRuntime(configValue)) {
+    validateManagedAgentsConfig(configValue);
+    return;
+  }
+  validateOpenAIConfig();
 }
 
 export function resolveDeliveryChannels(configValue) {

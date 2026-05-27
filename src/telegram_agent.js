@@ -1,15 +1,21 @@
 import fs from "fs";
 import path from "path";
 import TelegramBot from "node-telegram-bot-api";
-import { getConfig, validateOpenAIConfig, validateTelegramConfig } from "./config.js";
-import { runAgentMessage } from "./agent.js";
+import { getConfig, validateAgentRuntimeConfig, validateTelegramConfig } from "./config.js";
+import { runChatMessage } from "./agent_runtime.js";
 import { renderTelegramHtml, renderTelegramPlain } from "./telegram_format.js";
 import { batchMessages } from "./telegram_queue.js";
 import { writeServiceHeartbeat } from "./health.js";
+import {
+  buildTelegramTargetKey,
+  buildTelegramThreadOptions,
+  formatTelegramTarget,
+  normalizeTelegramThreadId,
+} from "./telegram_threading.js";
 
 const config = getConfig();
 validateTelegramConfig();
-validateOpenAIConfig();
+validateAgentRuntimeConfig();
 
 const allowedChats = new Set((config.telegram.chatIds || []).map((id) => String(id)));
 const bot = new TelegramBot(config.telegram.botToken, { polling: true });
@@ -21,6 +27,7 @@ const logPath =
 const lockPath = path.join(config.paths.dataDir, "telegram_agent.lock");
 const queueByChat = new Map();
 const timerByChat = new Map();
+const targetByKey = new Map();
 const processingByChat = new Set();
 const processedIds = new Map();
 const MESSAGE_DEDUP_MS = 5 * 60 * 1000;
@@ -59,6 +66,7 @@ async function sendFormattedMessage(chatId, text, options = {}) {
   const formatted = renderTelegramHtml(text);
   const plain = renderTelegramPlain(text);
   const editMessageId = options.editMessageId || null;
+  const threadId = normalizeTelegramThreadId(options.threadId);
 
   if (editMessageId) {
     try {
@@ -76,13 +84,17 @@ async function sendFormattedMessage(chatId, text, options = {}) {
 
   try {
     const msg = await bot.sendMessage(chatId, formatted, {
-      disable_web_page_preview: true,
-      parse_mode: "HTML",
+      ...buildTelegramThreadOptions(threadId, {
+        disable_web_page_preview: true,
+        parse_mode: "HTML",
+      }),
     });
     return { edited: false, usedHtml: true, messageId: msg?.message_id || null };
   } catch (err) {
     const msg = await bot.sendMessage(chatId, plain, {
-      disable_web_page_preview: true,
+      ...buildTelegramThreadOptions(threadId, {
+        disable_web_page_preview: true,
+      }),
     });
     return { edited: false, usedHtml: false, messageId: msg?.message_id || null };
   }
@@ -231,44 +243,53 @@ bot.on("message", async (msg) => {
   const text = (msg.text || "").trim();
   if (!text) return;
   runtime.lastMessageAt = new Date().toISOString();
+  const threadId =
+    normalizeTelegramThreadId(msg.message_thread_id) ||
+    normalizeTelegramThreadId(config.telegram.messageThreadId);
+  const targetKey = buildTelegramTargetKey(chatId, threadId);
+  targetByKey.set(targetKey, { chatId, threadId });
 
   const msgId = String(msg.message_id || "");
+  const msgDedupKey = msgId ? `${targetKey}:message:${msgId}` : "";
   const now = Date.now();
-  if (msgId) {
-    const lastSeen = processedIds.get(msgId);
+  if (msgDedupKey) {
+    const lastSeen = processedIds.get(msgDedupKey);
     if (lastSeen && now - lastSeen < MESSAGE_DEDUP_MS) return;
-    processedIds.set(msgId, now);
+    processedIds.set(msgDedupKey, now);
   }
 
-  const queue = queueByChat.get(chatId) || [];
+  const queue = queueByChat.get(targetKey) || [];
   queue.push(text);
-  queueByChat.set(chatId, queue);
+  queueByChat.set(targetKey, queue);
 
   for (const [id, ts] of processedIds.entries()) {
     if (now - ts > MESSAGE_DEDUP_MS) processedIds.delete(id);
   }
 
-  scheduleProcessing(chatId);
+  scheduleProcessing(targetKey);
   updateHeartbeat();
 });
 
-function scheduleProcessing(chatId) {
-  if (timerByChat.has(chatId)) return;
+function scheduleProcessing(targetKey) {
+  if (timerByChat.has(targetKey)) return;
   timerByChat.set(
-    chatId,
+    targetKey,
     setTimeout(() => {
-      timerByChat.delete(chatId);
-      processQueue(chatId);
+      timerByChat.delete(targetKey);
+      processQueue(targetKey);
     }, BATCH_DELAY_MS)
   );
 }
 
-async function processQueue(chatId) {
-  if (processingByChat.has(chatId)) {
-    scheduleProcessing(chatId);
+async function processQueue(targetKey) {
+  if (processingByChat.has(targetKey)) {
+    scheduleProcessing(targetKey);
     return;
   }
-  processingByChat.add(chatId);
+  processingByChat.add(targetKey);
+  const target = targetByKey.get(targetKey) || { chatId: targetKey, threadId: "" };
+  const { chatId, threadId } = target;
+  const targetLabel = formatTelegramTarget(chatId, threadId);
 
   let typingTimer = null;
   let workingTimer = null;
@@ -277,7 +298,7 @@ async function processQueue(chatId) {
 
   const startTyping = async () => {
     try {
-      await bot.sendChatAction(chatId, "typing");
+      await bot.sendChatAction(chatId, "typing", buildTelegramThreadOptions(threadId));
     } catch (err) {
       // ignore typing errors
     }
@@ -290,19 +311,23 @@ async function processQueue(chatId) {
   };
 
   try {
-    const items = queueByChat.get(chatId) || [];
-    queueByChat.set(chatId, []);
+    const items = queueByChat.get(targetKey) || [];
+    queueByChat.set(targetKey, []);
     if (items.length === 0) return;
     const combined = batchMessages(items, MAX_BATCH_CHARS);
 
-    appendLog(`Received batch from ${chatId} (${items.length} messages).`);
+    appendLog(`Received batch from ${targetLabel} (${items.length} messages).`);
 
     await startTyping();
     typingTimer = setInterval(startTyping, TYPING_INTERVAL_MS);
     workingTimer = setTimeout(async () => {
       try {
         if (responseSent) return;
-        const msg = await bot.sendMessage(chatId, "Working on it...");
+        const msg = await bot.sendMessage(
+          chatId,
+          "Working on it...",
+          buildTelegramThreadOptions(threadId)
+        );
         workingMessageId = msg?.message_id || null;
       } catch (err) {
         // ignore
@@ -311,8 +336,8 @@ async function processQueue(chatId) {
 
     if (combined === "/ping" || combined.toLowerCase() === "ping") {
       responseSent = true;
-      await bot.sendMessage(chatId, "pong");
-      appendLog(`Sent pong to ${chatId}.`);
+      await bot.sendMessage(chatId, "pong", buildTelegramThreadOptions(threadId));
+      appendLog(`Sent pong to ${targetLabel}.`);
       runtime.lastReplyAt = new Date().toISOString();
       runtime.lastError = null;
       runtime.lastErrorAt = null;
@@ -320,7 +345,7 @@ async function processQueue(chatId) {
       return;
     }
 
-    const reply = await runAgentMessage({ chatId, text: combined });
+    const reply = await runChatMessage({ chatId: targetKey, text: combined });
     responseSent = true;
     if (workingTimer) {
       clearTimeout(workingTimer);
@@ -336,7 +361,10 @@ async function processQueue(chatId) {
       }
       return;
     }
-    const result = await sendFormattedMessage(chatId, reply, { editMessageId: workingMessageId });
+    const result = await sendFormattedMessage(chatId, reply, {
+      editMessageId: workingMessageId,
+      threadId,
+    });
     if (workingMessageId && !result.edited) {
       try {
         await bot.deleteMessage(chatId, workingMessageId);
@@ -344,7 +372,7 @@ async function processQueue(chatId) {
         // ignore delete errors
       }
     }
-    appendLog(`Replied to ${chatId} (${reply.length} chars).`);
+    appendLog(`Replied to ${targetLabel} (${reply.length} chars).`);
     runtime.lastReplyAt = new Date().toISOString();
     runtime.lastError = null;
     runtime.lastErrorAt = null;
@@ -352,19 +380,23 @@ async function processQueue(chatId) {
   } catch (err) {
     console.error("Agent error:", err?.message || err);
     try {
-      await bot.sendMessage(chatId, "Sorry, I hit an error while processing that.");
+      await bot.sendMessage(
+        chatId,
+        "Sorry, I hit an error while processing that.",
+        buildTelegramThreadOptions(threadId)
+      );
     } catch (sendErr) {
       // ignore
     }
-    appendLog(`Error replying to ${chatId}: ${err?.stack || err?.message || err}`);
+    appendLog(`Error replying to ${targetLabel}: ${err?.stack || err?.message || err}`);
     runtime.lastErrorAt = new Date().toISOString();
     runtime.lastError = err?.message || String(err);
     updateHeartbeat();
   } finally {
     stopTyping();
-    processingByChat.delete(chatId);
-    if ((queueByChat.get(chatId) || []).length > 0) {
-      scheduleProcessing(chatId);
+    processingByChat.delete(targetKey);
+    if ((queueByChat.get(targetKey) || []).length > 0) {
+      scheduleProcessing(targetKey);
     }
   }
 }

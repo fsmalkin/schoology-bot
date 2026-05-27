@@ -1,5 +1,15 @@
 # AGENTS (repo-specific)
 
+## Global Agent Policy
+
+Global policy: `D:/dev/canon/docs/ops/agent-guidance/global-working-agreement.md @ 2026-05-04-act-or-wait`.
+
+Runtime mirror: `C:/Users/afutu/.codex/GLOBAL_WORKING_AGREEMENT.md`.
+
+This file is the Schoology Bot repo overlay. Keep universal agent behavior in
+the global policy; keep Docker ops, Managed Agents migration, rollback, test,
+and tracking rules here.
+
 ## Owner of Docker Ops
 Codex owns Docker operations for this repo. Do not ask the user to restart services or run docker commands unless absolutely required.
 
@@ -17,22 +27,23 @@ Codex owns Docker operations for this repo. Do not ask the user to restart servi
 
 ## Beta reset operations
 - Use `npm run beta:reset-memory` to refresh beta from prod.
-- Beta reset targets the active OpenClaw beta runtime (`schoology-openclaw-beta`, `data/beta/*`).
+- This command is legacy OpenClaw-only until the Claude Managed Agents dev runtime replaces the beta path.
 - Beta runtime DB lives at `data/beta/agent.runtime.db`; reset/restore scripts must install it via container-side copy, not host-side `Copy-Item`, or SQLite can fail to open the bind-mounted file.
-- Treat `docker-compose.beta.yml` / `schoology-beta` as rollback-only unless a task explicitly calls for legacy beta.
+- Treat `docker-compose.beta-openclaw.yml`, `schoology-openclaw-beta`, `docker-compose.beta.yml`, and `schoology-beta` as rollback-only unless a task explicitly calls for legacy beta/OpenClaw.
+
+## Managed Agents migration
+- Claude Managed Agents is the active dev-to-prod replacement path for the agent runtime.
+- Do not add new OpenClaw UAT, cron hardening, or upstream sync work unless explicitly requested.
+- Preserve the current Docker prod runtime as rollback target while implementing Managed Agents in dev.
+- Route Claude custom tool requests through existing deterministic Schoology tool execution; do not bypass current DB/status/reminder rules.
 
 ## Agent usage
 - Prefer running the app via Docker Compose services (`schoology`, `telegram-agent`, `dashboard`).
 - When investigating issues, check Docker logs first, then `data/agent.log` if needed.
 - If chat state/tool-call errors occur, restart services in Docker and re-test.
 
-## Process (Library-First + Retros)
-- Prefer existing libraries or standard approaches before implementing new logic.
-- After incidents or learning points, run a short retro and update:
-  - AGENTS.md (process rules)
-  - TOOLS.md / SOUL.md (agent behavior and constraints)
-  - docs/ROADMAP.md (future work or guardrails)
-- For new agent behaviors, keep a brief "Decision + Outcome" note in docs (what was chosen, why, fallback).
+## Repo Automation Notes
+
 - SOP: auto-update is manual unless a scheduler is configured. Use `scripts/auto_update.ps1 -Branch main` to pull and rebuild, and consider adding a scheduled task later.
 
 ## Planning Doc Drift Guardrails
@@ -41,7 +52,7 @@ Codex owns Docker operations for this repo. Do not ask the user to restart servi
   - `docs/BACKLOG.md`
   - `docs/SYSTEM.md`
   - `docs/TEST_COVERAGE.md`
-- Branch-specific experiment notes must live under `docs/openclaw/` (or other branch-scoped docs), not by rewriting canonical planning docs.
+- Managed Agents migration notes live under `docs/managed-agents/`; archived OpenClaw notes live under `docs/openclaw/`.
 - Before opening PRs or promoting beta/prod, reconcile planning docs against `main`:
   - `git diff --name-status main..HEAD -- docs/ROADMAP.md docs/BACKLOG.md docs/SYSTEM.md docs/TEST_COVERAGE.md`
 - If branch edits are temporary, discard them before merge.
@@ -66,39 +77,15 @@ Codex owns Docker operations for this repo. Do not ask the user to restart servi
 - Revert to previous image by rebuilding from last committed state:
   `git checkout .` then `docker compose up -d --build`
 
-## Central Work Tracking and Intake (2026-03-02)
+## Repo Tracking Overlay
 
-### Goal mapping and roadmap alignment
-- Before starting non-trivial work, map the request to a high-level goal and roadmap location (epic -> slice -> task).
-- If mapping is unclear, propose 2-3 plausible interpretations and obtain the smallest decision needed.
-- If work appears off-goal, propose backlog placement and proceed only with explicit detour approval.
-
-### Intake and duplicate check (required before create/add)
-- Normalize each report into: problem, surface, expected, actual, env, evidence.
-- Run duplicate checks before creating or adding a work item:
-  - `gh issue list --repo fsmalkin/<repo> --state all --search "<terms> in:title,body sort:updated-desc" --limit 30`
-  - `gh search issues "<terms> org:fsmalkin is:issue sort:updated-desc" --limit 30`
-- Apply match rubric:
-  - Exact: same failure mode or feature gap in the same subsystem owner.
-  - Probable: same symptom family but root cause is not confirmed.
-  - None: no meaningful overlap.
-- Exact -> reuse existing issue. Probable -> create only if needed and label `possible-duplicate`. None -> create new issue.
-- Record intake evidence under `Duplicate Check` in the issue body (queries + candidate links + decision).
-
-### Central tracking and handoff
-- Active execution source of truth is the GitHub Project `FSM Engineering Board`.
+- Repo: `fsmalkin/schoology-bot`.
+- Active execution source of truth: GitHub Project `FSM Engineering Board`.
 - Track one issue per deliverable.
+- Duplicate checks for this repo:
+  - `gh issue list --repo fsmalkin/schoology-bot --state all --search "<terms> in:title,body sort:updated-desc" --limit 30`
+  - `gh search issues "<terms> org:fsmalkin is:issue sort:updated-desc" --limit 30`
 - At every pause/completion, update both:
-  - issue comment handoff (Done, Next, Blockers)
-  - repo worklog entry (`Timestamp ET | Issue | Goal | Done | Next | Blockers | Validation run | Thread link`)
-
-### Validation policy (simulated-first + CLI UAT)
-- Maximize simulated validation before asking for manual checks.
-- For complex/agentic flows, run CLI UAT scenarios with commands and outcomes before human UAT.
-- PRs for complex/agentic flows must include CLI UAT evidence.
-
-### Documentation upkeep and retros
-- Update plans and system documentation regularly during active work, not only at the end.
-- After each completed work item, suggest at least one retro item or workflow/backlog improvement.
-- For behavior changes, record a brief Decision + Outcome note with fallback.
+  - issue comment handoff: Done, Next, Blockers
+  - repo worklog entry: `Timestamp ET | Issue | Goal | Done | Next | Blockers | Validation run | Thread link`
 

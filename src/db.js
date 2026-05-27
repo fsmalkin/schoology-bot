@@ -13,6 +13,8 @@ const RECURRENCE_KIND_SET = new Set(RECURRENCE_KIND_VALUES);
 const CHAT_MESSAGE_STYLE_VALUES = ["compact", "plain_language"];
 const CHAT_MESSAGE_STYLE_SET = new Set(CHAT_MESSAGE_STYLE_VALUES);
 const DEFAULT_CHAT_MESSAGE_STYLE = "compact";
+const MANAGED_AGENT_SESSION_STATUS_VALUES = ["active", "expired", "reset", "error"];
+const MANAGED_AGENT_SESSION_STATUS_SET = new Set(MANAGED_AGENT_SESSION_STATUS_VALUES);
 const RECURRENCE_ALIAS_MAP = new Map([
   ["one-time", "none"],
   ["one time", "none"],
@@ -52,6 +54,16 @@ export function normalizeChatMessageStyle(value, { allowNull = false } = {}) {
     };
   }
   return { ok: true, value: raw };
+}
+
+function normalizeManagedAgentEnvironment(value) {
+  const raw = String(value || "dev").trim().toLowerCase();
+  return raw || "dev";
+}
+
+function normalizeManagedAgentSessionStatus(value) {
+  const raw = String(value || "active").trim().toLowerCase();
+  return MANAGED_AGENT_SESSION_STATUS_SET.has(raw) ? raw : "active";
 }
 
 function normalizeRecurrenceTz(value) {
@@ -263,6 +275,20 @@ function initDb(db) {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS managed_agent_sessions (
+      chat_id TEXT NOT NULL,
+      environment TEXT NOT NULL DEFAULT 'dev',
+      provider TEXT NOT NULL DEFAULT 'claude',
+      session_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      last_event_at TEXT,
+      expires_at TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      PRIMARY KEY (chat_id, environment)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_assignments_course ON assignments(course);
     CREATE INDEX IF NOT EXISTS idx_assignments_due_date ON assignments(due_date);
     CREATE INDEX IF NOT EXISTS idx_assignments_missing ON assignments(is_missing);
@@ -270,6 +296,10 @@ function initDb(db) {
     CREATE INDEX IF NOT EXISTS idx_reminders_pending ON reminders(sent_at, remind_at);
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
     CREATE INDEX IF NOT EXISTS idx_tasks_remind_at ON tasks(remind_at);
+    CREATE INDEX IF NOT EXISTS idx_managed_agent_sessions_session
+      ON managed_agent_sessions(session_id);
+    CREATE INDEX IF NOT EXISTS idx_managed_agent_sessions_status
+      ON managed_agent_sessions(environment, status, updated_at);
   `);
 
   runMigrations(db);
@@ -345,9 +375,39 @@ function ensureChatMemoryTable(db) {
   `);
 }
 
+function ensureManagedAgentSessionsTable(db) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS managed_agent_sessions (
+      chat_id TEXT NOT NULL,
+      environment TEXT NOT NULL DEFAULT 'dev',
+      provider TEXT NOT NULL DEFAULT 'claude',
+      session_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      last_event_at TEXT,
+      expires_at TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      PRIMARY KEY (chat_id, environment)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_managed_agent_sessions_session
+      ON managed_agent_sessions(session_id);
+    CREATE INDEX IF NOT EXISTS idx_managed_agent_sessions_status
+      ON managed_agent_sessions(environment, status, updated_at);
+  `);
+}
+
 function parseIsoMs(value) {
   const t = Date.parse(String(value || ""));
   return Number.isFinite(t) ? t : null;
+}
+
+function addMinutesIso(baseIso, minutes) {
+  const baseMs = parseIsoMs(baseIso) || Date.now();
+  const n = Number(minutes);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return new Date(baseMs + n * 60 * 1000).toISOString();
 }
 
 function pickLatestDateString(...values) {
@@ -793,6 +853,13 @@ function runMigrations(db) {
         ensureChatMemoryTable(db);
       },
     },
+    {
+      version: 8,
+      name: "managed-agent-sessions",
+      apply: () => {
+        ensureManagedAgentSessionsTable(db);
+      },
+    },
   ];
 
   const currentVersion = getSchemaVersion(db);
@@ -907,6 +974,229 @@ export function clearPendingAction(db, chatId) {
   if (!chatId) return { ok: false, error: "Missing chatId." };
   const result = db.prepare("DELETE FROM pending_actions WHERE chat_id = ?").run(chatId);
   return { ok: true, cleared: result.changes || 0 };
+}
+
+function parseManagedAgentMetadata(value) {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function managedAgentSessionFromRow(row, { now = nowIso() } = {}) {
+  if (!row) return null;
+  const expiresMs = parseIsoMs(row.expiresAt);
+  const nowMs = parseIsoMs(now);
+  return {
+    chatId: row.chatId,
+    environment: normalizeManagedAgentEnvironment(row.environment),
+    provider: row.provider || "claude",
+    sessionId: row.sessionId,
+    status: normalizeManagedAgentSessionStatus(row.status),
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    lastEventAt: row.lastEventAt || null,
+    expiresAt: row.expiresAt || null,
+    metadata: parseManagedAgentMetadata(row.metadataJson),
+    isExpired: Boolean(expiresMs !== null && nowMs !== null && expiresMs <= nowMs),
+  };
+}
+
+export function getManagedAgentSession(db, chatId, environment = "dev", options = {}) {
+  if (!chatId) return null;
+  const row = db
+    .prepare(
+      `
+      SELECT
+        chat_id AS chatId,
+        environment,
+        provider,
+        session_id AS sessionId,
+        status,
+        created_at AS createdAt,
+        updated_at AS updatedAt,
+        last_event_at AS lastEventAt,
+        expires_at AS expiresAt,
+        metadata_json AS metadataJson
+      FROM managed_agent_sessions
+      WHERE chat_id = ? AND environment = ?
+    `
+    )
+    .get(String(chatId), normalizeManagedAgentEnvironment(environment));
+  return managedAgentSessionFromRow(row, options);
+}
+
+export function upsertManagedAgentSession(
+  db,
+  {
+    chatId,
+    environment = "dev",
+    sessionId,
+    status = "active",
+    provider = "claude",
+    createdAt = nowIso(),
+    updatedAt = createdAt,
+    lastEventAt = null,
+    expiresAt = null,
+    metadata = {},
+  } = {}
+) {
+  if (!chatId) return { ok: false, error: "Chat id is required." };
+  const normalizedSessionId = String(sessionId || "").trim();
+  if (!normalizedSessionId) return { ok: false, error: "Managed agent session id is required." };
+  const normalizedEnvironment = normalizeManagedAgentEnvironment(environment);
+  const normalizedStatus = normalizeManagedAgentSessionStatus(status);
+  const metadataJson = JSON.stringify(metadata && typeof metadata === "object" ? metadata : {});
+
+  db.prepare(
+    `
+    INSERT INTO managed_agent_sessions (
+      chat_id, environment, provider, session_id, status, created_at, updated_at,
+      last_event_at, expires_at, metadata_json
+    ) VALUES (
+      @chat_id, @environment, @provider, @session_id, @status, @created_at, @updated_at,
+      @last_event_at, @expires_at, @metadata_json
+    )
+    ON CONFLICT(chat_id, environment) DO UPDATE SET
+      provider = excluded.provider,
+      session_id = excluded.session_id,
+      status = excluded.status,
+      created_at = excluded.created_at,
+      updated_at = excluded.updated_at,
+      last_event_at = excluded.last_event_at,
+      expires_at = excluded.expires_at,
+      metadata_json = excluded.metadata_json
+  `
+  ).run({
+    chat_id: String(chatId),
+    environment: normalizedEnvironment,
+    provider: String(provider || "claude"),
+    session_id: normalizedSessionId,
+    status: normalizedStatus,
+    created_at: createdAt,
+    updated_at: updatedAt,
+    last_event_at: lastEventAt,
+    expires_at: expiresAt,
+    metadata_json: metadataJson,
+  });
+
+  return {
+    ok: true,
+    session: getManagedAgentSession(db, chatId, normalizedEnvironment, { now: updatedAt }),
+  };
+}
+
+export function getOrCreateManagedAgentSession(
+  db,
+  {
+    chatId,
+    environment = "dev",
+    createSessionId,
+    now = nowIso(),
+    ttlMinutes = 1440,
+    metadata = {},
+  } = {}
+) {
+  if (!chatId) return { ok: false, error: "Chat id is required." };
+  if (typeof createSessionId !== "function") {
+    return { ok: false, error: "createSessionId callback is required." };
+  }
+  const normalizedEnvironment = normalizeManagedAgentEnvironment(environment);
+  const current = getManagedAgentSession(db, chatId, normalizedEnvironment, { now });
+  if (current && current.status === "active" && !current.isExpired) {
+    return { ok: true, created: false, reason: "existing", session: current };
+  }
+
+  const reason = current ? (current.isExpired ? "expired" : current.status) : "missing";
+  const newSessionId = String(
+    createSessionId({ chatId: String(chatId), environment: normalizedEnvironment, previousSession: current, reason }) ||
+      ""
+  ).trim();
+  if (!newSessionId) return { ok: false, error: "createSessionId returned an empty session id." };
+
+  const expiresAt = addMinutesIso(now, ttlMinutes);
+  const result = upsertManagedAgentSession(db, {
+    chatId,
+    environment: normalizedEnvironment,
+    sessionId: newSessionId,
+    status: "active",
+    createdAt: now,
+    updatedAt: now,
+    lastEventAt: now,
+    expiresAt,
+    metadata: {
+      ...metadata,
+      createReason: reason,
+      previousSessionId: current?.sessionId || null,
+    },
+  });
+  return { ok: true, created: true, reason, session: result.session };
+}
+
+export function markManagedAgentSessionEvent(
+  db,
+  { chatId, environment = "dev", lastEventAt = nowIso(), metadata = null } = {}
+) {
+  const current = getManagedAgentSession(db, chatId, environment, { now: lastEventAt });
+  if (!current) return { ok: false, error: "Managed agent session not found." };
+  const nextMetadata =
+    metadata && typeof metadata === "object" ? { ...current.metadata, ...metadata } : current.metadata;
+  db.prepare(
+    `
+    UPDATE managed_agent_sessions
+    SET last_event_at = @last_event_at,
+        updated_at = @updated_at,
+        metadata_json = @metadata_json
+    WHERE chat_id = @chat_id AND environment = @environment
+  `
+  ).run({
+    chat_id: String(chatId),
+    environment: current.environment,
+    last_event_at: lastEventAt,
+    updated_at: lastEventAt,
+    metadata_json: JSON.stringify(nextMetadata),
+  });
+  return {
+    ok: true,
+    session: getManagedAgentSession(db, chatId, current.environment, { now: lastEventAt }),
+  };
+}
+
+export function resetManagedAgentSession(
+  db,
+  { chatId, environment = "dev", resetAt = nowIso(), reason = "manual" } = {}
+) {
+  const current = getManagedAgentSession(db, chatId, environment, { now: resetAt });
+  if (!current) return { ok: true, reset: 0 };
+  const metadata = {
+    ...current.metadata,
+    resetReason: String(reason || "manual"),
+    resetAt,
+  };
+  const result = db
+    .prepare(
+      `
+      UPDATE managed_agent_sessions
+      SET status = 'reset',
+          updated_at = @updated_at,
+          metadata_json = @metadata_json
+      WHERE chat_id = @chat_id AND environment = @environment
+    `
+    )
+    .run({
+      chat_id: String(chatId),
+      environment: current.environment,
+      updated_at: resetAt,
+      metadata_json: JSON.stringify(metadata),
+    });
+  return {
+    ok: true,
+    reset: result.changes || 0,
+    session: getManagedAgentSession(db, chatId, current.environment, { now: resetAt }),
+  };
 }
 
 export function syncAssignmentsFromState(db, state) {

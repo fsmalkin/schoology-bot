@@ -131,9 +131,21 @@ function flattenOutputs(turns) {
   return list;
 }
 
+function isManagedAgentsRequested() {
+  const runtimeStack = String(process.env.RUNTIME_STACK || "").trim().toLowerCase();
+  const enabled = String(process.env.MANAGED_AGENTS_ENABLED || "").trim().toLowerCase();
+  return (
+    runtimeStack === "managed-agents" ||
+    runtimeStack === "managed_agents" ||
+    ["1", "true", "yes", "y", "on"].includes(enabled)
+  );
+}
+
 async function main() {
+  const managedAgentsRequested = isManagedAgentsRequested();
+  const storyNow = process.env.AGENTIC_STORY_NOW || "2026-05-27T12:00:00-04:00";
   const openAiKey = String(process.env.OPENAI_API_KEY || "").trim();
-  if (!openAiKey) {
+  if (!managedAgentsRequested && !openAiKey) {
     throw new Error("OPENAI_API_KEY is required to run the agentic story suite.");
   }
 
@@ -146,7 +158,9 @@ async function main() {
   process.env.STATE_PATH = path.join(runtimeDir, "state.json");
   process.env.STORAGE_PATH = path.join(runtimeDir, "storage.json");
   process.env.AGENT_DB_PATH = path.join(runtimeDir, "agent.db");
-  process.env.OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5.2";
+  if (!managedAgentsRequested) {
+    process.env.OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5.2";
+  }
   process.env.OPENAI_CAPABILITY_GUARD = process.env.OPENAI_CAPABILITY_GUARD || "1";
   process.env.TIMEZONE = process.env.TIMEZONE || "America/New_York";
 
@@ -157,7 +171,7 @@ async function main() {
   const { createDb, closeDb, listTasks, listReminders, syncAssignmentsFromState } = await import(
     "../src/db.js"
   );
-  const { runAgentMessage } = await import("../src/agent.js");
+  const { runChatMessage } = await import("../src/agent_runtime.js");
   const { runReminders, computeNextReminderTime } = await import("../src/tasks.js");
   const { getConfig } = await import("../src/config.js");
 
@@ -465,7 +479,7 @@ async function main() {
 
     for (let idx = 0; idx < story.prompts.length; idx += 1) {
       const userText = story.prompts[idx];
-      const response = await runAgentMessage({ chatId, text: userText, debug: true });
+      const response = await runChatMessage({ chatId, text: userText, now: storyNow, debug: true });
       const assistantText =
         response && typeof response === "object" && typeof response.reply === "string"
           ? response.reply
@@ -528,6 +542,9 @@ async function main() {
   const manifest = {
     generatedAt: new Date().toISOString(),
     model: process.env.OPENAI_MODEL || "gpt-5.2",
+    runtimeStack: managedAgentsRequested ? "managed-agents" : "legacy-openai",
+    managedAgentsEnabled: managedAgentsRequested,
+    storyNow,
     timezone: process.env.TIMEZONE || "America/New_York",
     artifactRoot,
     stories: storyResults.map((story) => ({

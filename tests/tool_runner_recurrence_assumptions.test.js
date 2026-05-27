@@ -157,9 +157,11 @@ test("non-frequency follow-up remains one-time", async () => {
     },
     {
       userText: "Remind me tomorrow at 4:30pm to follow up with my teacher.",
+      now: "2026-05-27T12:00:00-04:00",
     }
   );
 
   assert.equal(result.ok, true);
   assert.equal(result.recurrenceKind, "none");
+  assert.match(result.remindAt, /^2026-05-28T16:30:00-04:00$/);
 });

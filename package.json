@@ -22,6 +22,10 @@
     "stories:run": "node scripts/run_agentic_story_suite.mjs",
     "stories:judge": "node scripts/judge_agentic_story_suite.mjs",
     "stories:gate": "npm run stories:run && npm run stories:judge",
+    "managed:render-agent:dev": "node scripts/managed_agents_admin.mjs render-agent dev",
+    "managed:render-env:dev": "node scripts/managed_agents_admin.mjs render-environment dev",
+    "managed:create-env:dev": "node scripts/with_env.js .env.managed-dev node -r dotenv/config scripts/managed_agents_admin.mjs create-environment dev",
+    "managed:create-agent:dev": "node scripts/with_env.js .env.managed-dev node -r dotenv/config scripts/managed_agents_admin.mjs create-agent dev",
     "test": "node --test --test-concurrency=1 \"tests/**/*.test.js\"",
     "test:agent": "node tests/agent_conversation.js"
   },

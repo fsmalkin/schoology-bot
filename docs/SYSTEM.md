@@ -9,15 +9,15 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
   - Handles chat messages, tool routing, and responses.
 - dashboard
   - Local health UI + JSON status endpoint for operations visibility.
-- schoology-tool-api (optional, OpenClaw beta)
-  - Exposes tools for OpenClaw gateway.
-- openclaw-gateway (optional, OpenClaw beta)
-  - Handles Telegram chat and cron scheduler in one runtime.
-- openclaw-cron-sync (optional, OpenClaw beta)
-  - Reconciles managed cron jobs on startup (scrape, summary, due reminders).
-- openclaw-gateway-monitor (optional, OpenClaw beta)
-  - Writes gateway heartbeat for dashboard visibility.
-  - UI and tool router for OpenClaw evaluations.
+- schoology-tool-api (legacy beta sidecar; future Managed Agents tool bridge)
+  - Exposes deterministic Schoology/task tools for agent runtimes.
+- Claude Managed Agents bridge (dev implementation)
+  - Target replacement runtime for agent chat in dev, then prod after parity gates.
+  - Telegram inbound resumes managed sessions; Claude custom tool requests call local deterministic tools.
+  - Implemented entrypoints: `src/agent_runtime.js`, `src/managed_agent_bridge.js`, `src/managed_agent_client.js`.
+  - Tracking: [#25](https://github.com/fsmalkin/schoology-bot/issues/25), [Managed Agents migration doc](managed-agents/README.md), [FSM Engineering Board](https://github.com/users/fsmalkin/projects/3).
+- OpenClaw beta stack (rollback-only)
+  - Former beta runtime; keep only as reference/rollback context unless explicitly requested.
 
 ## Core flows
 1) Scrape
@@ -36,6 +36,7 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
    - Recurring reminders are expanded by cadence (`daily`, `weekdays`, `weekly`) in reminder runner logic.
    - Assignment-linked reminders with `auto_cancel_on_resolve=1` are auto-completed when the assignment resolves, is auto-ignored, or is submitted-awaiting-grade.
 4) Agent chat
+   - `telegram-agent` calls `runChatMessage`, which selects legacy OpenAI Responses or Claude Managed Agents from config.
    - Capability gate checks for unsupported requests and proposes nearest supported fallback.
    - Planner selects tools, executes, then composes final message.
    - Pending actions, chat memory snapshots, and message style preferences are stored per chat for multi-step confirmations and long-thread continuity.
@@ -54,9 +55,10 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
 - data/state.json
   - Last scrape timestamps and raw assignment cache.
 - data/agent.db
-  - SQLite for assignments, unified task/reminder records, notes, chat_state, and chat_memory.
+  - SQLite for assignments, unified task/reminder records, notes, chat_state,
+    chat_memory, and `managed_agent_sessions`.
 - data/beta/agent.runtime.db
-  - Beta OpenClaw bind-mounted runtime DB; reset/restore scripts install it via container-side copy to avoid Windows bind-mount SQLite open issues.
+  - Legacy beta runtime DB. Managed Agents implementation must decide whether to reuse this path for dev parity or replace it with a clearer managed-agent data path.
 - artifacts/beta-reset/*
   - Beta reset snapshots and parity report artifacts.
 - artifacts/agentic-story-suite/*
@@ -77,6 +79,10 @@ Key settings:
 - SCRAPE_CRON / SEND_CRON / REMINDER_CRON
 - TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_IDS
 - OPENAI_API_KEY / OPENAI_MODEL / OPENAI_REASONING_EFFORT
+- MANAGED_AGENTS_ENABLED / MANAGED_AGENTS_ENV
+- ANTHROPIC_API_KEY / CLAUDE_API_KEY
+- CLAUDE_MANAGED_AGENT_ID / CLAUDE_MANAGED_ENVIRONMENT_ID / CLAUDE_MANAGED_AGENTS_BETA
+- MANAGED_AGENT_SESSION_TTL_MINUTES / MANAGED_AGENT_IDLE_TIMEOUT_MINUTES / MANAGED_AGENT_STREAM_TIMEOUT_MS / MANAGED_AGENT_MAX_TOOL_ROUNDS / MANAGED_AGENT_TOOL_RESULT_MAX_CHARS / MANAGED_AGENT_SESSION_NAMESPACE
 - AUTO_IGNORE_* and AUTO_UPCOMING_*
 - LIVE_CHECK_* (disabled by default)
 
@@ -90,14 +96,15 @@ Key settings:
 - Tests: `npm test`
 - Agentic stories: `npm run stories:run`
 - Agentic judge: `npm run stories:judge`
-- Beta reset from prod memory: `npm run beta:reset-memory`
+- Legacy OpenClaw beta reset from prod memory: `npm run beta:reset-memory`
 
 ## Runtime
 Primary runtime (unattended):
 - Docker Compose only.
 - Start command: `powershell -ExecutionPolicy Bypass -File scripts/start_schoology_stacks.ps1 -RuntimeMode docker`.
 - Startup waits for Docker engine readiness before compose actions and retries until timeout with diagnostics.
-- Legacy beta (`docker-compose.beta.yml`) is deprecated for routine operations.
+- OpenClaw beta (`docker-compose.beta-openclaw.yml`) and legacy beta (`docker-compose.beta.yml`) are rollback-only for routine operations.
+- Managed Agents dev runtime is the next implementation target and should preserve the current prod Docker runtime as fallback.
 
 Scheduled startup mode:
 - Register tasks with stored-password logon mode (`/RU` + `/RP`) so jobs run while logged off.
@@ -122,7 +129,7 @@ Outcome:
 - Single runtime path reduces startup drift and troubleshooting branches.
 - Tasks execute post-boot/logged-off without requiring interactive desktop logon.
 - Login failures now produce diagnostic artifacts and retry before alerting.
-- Beta reset/restore now preserve a Docker-healthy beta SQLite runtime file (`data/beta/agent.runtime.db`) across Windows bind mounts.
+- OpenClaw beta reset/restore preserved a Docker-healthy beta SQLite runtime file (`data/beta/agent.runtime.db`) across Windows bind mounts; this is historical rollback context.
 
 Fallback:
 - If unattended task logon fails, run `scripts/start_schoology_stacks.ps1 -RuntimeMode docker` manually, then re-register tasks with a verified password.
@@ -132,7 +139,8 @@ Fallback:
 - Schoology login is session-based; interactive login required when session expires.
 - Schoology title text can be ambiguous: `(Graded: <date>)` may reflect assignment-level/class-level grading context, not the current student's final status.
 - Production Telegram bot should be single-instance to avoid duplicate messages.
-- Release gate for reminder-scope changes is mandatory before UAT:
-  - beta reset from prod memory,
+- Release gate for agent runtime changes is mandatory before UAT:
+  - Managed Agents dev run against copied prod memory/state,
   - agentic story suite,
-  - one GPT-5.2 judge run with evidence artifact.
+  - one judge run with evidence artifact,
+  - explicit rollback command and cost/idle monitoring.

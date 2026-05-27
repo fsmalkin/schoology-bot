@@ -19,10 +19,12 @@ The system is a local-first automation that:
 - `dashboard` service
   - Serves local operations UI (`/`) and health API (`/api/health`).
   - Aggregates state from heartbeat files + SQLite + state.json.
-- OpenClaw beta runtime (optional)
-  - `openclaw-gateway`: Telegram chat + cron scheduler.
-  - `schoology-tool-api`: deterministic Schoology/task tool execution.
-  - `openclaw-cron-sync`: idempotent managed cron bootstrap.
+- Claude Managed Agents runtime (dev replacement path)
+  - Managed session bridge maps Telegram chats to Claude managed sessions.
+  - Claude custom tool requests execute deterministic Schoology/task tools through app code or `schoology-tool-api`.
+  - Local scheduler/reminder delivery remains authoritative until parity and cost gates prove otherwise.
+- OpenClaw beta runtime (rollback-only)
+  - Kept as reference context; no new promotion or cron-hardening work by default.
 
 ## Data Stores
 - `data/agent.db` (SQLite)
@@ -35,8 +37,8 @@ The system is a local-first automation that:
 - `data/state.json`: scrape state and legacy assignment history.
 - `data/storage.json`: Playwright session storage for login reuse.
 - `data/health/*.heartbeat.json`: service heartbeats for scheduler, telegram-agent, and dashboard.
-- `data/beta/health/*.heartbeat.json`: beta service heartbeats for schoology-tool-api and openclaw-gateway monitor.
-- `openclaw_workspace/`: Schoology-owned OpenClaw workspace state (kept isolated from Chasebot).
+- `data/beta/health/*.heartbeat.json`: beta service heartbeats. Managed Agents health work will add bridge/session health under [#31](https://github.com/fsmalkin/schoology-bot/issues/31).
+- `openclaw_workspace/`: historical OpenClaw workspace state kept only for rollback/reference until cleanup.
 
 ## Data Flow
 1. Scheduler triggers scrape -> Playwright logs in -> grades page parsed.
@@ -61,7 +63,8 @@ The system is a local-first automation that:
 
 ## Beta/Prod Separation
 - Beta uses `.env.beta` with `DATA_DIR=data/beta`.
-- OpenClaw beta runtime remains separate from prod and reserves dedicated ports (`8788`, `18799`, `18800`); `18800` may be unused by current OpenClaw builds but stays reserved for coexistence.
+- Managed Agents dev runtime must remain separate from prod and preserve rollback to the current Docker runtime.
+- OpenClaw beta ports (`8788`, `18799`, `18800`) are historical rollback reservations until the Managed Agents implementation replaces them.
 - Legacy beta (`schoology-beta`) remains available only for rollback/testing.
 - Promotion merges beta changes into main and rebuilds prod.
 
@@ -71,6 +74,5 @@ The system is a local-first automation that:
 - Health checks and restart policies in native systemd services.
 
 ## Future Enhancements
-- Context compaction and long-term chat memory.
-- Skill-capability registry and router to reduce tool confusion.
-- Assignment detail-page scrape fallback for stronger submission/grade signals.
+- Claude Managed Agents bridge live UAT, parity tests, health/cost controls, and production cutover.
+- Managed-session observability, idle/cost controls, and rollback automation.
