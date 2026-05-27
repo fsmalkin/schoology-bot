@@ -96,11 +96,12 @@ Managed Agents stack
 - Tracking: [#25 parent](https://github.com/fsmalkin/schoology-bot/issues/25), [#30 parity gate](https://github.com/fsmalkin/schoology-bot/issues/30), [Managed Agents migration doc](managed-agents/README.md).
 - Config parsing/validation and chat-to-session mapping are covered by `tests/managed_agent_sessions.test.js`.
 - Migration coverage verifies `managed_agent_sessions` creation in `tests/migrations.test.js`.
-- Mock Managed Agents bridge coverage in `tests/managed_agent_bridge.test.js` verifies session creation/reuse, Telegram text event send, assistant text collection, local custom Schoology tool result handling, unsupported custom tool errors, built-in tool denial, deterministic invalid-arg errors, bounded large result payloads, and tool-round limits.
+- Mock Managed Agents bridge coverage in `tests/managed_agent_bridge.test.js` verifies session creation/reuse, Telegram text event send, assistant text collection, local custom Schoology tool result handling, repeated action-id dedupe before local tool execution, unsupported custom tool errors, built-in tool denial, deterministic invalid-arg errors, bounded large result payloads, and tool-round limits.
 - `tests/managed_agent_tools.test.js` verifies exported Managed Agents custom tool definitions cover the current Schoology tool surface.
 - `tests/managed_agent_definitions.test.js` verifies the Managed Agents system prompt keeps the reminder-default policy needed by parity stories.
 - Live Managed Agents parity now has artifacts from the story suite and judge (`20260527-022952`) using Claude sessions and local Schoology custom tools.
 - A broader isolated live Managed Agents JTBD UAT passed with Claude session `sesn_01HpAfEZH9345jZQC5Fh9dbB`, covering seeded assignment listing, manual status update, assignment note, assignment-linked reminder, standalone recurring reminder, correction/update, unsupported monthly fallback, daily summary, and due-reminder drain.
+- Beta Schoology auth was refreshed after stale storage was confirmed, and a live Managed Agents dev repro passed with Claude session `sesn_018Gc6shAGPFyDd6DGXhLSw9`: `refresh_schoology` succeeded against real Schoology data, then `list_assignments` returned zero actionable, pending, or ignored missing assignments.
 - Live Telegram outbound to the beta thread was smoke-tested through `.env.managed-dev`; one inbound beta-thread message was handled by the Managed Agents path before the poller was moved into the current Docker container.
 - No automated coverage yet for managed-session event history beyond the local store or idle/termination policy.
 - No dashboard health coverage yet for Managed Agents bridge/session status.

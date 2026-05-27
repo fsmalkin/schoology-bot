@@ -226,6 +226,7 @@ export async function runManagedAgentMessage({
   const replyParts = [];
   const seenTextEvents = new Set();
   const executedTools = [];
+  const completedActionIds = new Set();
 
   await client.sendEvents(sessionId, [
     {
@@ -270,22 +271,30 @@ export async function runManagedAgentMessage({
           const reasonType = stopReasonType(reason);
           if (reasonType === "requires_action") {
             const actionEvents = [];
-            for (const actionId of stopReasonEventIds(reason)) {
+            const actionIds = Array.from(
+              new Set(stopReasonEventIds(reason).filter(Boolean).map((value) => String(value)))
+            );
+            for (const actionId of actionIds) {
+              if (completedActionIds.has(actionId)) continue;
               const blockedEvent = eventsById.get(actionId);
               const call = extractCustomToolUse(blockedEvent);
               if (call) {
                 const output = await executeCustomToolUse({ db, call, userText: text, now: toolNow });
+                completedActionIds.add(actionId);
                 executedTools.push({ call, output });
                 actionEvents.push(customToolResultEvent(call, output, { maxChars: toolResultMaxChars }));
                 continue;
               }
               const confirmation = extractToolConfirmation(blockedEvent);
               if (confirmation) {
+                completedActionIds.add(actionId);
                 actionEvents.push(denyToolConfirmationEvent(confirmation));
               }
             }
             if (actionEvents.length > 0) {
               await client.sendEvents(sessionId, actionEvents);
+              sentActions = true;
+            } else if (actionIds.length > 0 && actionIds.every((actionId) => completedActionIds.has(actionId))) {
               sentActions = true;
             } else {
               throw new Error("Claude Managed Agents required an unsupported action.");

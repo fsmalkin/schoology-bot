@@ -4,7 +4,13 @@ import { getConfig } from "./config.js";
 
 let browser;
 try {
-  browser = await chromium.launch({ headless: false });
+  const launchOptions = { headless: false };
+  if (process.env.LOGIN_BROWSER_EXECUTABLE_PATH) {
+    launchOptions.executablePath = process.env.LOGIN_BROWSER_EXECUTABLE_PATH;
+  } else if (process.env.LOGIN_BROWSER_CHANNEL) {
+    launchOptions.channel = process.env.LOGIN_BROWSER_CHANNEL;
+  }
+  browser = await chromium.launch(launchOptions);
 } catch (err) {
   console.error("Failed to launch a headed browser.");
   console.error("If you are running inside Docker, run this command on your host instead:");

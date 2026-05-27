@@ -180,6 +180,73 @@ test("managed agent bridge reuses a session and resolves custom Schoology tool c
   db.close();
 });
 
+test("managed agent bridge executes repeated action event ids only once", async () => {
+  const db = createDb();
+  syncAssignmentsFromState(db, {
+    assignments: {
+      a1: {
+        key: "a1",
+        course: "Algebra",
+        title: "Homework 1",
+        dueDate: "2026-01-05",
+        status: "Missing",
+        score: "0/10",
+        url: "",
+        rawText: "",
+        firstSeenAt: "2026-01-05T00:00:00Z",
+        lastSeenAt: "2026-01-05T01:00:00Z",
+        lastMissingAt: "2026-01-05T01:00:00Z",
+        resolvedAt: null,
+        isMissing: true,
+      },
+    },
+  });
+
+  const client = makeMockClient({
+    streams: [
+      [
+        {
+          id: "tool_evt_repeat",
+          type: "agent.custom_tool_use",
+          name: "schoology_list_assignments",
+          input: { status: "missing", includePending: true, includeIgnored: false, bucketed: true },
+        },
+        {
+          id: "idle_tool",
+          type: "session.status_idle",
+          stop_reason: { type: "requires_action", event_ids: ["tool_evt_repeat", "tool_evt_repeat"] },
+        },
+        {
+          id: "msg_done",
+          type: "agent.message",
+          content: [{ type: "text", text: "I found one missing assignment." }],
+        },
+        {
+          id: "idle_done",
+          type: "session.status_idle",
+          stop_reason: { type: "end_turn" },
+        },
+      ],
+    ],
+  });
+
+  const result = await runManagedAgentMessage({
+    chatId: "chat-repeat",
+    text: "what is missing?",
+    clientOverride: client,
+    configOverride: makeConfig(),
+    dbOverride: db,
+    debug: true,
+  });
+
+  assert.equal(result.executedTools.length, 1);
+  assert.equal(client.calls.sendEvents.length, 2);
+  assert.equal(client.calls.sendEvents[1].events.length, 1);
+  assert.equal(client.calls.sendEvents[1].events[0].custom_tool_use_id, "tool_evt_repeat");
+  assert.equal(result.reply, "I found one missing assignment.");
+  db.close();
+});
+
 test("managed agent bridge returns unsupported custom tool errors without hanging", async () => {
   const db = createDb();
   const client = makeMockClient({

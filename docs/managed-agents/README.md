@@ -161,6 +161,14 @@ Live dev API smoke completed:
   seeded assignment listing, manual status update, assignment note, assignment
   reminder, standalone recurring task, task correction, unsupported monthly
   fallback, daily summary, and due-reminder drain.
+- Beta Schoology storage was confirmed stale, refreshed via interactive Chrome
+  login, and verified from inside the Dockerized managed-dev container against
+  `https://bcps.schoology.com/grades/grades` with no visible login controls.
+- A live managed-dev repro after auth refresh passed with Claude session
+  `sesn_018Gc6shAGPFyDd6DGXhLSw9`: `refresh_schoology` scraped real Schoology
+  data successfully, then `list_assignments` returned zero actionable,
+  pending, or ignored missing assignments. A duplicate action-id observation
+  from the first repro was fixed in the bridge and covered by regression tests.
 
 ## API Management
 Tracked by [#30](https://github.com/fsmalkin/schoology-bot/issues/30).
