@@ -1,0 +1,2145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dashboard Improvements — Side-by-Side Mocks (2026-05-25)</title>
+<meta name="viewport" content="width=1280">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --canvas: #f5f5f5;
+    --white: #ffffff;
+    --sidebar-bg: #1a1d23;
+    --sidebar-hover: rgba(255,255,255,0.07);
+    --sidebar-active: rgba(255,255,255,0.11);
+    --sidebar-ink: rgba(255,255,255,0.72);
+    --sidebar-ink-active: #ffffff;
+    --sidebar-border: rgba(255,255,255,0.07);
+    --ink: #111318;
+    --ink-2: #3f4452;
+    --ink-3: #767c8a;
+    --border: #e5e7ec;
+    --border-strong: #c9ccd4;
+    --brand: #5b63f5;
+    --brand-light: #eeeffe;
+    --brand-hover: #4b52e0;
+    --green: #16a34a;
+    --green-bg: #dcfce7;
+    --amber: #d97706;
+    --amber-bg: #fef3c7;
+    --red: #dc2626;
+    --red-bg: #fee2e2;
+    --blue: #2563eb;
+    --blue-bg: #dbeafe;
+    --purple: #7c3aed;
+    --purple-bg: #ede9fe;
+
+    --course-math: #6366f1;
+    --course-science: #0ea5e9;
+    --course-english: #10b981;
+    --course-history: #f59e0b;
+    --course-spanish: #8b5cf6;
+    --course-art: #ec4899;
+
+    --radius-sm: 6px;
+    --radius: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 18px;
+    --shadow-xs: 0 1px 2px rgba(0,0,0,0.05);
+    --shadow-sm: 0 2px 6px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--ink);
+    background: #ebecf0;
+    padding: 28px 32px 80px;
+  }
+  button, input { font: inherit; }
+  button { cursor: pointer; }
+
+  .page-h1 {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-bottom: 4px;
+  }
+  .page-sub {
+    color: var(--ink-2);
+    font-size: 14px;
+    margin-bottom: 6px;
+    max-width: 880px;
+  }
+  .page-meta {
+    color: var(--ink-3);
+    font-size: 12px;
+    margin-bottom: 28px;
+  }
+  .legend {
+    display: flex; gap: 16px; flex-wrap: wrap;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    margin-bottom: 24px;
+    font-size: 12px;
+    color: var(--ink-2);
+  }
+  .legend strong { color: var(--ink); margin-right: 4px; }
+  .legend kbd {
+    display: inline-block;
+    padding: 2px 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    background: #f9fafb;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    color: var(--ink-2);
+  }
+
+  .mock-section {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    margin-bottom: 22px;
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+  }
+  .mock-head {
+    padding: 16px 22px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .mock-head h2 {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-bottom: 4px;
+  }
+  .mock-head h2 .num {
+    display: inline-block;
+    width: 22px; height: 22px;
+    line-height: 22px; text-align: center;
+    background: var(--brand);
+    color: #fff;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    margin-right: 8px;
+    vertical-align: 2px;
+  }
+  .mock-head p {
+    font-size: 13px;
+    color: var(--ink-2);
+    margin-top: 2px;
+  }
+  .mock-head .ref {
+    font-size: 11px;
+    color: var(--ink-3);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    margin-top: 6px;
+  }
+
+  .side-by-side {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+  }
+  .side {
+    padding: 22px;
+    border-right: 1px solid var(--border);
+  }
+  .side:last-child { border-right: none; }
+  .side-label {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 4px;
+    margin-bottom: 14px;
+  }
+  .side-label.current {
+    background: var(--red-bg);
+    color: var(--red);
+  }
+  .side-label.proposed {
+    background: var(--green-bg);
+    color: var(--green);
+  }
+  .side-notes {
+    margin-top: 14px;
+    font-size: 12px;
+    color: var(--ink-2);
+    line-height: 1.55;
+  }
+  .side-notes ul {
+    margin-left: 16px;
+  }
+  .side-notes li { margin-bottom: 3px; }
+  .recommend {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: var(--brand-light);
+    color: var(--brand-hover);
+    border-radius: var(--radius-sm);
+    font-size: 12.5px;
+    font-weight: 500;
+  }
+
+  /* ─── TOPBAR MOCK ────────────────────────── */
+  .topbar {
+    height: 56px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 16px;
+  }
+  .topbar-breadcrumb-old {
+    font-size: 13px;
+    color: var(--ink-2);
+    font-weight: 500;
+  }
+  .topbar-search-fake {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #f8f9fb;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    height: 34px;
+    padding: 0 12px;
+    color: var(--ink-3);
+    font-size: 13px;
+    position: relative;
+  }
+  .topbar-search-fake::after {
+    content: "FAKE — no input, no handler";
+    position: absolute;
+    top: -10px;
+    right: 8px;
+    font-size: 10px;
+    background: var(--red);
+    color: #fff;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 600;
+  }
+  .topbar-search-kbd {
+    margin-left: auto;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 11px;
+    color: var(--ink-2);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .topbar-search-real {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    height: 34px;
+    padding: 0 12px;
+    transition: border-color 0.15s;
+  }
+  .topbar-search-real:focus-within {
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px rgba(91,99,245,0.18);
+  }
+  .topbar-search-real svg { color: var(--ink-3); flex-shrink: 0; }
+  .topbar-search-real input {
+    border: 0;
+    outline: 0;
+    flex: 1;
+    background: transparent;
+    color: var(--ink);
+    font-size: 13px;
+  }
+  .topbar-search-real input::placeholder { color: var(--ink-3); }
+
+  .sync-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 999px;
+    background: var(--green-bg);
+    color: var(--green);
+    font-size: 12.5px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+  }
+  .sync-pill.stale {
+    background: var(--amber-bg);
+    color: var(--amber);
+  }
+  .sync-pill .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .sync-pill .refresh-link {
+    background: transparent;
+    border: 0;
+    color: inherit;
+    text-decoration: underline;
+    font-weight: 600;
+    font-size: 12px;
+    padding: 0;
+    margin-left: 2px;
+  }
+  .sync-pill .refresh-link:hover { text-decoration: none; }
+  .system-dot {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--white);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .system-dot .inner {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 0 3px rgba(22,163,74,0.18);
+  }
+  .system-dot.amber .inner {
+    background: var(--amber);
+    box-shadow: 0 0 0 3px rgba(217,119,6,0.18);
+  }
+  .add-btn-old {
+    height: 32px;
+    padding: 0 14px;
+    background: var(--brand);
+    color: #fff;
+    border: 0;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .add-btn-new {
+    height: 32px;
+    padding: 0 12px;
+    background: #fff;
+    color: var(--ink-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-weight: 500;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .add-btn-new:hover { background: #f8f9fb; }
+
+  /* ─── TONIGHT MOCK ───────────────────────── */
+  .tonight-panel {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 16px;
+  }
+  .tonight-panel h3 {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .tonight-panel .panel-sub {
+    color: var(--ink-3);
+    font-size: 12px;
+    margin-bottom: 16px;
+  }
+  .metric-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .metric-card {
+    background: #f8f9fb;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+  }
+  .metric-card .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-3);
+    font-weight: 600;
+  }
+  .metric-card .value {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-top: 2px;
+    line-height: 1.1;
+  }
+  .metric-card .delta { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+
+  .section-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 14px 0 8px;
+    padding: 0 2px;
+  }
+  .section-head .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+  }
+  .section-head .dot.red { background: var(--red); }
+  .section-head .dot.amber { background: var(--amber); }
+  .section-head .dot.blue { background: var(--blue); }
+  .section-head .dot.gray { background: var(--ink-3); }
+  .section-head h4 {
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    font-weight: 700;
+    color: var(--ink-2);
+  }
+  .section-head .count {
+    font-size: 11.5px;
+    color: var(--ink-3);
+    font-weight: 600;
+  }
+  .section-head button {
+    margin-left: auto;
+    background: transparent;
+    border: 0;
+    color: var(--ink-3);
+    font-size: 12px;
+    padding: 2px 4px;
+    border-radius: 4px;
+  }
+  .section-head button:hover { background: #f0f1f5; color: var(--ink-2); }
+  .section-head .chev {
+    display: inline-block;
+    transition: transform 0.15s;
+    color: var(--ink-3);
+  }
+  .section-head .chev.open { transform: rotate(90deg); }
+
+  .assign-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px 10px 0;
+    margin-bottom: 6px;
+    transition: all 0.12s;
+    cursor: pointer;
+    position: relative;
+  }
+  .assign-row:hover {
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-xs);
+  }
+  .assign-row.with-stripe { padding-left: 0; }
+  .assign-row .stripe {
+    width: 4px;
+    align-self: stretch;
+    background: var(--course-math);
+    border-radius: 8px 0 0 8px;
+  }
+  .assign-row.science .stripe { background: var(--course-science); }
+  .assign-row.english .stripe { background: var(--course-english); }
+  .assign-row.history .stripe { background: var(--course-history); }
+  .assign-row.spanish .stripe { background: var(--course-spanish); }
+  .assign-row .course {
+    font-size: 11.5px;
+    color: var(--ink-3);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    width: 78px;
+    flex-shrink: 0;
+    padding-left: 12px;
+  }
+  .assign-row.with-stripe .course {
+    color: var(--ink-2);
+    font-size: 12px;
+  }
+  .assign-row .title {
+    flex: 1;
+    font-size: 13.5px;
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .assign-row.overdue .title { font-weight: 600; }
+  .assign-row .due {
+    font-size: 12px;
+    color: var(--ink-3);
+    flex-shrink: 0;
+  }
+  .assign-row .due.red { color: var(--red); font-weight: 600; }
+  .assign-row .due.amber { color: var(--amber); font-weight: 600; }
+  .assign-row .row-actions {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.12s;
+    background: #fff;
+    padding: 4px;
+    border-radius: 6px;
+    box-shadow: var(--shadow-sm);
+  }
+  .assign-row:hover .row-actions { opacity: 1; }
+  .row-actions button {
+    background: #f8f9fb;
+    border: 1px solid var(--border);
+    color: var(--ink-2);
+    border-radius: 5px;
+    height: 26px;
+    padding: 0 8px;
+    font-size: 11.5px;
+    font-weight: 500;
+  }
+  .row-actions button:hover { background: var(--brand-light); color: var(--brand-hover); border-color: var(--brand); }
+  .count-chip-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 1px dashed var(--border-strong);
+    border-radius: 8px;
+    margin-bottom: 6px;
+    color: var(--ink-3);
+    font-size: 12.5px;
+    cursor: pointer;
+  }
+  .count-chip-row:hover { background: #f8f9fb; color: var(--ink-2); }
+
+  /* ─── DESTRUCTIVE CONFIRM ────────────────── */
+  .reminder-card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 6px;
+  }
+  .reminder-card .meta {
+    font-size: 11px;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .reminder-card .title { font-weight: 500; font-size: 13.5px; margin-bottom: 8px; }
+  .reminder-actions { display: flex; gap: 6px; margin-top: 8px; }
+  .btn-ghost {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--ink-2);
+    border-radius: 6px;
+    height: 28px;
+    padding: 0 10px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .btn-ghost:hover { background: #f8f9fb; }
+  .btn-link-danger {
+    background: transparent;
+    border: 0;
+    color: var(--red);
+    text-decoration: underline;
+    font-size: 12px;
+    padding: 0 6px;
+  }
+  .btn-link-danger:hover { color: var(--ink); text-decoration: none; }
+  .btn-confirm-danger {
+    background: var(--red);
+    color: #fff;
+    border: 0;
+    border-radius: 6px;
+    height: 28px;
+    padding: 0 10px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .btn-confirm-danger:hover { background: #b91c1c; }
+  .confirm-inline {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    background: var(--red-bg);
+    border: 1px solid #fca5a5;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-top: 8px;
+    font-size: 12px;
+    color: #7f1d1d;
+  }
+  .confirm-inline.show { display: flex; }
+  .confirm-inline strong { color: #7f1d1d; }
+
+  /* ─── BULK SELECT ────────────────────────── */
+  .schoolwork-toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    background: #f8f9fb;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+  }
+  .schoolwork-toolbar select, .schoolwork-toolbar input {
+    height: 28px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0 8px;
+    font-size: 12.5px;
+    background: #fff;
+  }
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--ink-2);
+    font-size: 12.5px;
+    cursor: pointer;
+  }
+  .toggle input { width: 14px; height: 14px; }
+  .bulk-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--brand-light);
+    border: 1px solid var(--brand);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    font-size: 12.5px;
+    color: var(--brand-hover);
+  }
+  .bulk-bar select {
+    height: 26px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 0 6px;
+    background: #fff;
+    font-size: 12.5px;
+  }
+  .bulk-bar .apply {
+    background: var(--brand);
+    color: #fff;
+    border: 0;
+    border-radius: 6px;
+    height: 28px;
+    padding: 0 12px;
+    font-weight: 600;
+    font-size: 12px;
+  }
+  .bulk-bar .apply:hover { background: var(--brand-hover); }
+  .row-check {
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
+    cursor: pointer;
+  }
+  .preview-modal {
+    display: none;
+    background: #fff;
+    border: 1px solid var(--brand);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-top: 10px;
+    box-shadow: var(--shadow-md);
+  }
+  .preview-modal.show { display: block; }
+  .preview-modal h5 {
+    font-size: 13.5px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .preview-modal p { font-size: 12.5px; color: var(--ink-2); margin-bottom: 8px; }
+  .preview-modal .preview-list {
+    background: #f8f9fb;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px;
+    font-size: 12px;
+    color: var(--ink-2);
+    margin-bottom: 10px;
+    max-height: 80px;
+    overflow-y: auto;
+  }
+  .preview-modal .preview-actions { display: flex; gap: 6px; justify-content: flex-end; }
+  .preview-modal .cancel { background: transparent; border: 1px solid var(--border); color: var(--ink-2); border-radius: 6px; height: 30px; padding: 0 14px; font-weight: 500; font-size: 12.5px; }
+
+  /* ─── MOBILE NAV ─────────────────────────── */
+  .phone-frame {
+    width: 280px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 22px;
+    border: 8px solid #1a1d23;
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+    position: relative;
+    height: 480px;
+  }
+  .phone-status {
+    height: 18px;
+    background: #1a1d23;
+    color: rgba(255,255,255,0.6);
+    font-size: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+  }
+  .phone-content {
+    height: 416px;
+    overflow-y: auto;
+    padding: 14px 12px 60px;
+    background: var(--canvas);
+  }
+  .phone-h {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .phone-sub {
+    font-size: 11px;
+    color: var(--ink-3);
+    margin-bottom: 10px;
+  }
+  .phone-row {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 6px;
+    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .phone-row .c { font-size: 10.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
+  .phone-row .t { font-weight: 500; font-size: 12.5px; }
+  .phone-row .d { font-size: 11px; color: var(--ink-3); }
+  .phone-tabbar {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 56px;
+    background: #fff;
+    border-top: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .phone-tabbar .tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-3);
+    font-size: 10px;
+    font-weight: 600;
+    gap: 3px;
+    position: relative;
+  }
+  .phone-tabbar .tab.active { color: var(--brand); }
+  .phone-tabbar .tab .icon { font-size: 18px; line-height: 1; }
+  .phone-tabbar .badge {
+    position: absolute;
+    top: 8px;
+    right: 28%;
+    background: var(--red);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    border-radius: 8px;
+    padding: 1px 5px;
+    line-height: 1.2;
+  }
+  .phone-missing-nav {
+    background: var(--red-bg);
+    color: #7f1d1d;
+    border: 1px dashed #fca5a5;
+    border-radius: 6px;
+    padding: 8px 10px;
+    text-align: center;
+    font-size: 11px;
+    margin: 8px;
+    position: absolute;
+    bottom: 6px; left: 0; right: 0;
+  }
+
+  /* ─── EMPTY STATE ────────────────────────── */
+  .empty-card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 32px 22px;
+    text-align: center;
+  }
+  .empty-card .icon { font-size: 28px; margin-bottom: 10px; }
+  .empty-card h4 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+  .empty-card p { font-size: 13px; color: var(--ink-2); margin-bottom: 10px; }
+  .empty-card .ts {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--green-bg);
+    color: var(--green);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .empty-card .ts.stale {
+    background: var(--amber-bg);
+    color: var(--amber);
+  }
+  .empty-card .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .empty-card .refresh-cta {
+    background: var(--amber);
+    color: #fff;
+    border: 0;
+    border-radius: 6px;
+    height: 32px;
+    padding: 0 14px;
+    margin-top: 10px;
+    font-weight: 600;
+    font-size: 12.5px;
+  }
+  .empty-card .refresh-cta:hover { background: #b45309; }
+
+  /* mini state toggle for empty/stale */
+  .state-toggle {
+    display: inline-flex;
+    background: #f0f1f5;
+    border-radius: 6px;
+    padding: 2px;
+    font-size: 11.5px;
+    margin-top: 10px;
+  }
+  .state-toggle button {
+    background: transparent;
+    border: 0;
+    padding: 4px 10px;
+    border-radius: 4px;
+    color: var(--ink-3);
+    font-weight: 600;
+  }
+  .state-toggle button.active {
+    background: #fff;
+    color: var(--ink);
+    box-shadow: var(--shadow-xs);
+  }
+
+  /* ─── FLOATING SUMMARY ───────────────────── */
+  .toc {
+    position: fixed;
+    top: 28px;
+    right: 28px;
+    width: 230px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    box-shadow: var(--shadow-md);
+    font-size: 12.5px;
+    z-index: 10;
+  }
+  .toc h4 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .toc ol { margin-left: 18px; }
+  .toc li { margin-bottom: 4px; }
+  .toc a { color: var(--brand); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  @media (max-width: 1100px) {
+    .toc { display: none; }
+  }
+  @media (max-width: 880px) {
+    .side-by-side { grid-template-columns: 1fr; }
+    .side { border-right: none; border-bottom: 1px solid var(--border); }
+  }
+
+  .deep-link {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+
+  /* ─── SIDEBAR MOCK ───────────────────────── */
+  .sb-frame {
+    width: 232px;
+    height: 460px;
+    background: var(--sidebar-bg);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    color: var(--sidebar-ink);
+    font-family: 'Inter', system-ui, sans-serif;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    overflow: hidden;
+  }
+  .sb-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid var(--sidebar-border);
+  }
+  .sb-mark {
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    background: linear-gradient(135deg, #5b63f5, #7c3aed);
+    flex-shrink: 0;
+  }
+  .sb-logotext {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -0.01em;
+  }
+  .sb-beta {
+    margin-left: auto;
+    font-size: 9.5px;
+    font-weight: 700;
+    color: #a5aafb;
+    background: rgba(91,99,245,0.22);
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.04em;
+  }
+  .sb-section {
+    padding: 8px 10px;
+  }
+  .sb-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    color: var(--sidebar-ink);
+    font-size: 13px;
+    font-weight: 500;
+    background: transparent;
+    border: 0;
+    width: 100%;
+    text-align: left;
+    margin-bottom: 2px;
+    position: relative;
+  }
+  .sb-item:hover { background: rgba(255,255,255,0.07); color: #fff; }
+  .sb-item.active { background: rgba(255,255,255,0.11); color: #fff; font-weight: 600; }
+  .sb-item.new.active {
+    background: rgba(91,99,245,0.18);
+    color: #fff;
+  }
+  .sb-accent {
+    position: absolute;
+    left: -4px;
+    top: 8px;
+    bottom: 8px;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: transparent;
+    transition: background 0.15s;
+  }
+  .sb-item.new.active .sb-accent {
+    background: var(--brand);
+  }
+  .sb-icon {
+    font-size: 14px;
+    width: 16px;
+    text-align: center;
+    opacity: 0.7;
+  }
+  .sb-item.active .sb-icon, .sb-item:hover .sb-icon { opacity: 1; }
+  .sb-badge {
+    margin-left: auto;
+    min-width: 20px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 9px;
+    font-size: 11px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .sb-badge.red { background: rgba(220,38,38,0.22); color: #f87171; }
+  .sb-badge.gray { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.65); }
+  .sb-empty {
+    flex: 1;
+    color: rgba(255,255,255,0.18);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 14px;
+    font-style: italic;
+  }
+  .sb-spacer { flex: 1; }
+  .sb-monitor {
+    padding: 12px 12px 8px;
+    border-top: 1px solid var(--sidebar-border);
+  }
+  .sb-monitor-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(255,255,255,0.42);
+    font-weight: 700;
+    margin-bottom: 6px;
+    padding-left: 4px;
+  }
+  .sb-system {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    background: transparent;
+    border: 0;
+    padding: 6px 8px;
+    border-radius: 6px;
+    color: var(--sidebar-ink);
+    text-align: left;
+  }
+  .sb-system:hover { background: rgba(255,255,255,0.06); }
+  .sb-sys-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 0 3px rgba(34,197,94,0.2);
+    flex-shrink: 0;
+  }
+  .sb-sys-dot.amber {
+    background: var(--amber);
+    box-shadow: 0 0 0 3px rgba(217,119,6,0.22);
+  }
+  .sb-sys-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+  }
+  .sb-sys-line1 {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .sb-sys-line2 {
+    font-size: 10.5px;
+    color: rgba(255,255,255,0.55);
+  }
+  .sb-sys-line2.stale {
+    color: #fbbf24;
+  }
+  .sb-footer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--sidebar-border);
+  }
+  .sb-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: rgba(91,99,245,0.4);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .sb-parent {
+    font-size: 12.5px;
+    color: var(--sidebar-ink);
+    font-weight: 500;
+  }
+
+  /* ─── DRAWER MOCK ────────────────────────── */
+  .drawer-mock {
+    width: 100%;
+    max-width: 440px;
+    margin: 0 22px 22px;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 22px 20px;
+    position: relative;
+    box-shadow: var(--shadow-md);
+  }
+  .drawer-close {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--ink-3);
+    font-size: 13px;
+  }
+  .drawer-close:hover { background: var(--canvas); color: var(--ink); }
+  .dr-eyebrow {
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .dr-eyebrow-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0;
+  }
+  .dr-course-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--course-english);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .dr-title {
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.3;
+    margin-bottom: 8px;
+    letter-spacing: -0.01em;
+  }
+  .dr-meta-old, .dr-meta-new {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    color: var(--ink-2);
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  .dr-meta-new .dr-bullet { color: var(--ink-3); }
+  .dr-meta-new .dr-synced {
+    color: var(--green);
+    font-weight: 500;
+  }
+  .dr-pill {
+    display: inline-flex;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .dr-pill.amber { background: var(--amber-bg); color: var(--amber); }
+  .dr-sep { color: var(--ink-3); }
+  .dr-due { color: var(--ink-2); font-size: 12.5px; }
+  .dr-link {
+    display: inline-block;
+    margin: 6px 0;
+    color: var(--brand);
+    font-size: 12.5px;
+    text-decoration: underline;
+    font-weight: 500;
+  }
+  .dr-link-inline {
+    color: var(--brand);
+    font-size: 12px;
+    text-decoration: none;
+    margin-left: auto;
+    font-weight: 500;
+  }
+  .dr-link-inline:hover { text-decoration: underline; }
+  .dr-reason {
+    background: #f8f9fb;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 11.5px;
+    color: var(--ink-3);
+    margin: 10px 0;
+    line-height: 1.5;
+  }
+  .dr-section {
+    border-top: 1px solid var(--border);
+    margin-top: 14px;
+    padding-top: 14px;
+  }
+  .dr-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .dr-section-head span:last-child { color: var(--ink-3); font-weight: 500; }
+  .dr-section.open .dr-section-head span:last-child { color: var(--ink-2); }
+  .dr-section-body {
+    margin-top: 10px;
+  }
+  .dr-outcome {
+    display: block;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    font-size: 12.5px;
+    color: var(--ink-2);
+    cursor: pointer;
+  }
+  .dr-outcome:hover { border-color: var(--brand); background: var(--brand-light); }
+  .dr-outcome.selected {
+    border-color: var(--brand);
+    background: var(--brand-light);
+    color: var(--brand-hover);
+    font-weight: 600;
+  }
+  .dr-save {
+    background: var(--brand);
+    color: #fff;
+    border: 0;
+    border-radius: 6px;
+    height: 32px;
+    padding: 0 14px;
+    font-weight: 600;
+    font-size: 12.5px;
+    margin-top: 6px;
+  }
+  .dr-save:hover { background: var(--brand-hover); }
+</style>
+</head>
+<body>
+
+<aside class="toc">
+  <h4>On this page</h4>
+  <ol>
+    <li><a href="#topbar">Topbar</a></li>
+    <li><a href="#tonight">Tonight</a></li>
+    <li><a href="#destructive">Destructive confirm</a></li>
+    <li><a href="#bulk">Bulk select</a></li>
+    <li><a href="#mobile">Mobile nav</a></li>
+    <li><a href="#empty">Empty state</a></li>
+    <li><a href="#sidebar">Sidebar density</a></li>
+    <li><a href="#drawer">Drawer header</a></li>
+  </ol>
+</aside>
+
+<h1 class="page-h1">Dashboard improvements — side-by-side mocks</h1>
+<p class="page-sub">Six highest-impact recommendations from the dashboard red-team, rendered as <strong>current vs proposed</strong> using the project's real CSS tokens (Inter, palette, radii). Some mocks are interactive — hover rows, click confirms, toggle the empty state.</p>
+<p class="page-meta">2026-05-25 · Companion to <span class="deep-link">docs/DASHBOARD_REDTEAM.md</span> · Pick one variant per mock before implementation.</p>
+
+<div class="legend">
+  <span><strong>Interactive:</strong> hover rows for quick actions · click destructive buttons · toggle bulk checkboxes · toggle the empty state · focus the new search</span>
+</div>
+
+<!-- ─── MOCK 1: TOPBAR ────────────────────────── -->
+<section class="mock-section" id="topbar">
+  <header class="mock-head">
+    <h2><span class="num">1</span>Topbar — trust signal, real search, ambient system status</h2>
+    <p>The single highest-ROI change. Promote freshness into the topbar, retire the fake ⌘K, replace the redundant breadcrumb. <strong>Recommended: proposed.</strong></p>
+    <div class="ref">Refs · beta_index.html:60-80 · beta_dashboard.js:293-301 · finding C1 + C3 + C5 + m1 + m2</div>
+  </header>
+  <div class="side-by-side">
+    <div class="side">
+      <span class="side-label current">Current</span>
+      <div class="topbar">
+        <div class="topbar-breadcrumb-old">Tonight's Plan</div>
+        <div class="topbar-search-fake">
+          <span>🔍</span>
+          <span>Search assignments…</span>
+          <span class="topbar-search-kbd">⌘K</span>
+        </div>
+        <span class="system-dot" title="System health"><span class="inner"></span></span>
+        <button class="add-btn-old">+ Add follow-up</button>
+      </div>
+      <div class="side-notes">
+        <ul>
+          <li>⌘K chip is decorative — no input, no handler. Cargo-cult affordance.</li>
+          <li>Breadcrumb mirrors the sidebar selection — wasted real estate.</li>
+          <li>No freshness signal — the data-trust question goes unanswered on the landing view.</li>
+          <li>Brand-blue primary <em>Add</em> button is the loudest CTA on every page, but adding is rarely the parent's main intent.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="side">
+      <span class="side-label proposed">Proposed</span>
+      <div class="topbar">
+        <div class="topbar-search-real">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.5" y2="16.5"/></svg>
+          <input type="search" placeholder="Search assignments or courses…">
+          <span class="topbar-search-kbd">⌘K</span>
+        </div>
+        <span class="sync-pill" id="syncPill">
+          <span class="dot"></span>
+          <span id="syncPillLabel">Synced 12m ago</span>
+        </span>
+        <span class="system-dot" id="sysDot" title="All services healthy — click for details"><span class="inner"></span></span>
+        <button class="add-btn-new">＋ Add</button>
+      </div>
+      <div class="side-notes">
+        <ul>
+          <li>Real input — focus it, type something. ⌘K binding wires here.</li>
+          <li>Sync pill is the trust signal in the parent's eye line — try clicking <em>"toggle stale"</em> below.</li>
+          <li>System dot opens a slide-in panel; no full route needed for a glance.</li>
+          <li>Add demoted to ghost — neutral color reflects neutral frequency.</li>
+        </ul>
+      </div>
+      <div class="recommend">
+        Try: <button class="btn-ghost" id="toggleStale" style="margin-left:4px">Toggle stale</button>
+        <span style="margin-left:6px; font-size:11.5px; color: var(--ink-3)">— changes pill color and reveals a contextual <em>Refresh now</em>.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── MOCK 2: TONIGHT ────────────────────────── -->
+<section class="mock-section" id="tonight">
+  <header class="mock-head">
+    <h2><span class="num">2</span>Tonight — scan hierarchy, course color, collapsed sections</h2>
+    <p>The default landing view. Today it's five flat sections with identical typography. Proposed gives each row a course identity and collapses the lower-urgency sections by default. <strong>Recommended: proposed.</strong></p>
+    <div class="ref">Refs · beta_dashboard.js:998-1051 · DASHBOARD_DESIGN.md:225-238 · findings M1 + M2 + M3 + M10</div>
+  </header>
+  <div class="side-by-side">
+    <div class="side">
+      <span class="side-label current">Current</span>
+      <div class="metric-row">
+        <div class="metric-card">
+          <div class="label">Action Required</div>
+          <div class="value">3</div>
+          <div class="delta">tonight need attention</div>
+        </div>
+        <div class="metric-card">
+          <div class="label">Reminders Today</div>
+          <div class="value">2</div>
+          <div class="delta">0 missed due today</div>
+        </div>
+      </div>
+      <div class="tonight-panel">
+        <h3>Tonight's Plan</h3>
+        <div class="panel-sub">3 assignments and 1 reminder need attention tonight.</div>
+        <div class="section-head"><span class="dot red"></span><h4>Overdue</h4><span class="count">1</span></div>
+        <div class="assign-row">
+          <div class="course">Math</div>
+          <div class="title">Chapter 7 Practice Set</div>
+          <div class="due red">2 days ago</div>
+        </div>
+        <div class="section-head"><span class="dot amber"></span><h4>Due Tonight</h4><span class="count">2</span></div>
+        <div class="assign-row">
+          <div class="course">English</div>
+          <div class="title">Essay Outline</div>
+          <div class="due amber">Tonight</div>
+        </div>
+        <div class="assign-row">
+          <div class="course">Science</div>
+          <div class="title">Lab Write-up</div>
+          <div class="due amber">11:59 PM</div>
+        </div>
+        <div class="section-head"><span class="dot blue"></span><h4>Waiting on Teacher</h4><span class="count">3</span></div>
+        <div class="assign-row"><div class="course">History</div><div class="title">DBQ Draft Comments</div><div class="due">Wed</div></div>
+        <div class="assign-row"><div class="course">English</div><div class="title">Reading Quiz Regrade</div><div class="due">—</div></div>
+        <div class="assign-row"><div class="course">Math</div><div class="title">Unit 6 Test Corrections</div><div class="due">Fri</div></div>
+        <div class="section-head"><span class="dot gray"></span><h4>Coming Up</h4><span class="count">4</span></div>
+        <div class="assign-row"><div class="course">Spanish</div><div class="title">Vocab Quiz</div><div class="due">Wed 8 AM</div></div>
+        <div class="assign-row"><div class="course">History</div><div class="title">DBQ Essay</div><div class="due">Wed 11:59</div></div>
+        <div class="assign-row"><div class="course">Art</div><div class="title">Portfolio Submission</div><div class="due">Thu</div></div>
+        <div class="assign-row"><div class="course">Science</div><div class="title">Cell Membrane Lab</div><div class="due">Fri 11:59</div></div>
+      </div>
+      <div class="side-notes">
+        <ul>
+          <li>Five flat sections with identical typography — eye can't lock onto "the 2 that matter tonight."</li>
+          <li>Three totals on the same fold (metric: 3, subtitle: "3 assignments and 1 reminder," panel: implicit row count) can disagree.</li>
+          <li>Course label is the lowest-contrast text on the row — borderline WCAG.</li>
+          <li>Coming Up and Waiting expand by default — Mondays this scrolls 3 screens before "tonight" is satisfied.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="side">
+      <span class="side-label proposed">Proposed</span>
+      <div class="tonight-panel">
+        <h3>Good evening, Mom.</h3>
+        <div class="panel-sub" style="color: var(--ink-2); font-size: 13px;">3 items need attention tonight.</div>
+        <div class="section-head"><span class="dot red"></span><h4>Overdue</h4><span class="count">1</span></div>
+        <div class="assign-row overdue with-stripe">
+          <div class="stripe"></div>
+          <div class="course">Math</div>
+          <div class="title">Chapter 7 Practice Set</div>
+          <div class="due red">2 days ago</div>
+          <div class="row-actions">
+            <button title="Mark submitted">✓ Submitted</button>
+            <button title="Add note">+ Note</button>
+          </div>
+        </div>
+        <div class="section-head"><span class="dot amber"></span><h4>Due Tonight</h4><span class="count">2</span></div>
+        <div class="assign-row english with-stripe">
+          <div class="stripe"></div>
+          <div class="course">English</div>
+          <div class="title">Essay Outline</div>
+          <div class="due amber">Tonight</div>
+          <div class="row-actions">
+            <button>✓ Submitted</button>
+            <button>+ Note</button>
+          </div>
+        </div>
+        <div class="assign-row science with-stripe">
+          <div class="stripe"></div>
+          <div class="course">Science</div>
+          <div class="title">Lab Write-up</div>
+          <div class="due amber">11:59 PM</div>
+          <div class="row-actions">
+            <button>✓ Submitted</button>
+            <button>+ Note</button>
+          </div>
+        </div>
+        <div class="section-head" id="waitSection">
+          <span class="dot blue"></span>
+          <h4>Waiting on Teacher</h4>
+          <span class="count">3</span>
+          <button data-toggle="wait">
+            <span class="chev" id="waitChev">▸</span> Show
+          </button>
+        </div>
+        <div class="section-head" id="cuSection">
+          <span class="dot gray"></span>
+          <h4>Coming Up</h4>
+          <span class="count">4 in next 7 days</span>
+          <button data-toggle="cu">
+            <span class="chev" id="cuChev">▸</span> Show
+          </button>
+        </div>
+        <div id="cuBody" style="display:none">
+          <div class="assign-row spanish with-stripe">
+            <div class="stripe"></div><div class="course">Spanish</div><div class="title">Vocab Quiz</div><div class="due">Wed 8 AM</div>
+          </div>
+          <div class="assign-row history with-stripe">
+            <div class="stripe"></div><div class="course">History</div><div class="title">DBQ Essay</div><div class="due">Wed 11:59</div>
+          </div>
+          <div class="assign-row with-stripe" style="--stripe: var(--course-art)">
+            <div class="stripe" style="background: var(--course-art)"></div><div class="course">Art</div><div class="title">Portfolio Submission</div><div class="due">Thu</div>
+          </div>
+          <div class="assign-row science with-stripe">
+            <div class="stripe"></div><div class="course">Science</div><div class="title">Cell Membrane Lab</div><div class="due">Fri 11:59</div>
+          </div>
+        </div>
+      </div>
+      <div class="side-notes">
+        <ul>
+          <li>Course stripe + bumped course-label contrast = scan-by-color.</li>
+          <li>Metric row gone — page header is the single source of truth.</li>
+          <li>Hover any row → quick actions (✓ Submitted · + Note) without opening the drawer.</li>
+          <li>Waiting / Coming Up collapsed → tonight fits in one viewport. Click <em>Show</em> to expand.</li>
+          <li>Coming Up label says "4 in next 7 days" so the count is meaningful even collapsed.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── MOCK 3: DESTRUCTIVE CONFIRM ────────────── -->
+<section class="mock-section" id="destructive">
+  <header class="mock-head">
+    <h2><span class="num">3</span>Destructive actions — inline two-step confirm</h2>
+    <p>Reminders and follow-ups currently delete on a single click with no undo. <strong>Recommended: proposed.</strong></p>
+    <div class="ref">Refs · beta_dashboard.js:1938-1956 · finding C2</div>
+  </header>
+  <div class="side-by-side">
+    <div class="side">
+      <span class="side-label current">Current</span>
+      <div class="reminder-card">
+        <div class="meta">Reminder · today</div>
+        <div class="title">Ask about Spanish vocab quiz at dinner</div>
+        <div class="reminder-actions">
+          <button class="btn-ghost">Update</button>
+          <button class="btn-link-danger" id="oldDelete">Remove</button>
+        </div>
+      </div>
+      <div class="side-notes">
+        <ul>
+          <li>Click "Remove" → immediate <code>delete_assignment_reminder</code>. No confirm, no flash, no undo.</li>
+          <li>Try clicking <em>Remove</em> in this mock to see what the parent gets.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="side">
+      <span class="side-label proposed">Proposed</span>
+      <div class="reminder-card" id="newReminderCard">
+        <div class="meta">Reminder · today</div>
+        <div class="title">Ask about Spanish vocab quiz at dinner</div>
+        <div class="reminder-actions" id="newActions">
+          <button class="btn-ghost">Update</button>
+          <button class="btn-link-danger" id="newDeleteBtn">Remove</button>
+        </div>
+        <div class="confirm-inline" id="confirmInline">
+          <strong>Delete this reminder?</strong>
+          <span style="color: var(--ink-2)">It will be gone immediately.</span>
+          <button class="btn-confirm-danger" id="confirmYes" style="margin-left:auto">Yes, delete</button>
+          <button class="btn-ghost" id="confirmNo">Keep</button>
+        </div>
+      </div>
+      <div class="side-notes">
+        <ul>
+          <li>First click → inline confirm. No modal, no jump.</li>
+          <li>Second click commits. Pressing <em>Keep</em> or clicking outside cancels.</li>
+          <li>Same pattern for follow-up <em>Delete</em> and the bulk apply button (next section).</li>
+          <li>Try it — click <em>Remove</em>, then <em>Yes, delete</em> or <em>Keep</em>.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── MOCK 4: BULK SELECT ────────────────────── -->
+<section class="mock-section" id="bulk">
+  <header class="mock-head">
+    <h2><span class="num">4</span>Bulk select — preview before apply</h2>
+    <p>Currently <em>Bulk select</em> is a mode toggle and <em>Apply</em> fires immediately. Proposed: always-on row checkboxes + a preview-and-confirm step that shows count + chosen status. <strong>Recommended: proposed.</strong></p>
+    <div class="ref">Refs · beta_dashboard.js:1144-1162, 1865-1881 · findings M4 + M12</div>
+  </header>
+  <div class="side-by-side">
+    <div class="side">
+      <span class="side-label current">Current</span>
+      <div class="schoolwork-toolbar">
+        <select><option>Needs attention</option></select>
+        <input type="search" placeholder="Search…">
+        <label class="toggle"><input type="checkbox" id="oldBulkToggle"> Bulk select</label>
+      </div>
+      <div class="bulk-bar" id="oldBulkBar" style="display:none">
+        <strong>3 selected</strong>
+        <select><option>Excused</option><option>Submitted</option><option>Practice only</option></select>
+        <button class="apply" id="oldApply" style="margin-left:auto">Apply</button>
+      </div>
+      <div id="oldRows" style="display:none">
+        <div class="assign-row"><input type="checkbox" class="row-check" style="margin-left:12px"><div class="course">Math</div><div class="title">Old worksheet</div><div class="due">—</div></div>
+        <div class="assign-row"><input type="checkbox" class="row-check" style="margin-left:12px"><div class="course">English</div><div class="title">Vocab practice</div><div class="due">—</div></div>
+        <div class="assign-row"><input type="checkbox" class="row-check" style="margin-left:12px"><div class="course">History</div><div class="title">Section review</div><div class="due">—</div></div>
+      </div>
+      <div class="side-notes">
+        <ul>
+          <li>Enable <em>Bulk select</em> in the toolbar to see the mode-switch flow.</li>
+          <li><em>Apply</em> fires the status update against every selected row with no preview and no confirm.</li>
+          <li>Mode state persists across view-switches (M12) — you can return later to a stale selection.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="side">
+      <span class="side-label proposed">Proposed</span>
+      <div class="schoolwork-toolbar">
+        <select><option>Needs attention</option></select>
+        <input type="search" placeholder="Search…">
+        <span style="color: var(--ink-3); font-size: 12px; margin-left: auto" id="newSelCount">0 selected</span>
+      </div>
+      <div class="bulk-bar" id="newBulkBar" style="display:none">
+        <strong id="newSelCountInBar">0 selected</strong>
+        <select id="newBulkStatus">
+          <option>Excused</option>
+          <option>Submitted</option>
+          <option>Practice only</option>
+          <option>Skip — can't recover</option>
+        </select>
+        <button class="apply" id="newApplyBtn" style="margin-left:auto">Apply…</button>
+      </div>
+      <div>
+        <div class="assign-row science with-stripe">
+          <input type="checkbox" class="row-check newRowCheck" data-title="Old lab handout (Science)" style="margin-left:12px">
+          <div class="stripe"></div>
+          <div class="course">Science</div><div class="title">Old lab handout</div><div class="due">—</div>
+        </div>
+        <div class="assign-row english with-stripe">
+          <input type="checkbox" class="row-check newRowCheck" data-title="Vocab practice (English)" style="margin-left:12px">
+          <div class="stripe"></div>
+          <div class="course">English</div><div class="title">Vocab practice</div><div class="due">—</div>
+        </div>
+        <div class="assign-row history with-stripe">
+          <input type="checkbox" class="row-check newRowCheck" data-title="Section review (History)" style="margin-left:12px">
+          <div class="stripe"></div>
+          <div class="course">History</div><div class="title">Section review</div><div class="due">—</div>
+        </div>
+      </div>
+      <div class="preview-modal" id="previewModal">
+        <h5>Apply '<span id="previewStatus">Excused</span>' to <span id="previewCount">3</span> assignments?</h5>
+        <p>The status updates immediately. You can undo individual rows from their drawer.</p>
+        <div class="preview-list" id="previewList"></div>
+        <div class="preview-actions">
+          <button class="cancel" id="previewCancel">Cancel</button>
+          <button class="apply" id="previewConfirm">Apply</button>
+        </div>
+      </div>
+      <div class="side-notes">
+        <ul>
+          <li>Checkboxes always visible — no mode-switch needed.</li>
+          <li>Selecting any row reveals the bulk bar; selection cleared when you switch views.</li>
+          <li><em>Apply…</em> opens a preview with count + chosen status + the list. Two clicks to commit.</li>
+          <li>Try selecting some rows, picking a status, and clicking <em>Apply…</em>.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── MOCK 5: MOBILE NAV ─────────────────────── -->
+<section class="mock-section" id="mobile">
+  <header class="mock-head">
+    <h2><span class="num">5</span>Mobile — bottom tab bar replaces hidden sidebar</h2>
+    <p>At ≤860px the sidebar is currently <code>display: none</code> with no replacement. The Mobile Interruption JTBD breaks on any non-Tonight view. <strong>Recommended: proposed.</strong></p>
+    <div class="ref">Refs · dashboard.css:1614-1625 · DASHBOARD_DESIGN.md:282-298 · finding C6</div>
+  </header>
+  <div class="side-by-side">
+    <div class="side">
+      <span class="side-label current">Current</span>
+      <div class="phone-frame">
+        <div class="phone-status">9:41</div>
+        <div class="phone-content">
+          <div class="phone-h">Good evening.</div>
+          <div class="phone-sub">3 items need attention tonight.</div>
+          <div class="phone-row"><span class="c">Math</span><span class="t">Chapter 7</span><span class="d">2 days ago · OVERDUE</span></div>
+          <div class="phone-row"><span class="c">English</span><span class="t">Essay Outline</span><span class="d">Tonight</span></div>
+          <div class="phone-row"><span class="c">Science</span><span class="t">Lab Write-up</span><span class="d">11:59 PM</span></div>
+          <div class="phone-row"><span class="c">History</span><span class="t">DBQ Draft Comments</span><span class="d">Waiting on teacher</span></div>
+          <div class="phone-row"><span class="c">Spanish</span><span class="t">Vocab Quiz</span><span class="d">Wed 8 AM</span></div>
+        </div>
+        <div class="phone-missing-nav">⚠️ No navigation. Back button is browser-only.</div>
+      </div>
+      <div class="side-notes" style="margin-top:18px">
+        <ul>
+          <li>Once you've navigated past Tonight, there's no way back without the browser back gesture (which exits the PWA on iOS).</li>
+          <li>Parent on Tailscale phone is stuck on whatever view loaded first.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="side">
+      <span class="side-label proposed">Proposed</span>
+      <div class="phone-frame">
+        <div class="phone-status">9:41 · ● Synced 12m</div>
+        <div class="phone-content">
+          <div class="phone-h">Good evening.</div>
+          <div class="phone-sub">3 items need attention tonight.</div>
+          <div class="phone-row" style="border-left: 4px solid var(--course-math); padding-left:8px"><span class="c">Math</span><span class="t" style="font-weight:600">Chapter 7</span><span class="d" style="color: var(--red); font-weight:600">2 days ago</span></div>
+          <div class="phone-row" style="border-left: 4px solid var(--course-english); padding-left:8px"><span class="c">English</span><span class="t">Essay Outline</span><span class="d" style="color: var(--amber); font-weight:600">Tonight</span></div>
+          <div class="phone-row" style="border-left: 4px solid var(--course-science); padding-left:8px"><span class="c">Science</span><span class="t">Lab Write-up</span><span class="d" style="color: var(--amber); font-weight:600">11:59 PM</span></div>
+        </div>
+        <div class="phone-tabbar">
+          <div class="tab active">
+            <span class="icon">▣</span>
+            <span>Today</span>
+            <span class="badge" style="right: 22%">3</span>
+          </div>
+          <div class="tab">
+            <span class="icon">≡</span>
+            <span>Schoolwork</span>
+          </div>
+          <div class="tab">
+            <span class="icon">＋</span>
+            <span>Add</span>
+          </div>
+        </div>
+      </div>
+      <div class="side-notes" style="margin-top:18px">
+        <ul>
+          <li>Three thumb-reachable tabs: Today (with badge), Schoolwork, Add (opens a create sheet).</li>
+          <li>Sync pill collapses into the status bar — still visible without sacrificing content.</li>
+          <li>System dot moves into Today header (not shown here) as an inline chip.</li>
+          <li>Course stripes survive at this width.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── MOCK 6: EMPTY STATE ────────────────────── -->
+<section class="mock-section" id="empty">
+  <header class="mock-head">
+    <h2><span class="num">6</span>Empty state — "all done" vs "silently broken"</h2>
+    <p>Today the same "All caught up" copy renders whether the scraper just succeeded with no items, or hasn't run in two days. Add a timestamp + stale variant. <strong>Recommended: proposed.</strong></p>
+    <div class="ref">Refs · beta_dashboard.js:937-949 · finding C7</div>
+  </header>
+  <div class="side-by-side">
+    <div class="side">
+      <span class="side-label current">Current</span>
+      <div class="empty-card">
+        <div class="icon">✓</div>
+        <h4>All caught up</h4>
+        <p>Nothing needs attention tonight.</p>
+      </div>
+      <div class="side-notes">
+        <ul>
+          <li>Ambiguous: kid did everything, OR scraper hasn't run today, OR Schoology cookie expired.</li>
+          <li>The most dangerous failure mode of a trust-dependent product: looks fine when broken.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="side">
+      <span class="side-label proposed">Proposed</span>
+      <div class="empty-card" id="emptyCard">
+        <div class="icon" id="emptyIcon">✓</div>
+        <h4 id="emptyH">All caught up</h4>
+        <p id="emptyP">Nothing needs attention tonight. Close the laptop.</p>
+        <span class="ts" id="emptyTs">
+          <span class="dot"></span>
+          <span id="emptyTsLabel">Last checked Schoology 8 min ago</span>
+        </span>
+        <div id="emptyRefreshWrap" style="display:none">
+          <br><button class="refresh-cta">↻ Refresh now</button>
+        </div>
+      </div>
+      <div class="state-toggle">
+        <button class="active" data-state="fresh">Fresh data</button>
+        <button data-state="stale">Stale (>12h)</button>
+        <button data-state="down">Scraper down</button>
+      </div>
+      <div class="side-notes" style="margin-top:12px">
+        <ul>
+          <li><strong>Fresh:</strong> green pill, last-checked timestamp. Parent can close the laptop with confidence.</li>
+          <li><strong>Stale:</strong> amber pill, contextual <em>Refresh now</em> button surfaces. Trust signal degrades visibly.</li>
+          <li><strong>Down:</strong> red pill, copy changes to "Last successful sync was N hours ago." Refresh button still visible.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── MOCK 7: SIDEBAR ────────────────────────── -->
+<section class="mock-section" id="sidebar">
+  <header class="mock-head">
+    <h2><span class="num">7</span>Sidebar — tighter labels, two-section split, footer status</h2>
+    <p>The sidebar currently has three verbose nav items in one flat section, a faint active state, and an empty bottom half. Proposed shrinks to two primary items, groups System into a Monitor footer row with the status dot baked in, adds a parent identity row, and brightens the active state with a brand accent. <strong>Recommended: proposed.</strong></p>
+    <div class="ref">Refs · beta_index.html:16-54 · dashboard.css:71-173 · IA recommendation §4</div>
+  </header>
+  <div class="side-by-side">
+    <div class="side" style="background: #ebecf0">
+      <span class="side-label current">Current</span>
+      <div class="sb-frame">
+        <div class="sb-logo">
+          <div class="sb-mark"></div>
+          <span class="sb-logotext">Schoology Bot</span>
+          <span class="sb-beta">Beta</span>
+        </div>
+        <div class="sb-section">
+          <button class="sb-item active">
+            <span class="sb-icon">▣</span>
+            <span>Tonight's Plan</span>
+            <span class="sb-badge red">3</span>
+          </button>
+          <button class="sb-item">
+            <span class="sb-icon">≡</span>
+            <span>All Schoolwork</span>
+            <span class="sb-badge gray">24</span>
+          </button>
+          <button class="sb-item">
+            <span class="sb-icon">▱</span>
+            <span>System Health</span>
+          </button>
+        </div>
+        <div class="sb-empty">empty</div>
+      </div>
+      <div class="side-notes">
+        <ul>
+          <li>Verbose labels — "Tonight's Plan" wraps if window narrows; "System Health" reads like a destination when it should be a glance.</li>
+          <li>Single flat section — no visual grouping between "places I go" and "things to monitor."</li>
+          <li>Active state is a faint white tint (alpha 0.11) — easy to miss which view you're on at a glance.</li>
+          <li>Bottom half of the sidebar is wasted real estate. No identity row, no help link, no status surface.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="side" style="background: #ebecf0">
+      <span class="side-label proposed">Proposed</span>
+      <div class="sb-frame">
+        <div class="sb-logo">
+          <div class="sb-mark"></div>
+          <span class="sb-logotext">Schoology Bot</span>
+        </div>
+        <div class="sb-section">
+          <button class="sb-item new active">
+            <span class="sb-accent"></span>
+            <span class="sb-icon">▣</span>
+            <span>Today</span>
+            <span class="sb-badge red">3</span>
+          </button>
+          <button class="sb-item new">
+            <span class="sb-accent"></span>
+            <span class="sb-icon">≡</span>
+            <span>Schoolwork</span>
+          </button>
+        </div>
+        <div class="sb-spacer"></div>
+        <div class="sb-monitor">
+          <div class="sb-monitor-label">Monitor</div>
+          <button class="sb-system" id="sbSysBtn">
+            <span class="sb-sys-dot green"></span>
+            <span class="sb-sys-text">
+              <span class="sb-sys-line1">System</span>
+              <span class="sb-sys-line2" id="sbSysLine">All services OK · 12m ago</span>
+            </span>
+          </button>
+        </div>
+        <div class="sb-footer">
+          <div class="sb-avatar">P</div>
+          <span class="sb-parent">Parent</span>
+        </div>
+      </div>
+      <div class="side-notes">
+        <ul>
+          <li>Short labels — "Today" and "Schoolwork." Names that match how a parent says them in their head.</li>
+          <li>Two primary items + a clearly demarcated Monitor footer. System gets a green/amber/red dot with last-sync inline.</li>
+          <li>Active item has a 3px brand accent stripe on the left edge — unmissable at a glance.</li>
+          <li>Footer parent row anchors identity (also a logical place to put settings/help later).</li>
+          <li>Try: <button class="btn-ghost" id="sbStaleBtn">Toggle stale</button> — Monitor row reflects degradation.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── MOCK 8: DRAWER HEADER ──────────────────── -->
+<section class="mock-section" id="drawer">
+  <header class="mock-head">
+    <h2><span class="num">8</span>Drawer header — one chip row instead of a five-line stack</h2>
+    <p>When the review drawer opens, the header is 5 lines tall (eyebrow → title → status pill + middot + due date → Schoology link → optional reason text) before the first action is visible. Proposed compresses to 3 lines with the most important metadata in a single chip row, parallel-label save buttons, and a "Last synced" timestamp. <strong>Recommended: proposed.</strong></p>
+    <div class="ref">Refs · beta_dashboard.js:1382-1457 · findings m3 + m4 + m9</div>
+  </header>
+  <div class="side-by-side">
+    <div class="side" style="background: var(--canvas); padding: 0">
+      <div style="padding: 22px"><span class="side-label current">Current</span></div>
+      <div class="drawer-mock">
+        <button class="drawer-close">✕</button>
+        <p class="dr-eyebrow">English</p>
+        <h2 class="dr-title">Persuasive Essay — Outline Draft</h2>
+        <div class="dr-meta-old">
+          <span class="dr-pill amber">Needs attention</span>
+          <span class="dr-sep">·</span>
+          <span class="dr-due">Due tonight · 11:59 PM</span>
+        </div>
+        <a class="dr-link" href="#">Open in Schoology →</a>
+        <p class="dr-reason">Reason: missing per Schoology · last seen by scraper 14 minutes ago · teacher is Ms. Davis · category=Major Writing</p>
+
+        <div class="dr-section open">
+          <div class="dr-section-head"><span>Status</span><span>▾</span></div>
+          <div class="dr-section-body">
+            <div class="dr-outcome">Submitted</div>
+            <div class="dr-outcome selected">Practice / not for grade</div>
+            <div class="dr-outcome">No way to fix it</div>
+            <button class="dr-save">Save</button>
+          </div>
+        </div>
+        <div class="dr-section">
+          <div class="dr-section-head"><span>Reminder</span><span>▸</span></div>
+        </div>
+        <div class="dr-section">
+          <div class="dr-section-head"><span>Notes</span><span>▸</span></div>
+        </div>
+      </div>
+      <div class="side-notes" style="padding: 0 22px 22px">
+        <ul>
+          <li>5 lines of header stacked vertically before you can act.</li>
+          <li><code>· · ·</code> middot separators feel cramped; status duplicates the bucket from the row.</li>
+          <li>"Reason" text dumps engineer metadata at full width.</li>
+          <li>Save / Set reminder / Add note labels are inconsistent — none of them name the object being saved.</li>
+          <li>"Practice / not for grade" reads as system jargon, not parent vocabulary.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="side" style="background: var(--canvas); padding: 0">
+      <div style="padding: 22px"><span class="side-label proposed">Proposed</span></div>
+      <div class="drawer-mock">
+        <button class="drawer-close">✕</button>
+        <div class="dr-eyebrow-row">
+          <span class="dr-course-chip" style="background: var(--course-english)">English</span>
+          <span class="dr-pill amber" style="margin-left:auto">Needs attention</span>
+        </div>
+        <h2 class="dr-title" style="margin-top: 8px">Persuasive Essay — Outline Draft</h2>
+        <div class="dr-meta-new">
+          <span>Due tonight · 11:59 PM</span>
+          <span class="dr-bullet">•</span>
+          <span class="dr-synced">Synced 14m ago</span>
+          <a class="dr-link-inline" href="#">Schoology ↗</a>
+        </div>
+
+        <div class="dr-section open">
+          <div class="dr-section-head"><span>Status</span><span>▾</span></div>
+          <div class="dr-section-body">
+            <div class="dr-outcome">Submitted</div>
+            <div class="dr-outcome selected">Practice only</div>
+            <div class="dr-outcome">Skip — can't recover</div>
+            <button class="dr-save">Save status</button>
+          </div>
+        </div>
+        <div class="dr-section">
+          <div class="dr-section-head"><span>Reminder · <span style="color: var(--ink-3); font-weight: 500">not set</span></span><span>▸</span></div>
+        </div>
+        <div class="dr-section">
+          <div class="dr-section-head"><span>Notes · <span style="color: var(--ink-3); font-weight: 500">2</span></span><span>▸</span></div>
+        </div>
+      </div>
+      <div class="side-notes" style="padding: 0 22px 22px">
+        <ul>
+          <li>3 lines instead of 5: course chip + status pill on one row, title, meta strip with sync time.</li>
+          <li>Course chip uses the same color hash as Tonight's row stripe — visual continuity.</li>
+          <li>"Synced 14m ago" surfaces freshness at the per-assignment level (covers JTBD 5).</li>
+          <li>Section heads carry a quick count next to the label — "Notes · 2," "Reminder · not set."</li>
+          <li>Reason text moved into the Status accordion body if needed (collapsed away by default).</li>
+          <li>Save labels are now parallel: <em>Save status</em>, <em>Save reminder</em>, <em>Save note</em>.</li>
+          <li>Status options use parent vocabulary: "Practice only," "Skip — can't recover."</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<p style="text-align: center; color: var(--ink-3); font-size: 12px; margin-top: 32px">
+  Mocks use real CSS tokens from <code>dashboard.css</code>. Course palette per <code>DASHBOARD_DESIGN.md</code> §Course Colors. ·
+  After picking variants, the implementation order is in <strong>docs/DASHBOARD_REDTEAM.md</strong> §8 (Phased roadmap).
+</p>
+
+<script>
+  // ── MOCK 1: toggle stale ─────────────────────────
+  const stalePill = document.getElementById('syncPill');
+  const stalePillLabel = document.getElementById('syncPillLabel');
+  const sysDot = document.getElementById('sysDot');
+  document.getElementById('toggleStale').addEventListener('click', () => {
+    stalePill.classList.toggle('stale');
+    sysDot.classList.toggle('amber');
+    if (stalePill.classList.contains('stale')) {
+      stalePillLabel.innerHTML = 'Stale — 4h ago · <button class="refresh-link" onclick="event.stopPropagation(); alert(\'Would trigger refresh_schoology tool\')">Refresh now</button>';
+      sysDot.title = 'Scraper heartbeat stale — click for details';
+    } else {
+      stalePillLabel.textContent = 'Synced 12m ago';
+      sysDot.title = 'All services healthy — click for details';
+    }
+  });
+
+  // ── MOCK 2: collapse/expand sections ─────────────
+  function setupToggle(btn, body, chev) {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const visible = body.style.display !== 'none';
+      body.style.display = visible ? 'none' : '';
+      chev.classList.toggle('open', !visible);
+      btn.innerHTML = (visible ? '<span class="chev">▸</span> Show' : '<span class="chev open">▸</span> Hide');
+    });
+  }
+  // Coming Up
+  const cuBtn = document.querySelector('[data-toggle="cu"]');
+  const cuBody = document.getElementById('cuBody');
+  const cuChev = document.getElementById('cuChev');
+  if (cuBtn && cuBody && cuChev) setupToggle(cuBtn, cuBody, cuChev);
+  // Waiting (no body in this mock, but the toggle still animates the chevron)
+  const waitBtn = document.querySelector('[data-toggle="wait"]');
+  if (waitBtn) {
+    let open = false;
+    waitBtn.addEventListener('click', () => {
+      open = !open;
+      waitBtn.innerHTML = open
+        ? '<span class="chev open">▸</span> Hide'
+        : '<span class="chev">▸</span> Show';
+    });
+  }
+
+  // ── MOCK 3: destructive confirm ──────────────────
+  document.getElementById('oldDelete').addEventListener('click', () => {
+    alert('💥 Reminder deleted instantly — no undo. (This is what happens today.)');
+  });
+  const newDeleteBtn = document.getElementById('newDeleteBtn');
+  const newActions = document.getElementById('newActions');
+  const confirmInline = document.getElementById('confirmInline');
+  newDeleteBtn.addEventListener('click', () => {
+    newActions.style.display = 'none';
+    confirmInline.classList.add('show');
+  });
+  document.getElementById('confirmNo').addEventListener('click', () => {
+    confirmInline.classList.remove('show');
+    newActions.style.display = '';
+  });
+  document.getElementById('confirmYes').addEventListener('click', () => {
+    const card = document.getElementById('newReminderCard');
+    card.style.opacity = '0.4';
+    confirmInline.innerHTML = '<span>✓ Deleted · <button class="btn-ghost" id="undoBtn" style="margin-left:8px">Undo</button></span>';
+    document.getElementById('undoBtn').addEventListener('click', () => {
+      card.style.opacity = '1';
+      confirmInline.classList.remove('show');
+      newActions.style.display = '';
+      confirmInline.innerHTML = '<strong>Delete this reminder?</strong><span style="color: var(--ink-2)">It will be gone immediately.</span><button class="btn-confirm-danger" id="confirmYes" style="margin-left:auto">Yes, delete</button><button class="btn-ghost" id="confirmNo">Keep</button>';
+      // re-bind
+      document.getElementById('confirmNo').addEventListener('click', () => {
+        confirmInline.classList.remove('show');
+        newActions.style.display = '';
+      });
+    });
+  });
+
+  // ── MOCK 4: bulk select ──────────────────────────
+  // Old (mode toggle)
+  const oldBulkToggle = document.getElementById('oldBulkToggle');
+  const oldBulkBar = document.getElementById('oldBulkBar');
+  const oldRows = document.getElementById('oldRows');
+  oldBulkToggle.addEventListener('change', () => {
+    const on = oldBulkToggle.checked;
+    oldBulkBar.style.display = on ? 'flex' : 'none';
+    oldRows.style.display = on ? '' : 'none';
+  });
+  document.getElementById('oldApply').addEventListener('click', () => {
+    alert('💥 Bulk Apply fired with no preview, no confirm. (This is what happens today.)');
+  });
+
+  // New (always-on checkboxes + preview)
+  const newRowChecks = document.querySelectorAll('.newRowCheck');
+  const newSelCount = document.getElementById('newSelCount');
+  const newSelCountInBar = document.getElementById('newSelCountInBar');
+  const newBulkBar = document.getElementById('newBulkBar');
+  function updateNewSelection() {
+    const checked = Array.from(newRowChecks).filter(c => c.checked);
+    const n = checked.length;
+    const label = n === 1 ? '1 selected' : n + ' selected';
+    newSelCount.textContent = label;
+    newSelCountInBar.textContent = label;
+    newBulkBar.style.display = n > 0 ? 'flex' : 'none';
+    return checked;
+  }
+  newRowChecks.forEach(c => c.addEventListener('change', updateNewSelection));
+
+  const newApplyBtn = document.getElementById('newApplyBtn');
+  const previewModal = document.getElementById('previewModal');
+  const previewList = document.getElementById('previewList');
+  const previewStatus = document.getElementById('previewStatus');
+  const previewCount = document.getElementById('previewCount');
+  const newBulkStatus = document.getElementById('newBulkStatus');
+
+  newApplyBtn.addEventListener('click', () => {
+    const checked = updateNewSelection();
+    if (checked.length === 0) return;
+    previewStatus.textContent = newBulkStatus.value;
+    previewCount.textContent = checked.length;
+    previewList.innerHTML = checked.map(c => '• ' + c.dataset.title).join('<br>');
+    previewModal.classList.add('show');
+  });
+  document.getElementById('previewCancel').addEventListener('click', () => {
+    previewModal.classList.remove('show');
+  });
+  document.getElementById('previewConfirm').addEventListener('click', () => {
+    const checked = updateNewSelection();
+    previewModal.classList.remove('show');
+    alert('✓ Applied "' + newBulkStatus.value + '" to ' + checked.length + ' item(s). Flash with Undo would appear at top.');
+    checked.forEach(c => c.checked = false);
+    updateNewSelection();
+  });
+
+  // ── MOCK 6: empty state toggle ──────────────────
+  const emptyIcon = document.getElementById('emptyIcon');
+  const emptyH = document.getElementById('emptyH');
+  const emptyP = document.getElementById('emptyP');
+  const emptyTs = document.getElementById('emptyTs');
+  const emptyTsLabel = document.getElementById('emptyTsLabel');
+  const emptyRefreshWrap = document.getElementById('emptyRefreshWrap');
+  document.querySelectorAll('.state-toggle button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.state-toggle button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const state = btn.dataset.state;
+      emptyTs.classList.remove('stale');
+      emptyRefreshWrap.style.display = 'none';
+      if (state === 'fresh') {
+        emptyIcon.textContent = '✓';
+        emptyH.textContent = 'All caught up';
+        emptyP.textContent = 'Nothing needs attention tonight. Close the laptop.';
+        emptyTsLabel.textContent = 'Last checked Schoology 8 min ago';
+      } else if (state === 'stale') {
+        emptyIcon.textContent = '⚠';
+        emptyH.textContent = 'Quiet — but data is stale';
+        emptyP.textContent = 'Last sync was 14 hours ago. Recent assignments may not be reflected.';
+        emptyTs.classList.add('stale');
+        emptyTsLabel.textContent = 'Last sync 14h ago';
+        emptyRefreshWrap.style.display = '';
+      } else if (state === 'down') {
+        emptyIcon.textContent = '⚠';
+        emptyH.textContent = 'Scraper is offline';
+        emptyP.textContent = 'The Schoology scraper has not reported a heartbeat in 2 days. Open System for details.';
+        emptyTs.classList.add('stale');
+        emptyTs.style.background = 'var(--red-bg)';
+        emptyTs.style.color = 'var(--red)';
+        emptyTsLabel.textContent = 'Last sync 2 days ago';
+        emptyRefreshWrap.style.display = '';
+      }
+      if (state !== 'down') {
+        emptyTs.style.background = '';
+        emptyTs.style.color = '';
+      }
+    });
+  });
+
+  // ── MOCK 7: sidebar stale toggle ────────────────
+  const sbStaleBtn = document.getElementById('sbStaleBtn');
+  if (sbStaleBtn) {
+    sbStaleBtn.addEventListener('click', () => {
+      const sysBtn = document.getElementById('sbSysBtn');
+      const line = document.getElementById('sbSysLine');
+      const dot = sysBtn.querySelector('.sb-sys-dot');
+      const isStale = dot.classList.toggle('amber');
+      line.classList.toggle('stale', isStale);
+      line.textContent = isStale
+        ? 'Scraper stale · 4h ago'
+        : 'All services OK · 12m ago';
+    });
+  }
+
+  // ── MOCK 8: drawer section toggle ───────────────
+  document.querySelectorAll('.drawer-mock .dr-section-head').forEach(head => {
+    head.addEventListener('click', () => {
+      const section = head.parentElement;
+      const open = section.classList.toggle('open');
+      const chev = head.querySelector('span:last-child');
+      if (chev) chev.textContent = open ? '▾' : '▸';
+    });
+  });
+  document.querySelectorAll('.drawer-mock .dr-outcome').forEach(opt => {
+    opt.addEventListener('click', () => {
+      const parent = opt.parentElement;
+      parent.querySelectorAll('.dr-outcome').forEach(o => o.classList.remove('selected'));
+      opt.classList.add('selected');
+    });
+  });
+</script>
+</body>
+</html>

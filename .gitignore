@@ -25,3 +25,4 @@ openclaw_workspace/*.json5
 artifacts/
 .claude/
 docs/dashboard-preview.html
+data-uat/

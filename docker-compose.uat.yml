@@ -1,0 +1,52 @@
+# UAT-only dashboard stack.
+# Snapshot of prod DB + bind-mount data, isolated from the prod stack.
+# - No scheduler (won't scrape real Schoology)
+# - No telegram-agent (won't 409 the prod bot)
+# - Different host port (8788)
+# - Different docker project name (schoology-uat)
+#
+# Run:
+#   docker compose -p schoology-uat -f docker-compose.uat.yml up -d
+# Tear down:
+#   docker compose -p schoology-uat -f docker-compose.uat.yml down
+
+services:
+  dashboard:
+    image: schoology-app:latest
+    env_file: .env
+    command: ["node", "src/dashboard.js"]
+    environment:
+      - AGENT_DB_PATH=/app/db/agent.db
+      - DASHBOARD_PORT=8787
+      - DASHBOARD_HOST=0.0.0.0
+      - NODE_OPTIONS=--max-old-space-size=128
+      - TELEGRAM_BOT_TOKEN=
+      - TELEGRAM_CHAT_IDS=
+    volumes:
+      - ./data-uat:/app/data
+      - agent-db-uat:/app/db
+    ports:
+      - "127.0.0.1:8789:8787"
+    restart: unless-stopped
+    init: true
+    mem_limit: 256m
+    memswap_limit: 1024m
+    mem_reservation: 128m
+    cpus: 0.35
+    oom_score_adj: 500
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f \"node src/dashboard.js\" > /dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  agent-db-uat:
+    name: schoology_agent_db_uat
+    external: true
