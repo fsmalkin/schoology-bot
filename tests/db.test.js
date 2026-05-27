@@ -108,6 +108,33 @@ test("listAssignments auto-ignores submitted items awaiting grade", () => {
   assert.equal(row.effectiveStatus, "Submitted, awaiting grade");
 });
 
+test("listAssignments can query submitted-awaiting-grade icon rows directly", () => {
+  const db = createDb();
+  seedDb(db);
+  db.prepare(
+    "UPDATE assignments SET status = ?, score = ?, raw_text = ?, is_missing = 0, resolved_at = ? WHERE key = ?"
+  ).run(
+    "Submitted, awaiting grade",
+    "—",
+    "Essay assignment — This student has made a submission that has not been graded.",
+    "2026-01-03T00:00:00Z",
+    "a2"
+  );
+
+  const defaultMissing = listAssignments(db, { status: "missing", includeIgnored: true });
+  assert.equal(defaultMissing.some((item) => item.key === "a2"), false);
+
+  const submitted = listAssignments(db, { status: "submitted_awaiting_grade" });
+  assert.equal(submitted.length, 1);
+  assert.equal(submitted[0].key, "a2");
+  assert.equal(submitted[0].statusCategory, "ignored");
+  assert.equal(submitted[0].effectiveStatus, "Submitted, awaiting grade");
+
+  const alias = listAssignments(db, { status: "submitted-ungraded" });
+  assert.equal(alias.length, 1);
+  assert.equal(alias[0].key, "a2");
+});
+
 test("blank-title Schoology rows derive titles for lists and reminder flows", () => {
   const db = createDb();
   syncAssignmentsFromState(db, {

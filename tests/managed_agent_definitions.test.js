@@ -11,4 +11,7 @@ test("managed agent system prompt preserves reminder default policy", () => {
   assert.match(definition.system, /remindAt=null/i);
   assert.match(definition.system, /unsupported monthly\/custom cadence/i);
   assert.match(definition.system, /recurrence=weekly/i);
+  assert.match(definition.system, /submitted-but-ungraded/i);
+  assert.match(definition.system, /status=submitted_awaiting_grade/i);
+  assert.match(definition.system, /includeIgnored=true/i);
 });

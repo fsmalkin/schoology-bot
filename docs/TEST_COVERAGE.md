@@ -19,6 +19,7 @@ Unit tests
 - Chat-memory persistence, message-style persistence, and resolved-assignment reminder cleanup helpers.
 - Schoology scraper title fallback for rows that have visible text but no assignment link (`Note: This material is not available within Schoology` shape).
 - Schoology scraper conflict handling for MUA/external-tool-link rows (score beats Missing badge, detail-page fallback for ambiguous rows, capped fallback volume).
+- Submitted-but-ungraded assignment handling: scraper coverage for Schoology grade-pending/dropbox icon hidden text, DB auto-file behavior, and direct `submitted_awaiting_grade` assignment queries.
 - Dashboard health/data builders (heartbeat + snapshot shaping).
 - Dashboard parent-home and schoolwork data builders (home section classification, parent-facing labels, assignment notes preview, reminder summary, task-only filtering, and raw-text title fallback when stored titles are blank).
 - Dashboard read models for `Will complete in class` and MUA display-title expansion.
@@ -98,10 +99,11 @@ Managed Agents stack
 - Migration coverage verifies `managed_agent_sessions` creation in `tests/migrations.test.js`.
 - Mock Managed Agents bridge coverage in `tests/managed_agent_bridge.test.js` verifies session creation/reuse, Telegram text event send, assistant text collection, local custom Schoology tool result handling, repeated action-id dedupe before local tool execution, unsupported custom tool errors, built-in tool denial, deterministic invalid-arg errors, bounded large result payloads, and tool-round limits.
 - `tests/managed_agent_tools.test.js` verifies exported Managed Agents custom tool definitions cover the current Schoology tool surface.
-- `tests/managed_agent_definitions.test.js` verifies the Managed Agents system prompt keeps the reminder-default policy needed by parity stories.
+- `tests/managed_agent_definitions.test.js` verifies the Managed Agents system prompt keeps the reminder-default policy needed by parity stories and routes submitted/ungraded questions through the icon-aware filter.
 - Live Managed Agents parity now has artifacts from the story suite and judge (`20260527-022952`) using Claude sessions and local Schoology custom tools.
 - A broader isolated live Managed Agents JTBD UAT passed with Claude session `sesn_01HpAfEZH9345jZQC5Fh9dbB`, covering seeded assignment listing, manual status update, assignment note, assignment-linked reminder, standalone recurring reminder, correction/update, unsupported monthly fallback, daily summary, and due-reminder drain.
 - Beta Schoology auth was refreshed after stale storage was confirmed, and a live Managed Agents dev repro passed with Claude session `sesn_018Gc6shAGPFyDd6DGXhLSw9`: `refresh_schoology` succeeded against real Schoology data, then `list_assignments` returned zero actionable, pending, or ignored missing assignments.
+- A live Managed Agents submitted/ungraded icon-query smoke passed with Claude session `sesn_017YiTWYQ4FT6unZ6DLXaMp8`, calling `list_assignments` with `status=submitted_awaiting_grade` and returning the two historical beta rows marked by Schoology's hidden submitted/ungraded text.
 - Live Telegram outbound to the beta thread was smoke-tested through `.env.managed-dev`; one inbound beta-thread message was handled by the Managed Agents path before the poller was moved into the current Docker container.
 - No automated coverage yet for managed-session event history beyond the local store or idle/termination policy.
 - No dashboard health coverage yet for Managed Agents bridge/session status.

@@ -16,5 +16,7 @@ test("managed agent custom tool definitions mirror the Schoology tool surface", 
   assert.equal(listAssignments.type, "custom");
   assert.equal(listAssignments.input_schema.type, "object");
   assert.ok(listAssignments.input_schema.properties.status);
+  assert.ok(listAssignments.input_schema.properties.status.enum.includes("submitted_awaiting_grade"));
   assert.match(listAssignments.description, /List assignments/i);
+  assert.match(listAssignments.description, /submitted_awaiting_grade/i);
 });

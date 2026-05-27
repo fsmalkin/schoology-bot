@@ -1271,6 +1271,22 @@ export function ensureDbSeeded(db, statePath) {
   syncAssignmentsFromState(db, state);
 }
 
+function normalizeAssignmentListStatus(value) {
+  const normalized = String(value || "missing")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if (
+    normalized === "submitted" ||
+    normalized === "submitted_ungraded" ||
+    normalized === "awaiting_grade" ||
+    normalized === "submitted_awaiting_grade"
+  ) {
+    return "submitted_awaiting_grade";
+  }
+  return normalized || "missing";
+}
+
 function isSubmittedUngraded(row) {
   const text = `${row.status || ""} ${row.rawText || ""}`.toLowerCase();
   return (
@@ -1281,10 +1297,10 @@ function isSubmittedUngraded(row) {
 }
 
 export function listAssignments(db, options = {}) {
-  const status = (options.status || "missing").toLowerCase();
+  const status = normalizeAssignmentListStatus(options.status);
   const course = options.course ? String(options.course).toLowerCase() : null;
   const limit = Number.isFinite(options.limit) ? Math.max(1, Math.min(options.limit, 1000)) : 50;
-  const includeIgnored = options.includeIgnored === true;
+  const includeIgnored = options.includeIgnored === true || status === "submitted_awaiting_grade";
   const includePending = options.includePending !== false;
   const bucketed = options.bucketed === true;
 
@@ -1293,6 +1309,18 @@ export function listAssignments(db, options = {}) {
 
   if (status === "missing") filters.push("is_missing = 1");
   if (status === "resolved") filters.push("is_missing = 0");
+  if (status === "submitted_awaiting_grade") {
+    filters.push(`
+      (
+        LOWER(COALESCE(status, '')) LIKE @submittedStatus
+        OR LOWER(COALESCE(raw_text, '')) LIKE @submittedRawUngraded
+        OR LOWER(COALESCE(raw_text, '')) LIKE @submittedRawSubmitted
+      )
+    `);
+    params.submittedStatus = "%submitted, awaiting grade%";
+    params.submittedRawUngraded = "%submission that has not been graded%";
+    params.submittedRawSubmitted = "%assignment submitted%";
+  }
   if (status === "all") {
     // no-op
   }
@@ -1339,7 +1367,7 @@ export function listAssignments(db, options = {}) {
     const manualStatus = row.manualStatus || "";
     const manualCategory = getManualStatusCategory(manualStatus);
     const autoIgnored = row.autoIgnored === 1;
-    const inferredSubmittedUngraded = row.isMissing === 1 && isSubmittedUngraded(row);
+    const inferredSubmittedUngraded = isSubmittedUngraded(row);
     const statusCategory = autoIgnored
       ? "ignored"
       : inferredSubmittedUngraded
@@ -1626,7 +1654,7 @@ export function getAssignmentFollowUpContext(db, { key, title, course } = {}) {
   const notes = listAssignmentNotes(db, { keys: [assignment.key], limitPerAssignment: 3 }).get(assignment.key) || [];
   const reminders = listReminders(db, { key: assignment.key, status: "pending" });
   const manualStatus = String(assignment.manualStatus || "").trim();
-  const inferredSubmittedUngraded = Number(assignment.isMissing || 0) === 1 && isSubmittedUngraded(assignment);
+  const inferredSubmittedUngraded = isSubmittedUngraded(assignment);
   const statusCategory =
     Number(assignment.autoIgnored || 0) === 1
       ? "ignored"

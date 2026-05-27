@@ -72,6 +72,7 @@ function buildResponsePrompt(config, allowedTools = TOOL_NAMES, { messageStyle =
     "If a pending action is confirmed, do not ask for confirmation again. Execute the queued update and report the result.",
     `Manual status codes: ${statusGuideText()}.`,
     "Default reporting buckets: Actionable, Pending, Ignored. Hide Ignored by default unless asked.",
+    "Schoology submitted-but-ungraded work is detected from hidden grade-pending/dropbox icon text and appears as Submitted, awaiting grade. If the user asks about submitted, awaiting grade, pending grade, or ungraded submissions, list status=submitted_awaiting_grade with includeIgnored=true and includePending=true.",
     "When confirming status updates, include a short list of items waiting on teacher/grade (No grade put in yet, Waiting on teacher).",
     "If the user suggests improvements or feature ideas, ask if they want you to log a feature request.",
     styleInstruction,
@@ -347,13 +348,14 @@ export function toolDefinitions() {
     {
       type: "function",
       name: "list_assignments",
-      description: "List assignments with optional filters.",
+      description:
+        "List assignments with optional filters. Use status=submitted_awaiting_grade for Schoology rows marked by the submitted/ungraded icon or hidden grade-pending text.",
       strict: true,
       parameters: buildStrictParams({
         status: {
           type: "string",
-          enum: ["missing", "resolved", "all"],
-          description: "Filter by missing/resolved/all.",
+          enum: ["missing", "resolved", "all", "submitted_awaiting_grade"],
+          description: "Filter by missing/resolved/all/submitted-awaiting-grade.",
         },
         course: {
           type: "string",
@@ -367,7 +369,8 @@ export function toolDefinitions() {
         },
         includeIgnored: {
           type: "boolean",
-          description: "Include ignored manual statuses (default false).",
+          description:
+            "Include ignored or auto-filed statuses (default false, true by default for submitted_awaiting_grade).",
         },
         includePending: {
           type: "boolean",
@@ -939,6 +942,7 @@ function buildToolPlanInstructions(allowedTools = TOOL_NAMES, config = null) {
     "User: refresh my assignments -> {\"action\":\"call_tool\",\"tool\":\"refresh_schoology\",\"args\":\"{}\",\"calls\":null}",
     "User: refresh and list missing -> {\"action\":\"call_tools\",\"tool\":\"refresh_schoology\",\"args\":\"{}\",\"calls\":[{\"tool\":\"refresh_schoology\",\"args\":\"{}\"},{\"tool\":\"list_assignments\",\"args\":\"{\\\"status\\\":\\\"missing\\\",\\\"includePending\\\":true,\\\"includeIgnored\\\":false,\\\"bucketed\\\":true}\"}]}",
     "User: what are my missing assignments -> {\"action\":\"call_tool\",\"tool\":\"list_assignments\",\"args\":\"{\\\"status\\\":\\\"missing\\\",\\\"includePending\\\":true,\\\"includeIgnored\\\":false,\\\"bucketed\\\":true}\",\"calls\":null}",
+    "User: what has been submitted but not graded -> {\"action\":\"call_tool\",\"tool\":\"list_assignments\",\"args\":\"{\\\"status\\\":\\\"submitted_awaiting_grade\\\",\\\"includePending\\\":true,\\\"includeIgnored\\\":true,\\\"bucketed\\\":true,\\\"limit\\\":1000}\",\"calls\":null}",
     "User: add note to Latin Quiz 1 -> {\"action\":\"call_tool\",\"tool\":\"add_assignment_note\",\"args\":\"{\\\"title\\\":\\\"Quiz 1\\\",\\\"course\\\":\\\"Latin\\\",\\\"note\\\":\\\"Submitted. Waiting for grade.\\\"}\",\"calls\":null}",
     "User: mark Latin Quiz 1 as Waiting on teacher -> {\"action\":\"call_tool\",\"tool\":\"update_assignment_status\",\"args\":\"{\\\"title\\\":\\\"Quiz 1\\\",\\\"course\\\":\\\"Latin\\\",\\\"status\\\":\\\"E\\\"}\",\"calls\":null}",
     "User: remind me Thu 7:15am to follow up on Algebra Homework 1 -> {\"action\":\"call_tool\",\"tool\":\"schedule_reminder\",\"args\":\"{\\\"title\\\":\\\"Homework 1\\\",\\\"course\\\":\\\"Algebra\\\",\\\"remindAt\\\":\\\"Thu 7:15am\\\",\\\"message\\\":\\\"Follow up with teacher\\\"}\",\"calls\":null}",
