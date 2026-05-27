@@ -27,7 +27,7 @@ Unit tests
 - Time parsing and timezone formatting (local labels, shorthand).
 - Reminder rollovers (one-time + recurring cadence next-run math, DST wall-clock checks).
 - Bug filing guardrails (no empty body).
-- Telegram formatting sanitization.
+- Telegram formatting sanitization, including Markdown table conversion to Telegram-readable lists.
 - Capability registry rendering and runtime limits.
 - Capability guard behavior (unsupported request blocked with fallback; supported request proceeds to tools).
 - Agent mock recurring story flow (assumption confirmation + conversational correction).

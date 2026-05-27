@@ -77,6 +77,7 @@ function buildResponsePrompt(config, allowedTools = TOOL_NAMES, { messageStyle =
     styleInstruction,
     "Reply with plain text.",
     "Use simple lists (use '-' for bullets, '1.' for numbering).",
+    "Do not use Markdown tables; Telegram wraps them poorly. Use compact numbered lists with short detail lines instead.",
     "Do not use HTML tags or Markdown code fences.",
     "Do not mention tool calls or function names.",
     "When creating reminders, proactively infer reasonable defaults when details are missing, then confirm what you assumed and give one-step correction examples.",

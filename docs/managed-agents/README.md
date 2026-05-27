@@ -121,8 +121,9 @@ Local/mock UAT coverage:
 Live dev UAT status:
 - Claude Managed Agents credentials and dev resource IDs are present in the
   ignored managed-dev env.
-- The dev cloud agent was updated to version `2` on 2026-05-27 so its system
-  prompt matches the legacy reminder-default policy.
+- The dev cloud agent was updated to version `3` on 2026-05-27 so its system
+  prompt matches the legacy reminder-default policy and avoids Markdown tables
+  in Telegram replies.
 - The parity story runner now uses an explicit story clock
   (`AGENTIC_STORY_NOW`, default `2026-05-27T12:00:00-04:00`) so natural-language
   dates like "tomorrow" do not drift across local/UTC midnight.
@@ -169,6 +170,10 @@ Live dev API smoke completed:
   data successfully, then `list_assignments` returned zero actionable,
   pending, or ignored missing assignments. A duplicate action-id observation
   from the first repro was fixed in the bridge and covered by regression tests.
+- Telegram formatting was hardened after beta UAT showed Markdown tables wrap
+  poorly in chat. The sender now converts Markdown pipe tables to compact lists,
+  and the dev cloud agent version `3` instructs Claude not to use tables. A live
+  beta-thread formatting smoke sent message id `208`.
 
 ## API Management
 Tracked by [#30](https://github.com/fsmalkin/schoology-bot/issues/30).

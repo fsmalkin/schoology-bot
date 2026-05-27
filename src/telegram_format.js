@@ -51,6 +51,104 @@ function stripMarkdown(text) {
   return out;
 }
 
+function parseMarkdownTableRow(line) {
+  const trimmed = String(line || "").trim();
+  if (!trimmed || !trimmed.includes("|")) return null;
+  const raw = trimmed.split("|").map((cell) => cell.trim());
+  if (raw.length > 0 && raw[0] === "") raw.shift();
+  if (raw.length > 0 && raw[raw.length - 1] === "") raw.pop();
+  const cells = raw.map((cell) => cell.trim());
+  return cells.length >= 2 ? cells : null;
+}
+
+function isMarkdownTableSeparator(cells) {
+  if (!Array.isArray(cells) || cells.length < 2) return false;
+  return cells.every((cell) => /^:?-{3,}:?$/.test(String(cell || "").trim()));
+}
+
+function isNumberColumn(header, rows) {
+  const label = String(header?.[0] || "").trim().toLowerCase();
+  if (["#", "no", "no.", "number"].includes(label)) return true;
+  if (!Array.isArray(rows) || rows.length === 0) return false;
+  return rows.every((row) => /^\d+[.)]?$/.test(String(row?.[0] || "").trim()));
+}
+
+function cleanTableCell(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function formatMarkdownTable(header, rows) {
+  const numbered = isNumberColumn(header, rows);
+  const primaryIndex = numbered ? 1 : 0;
+  const output = [];
+
+  rows.forEach((row, index) => {
+    const number = cleanTableCell(row[0]) || String(index + 1);
+    const primary = cleanTableCell(row[primaryIndex]) || cleanTableCell(row.find((cell) => cleanTableCell(cell)));
+    const details = [];
+    for (let i = 0; i < Math.max(header.length, row.length); i += 1) {
+      if (numbered && i === 0) continue;
+      if (i === primaryIndex) continue;
+      const value = cleanTableCell(row[i]);
+      if (!value) continue;
+      const label = cleanTableCell(header[i]) || `Column ${i + 1}`;
+      details.push(`${label}: ${value}`);
+    }
+
+    if (primary) {
+      output.push(numbered ? `${number.replace(/[.)]$/, "")}. ${primary}` : `- ${primary}`);
+    } else if (details.length > 0) {
+      output.push(numbered ? `${number.replace(/[.)]$/, "")}. ${details.shift()}` : `- ${details.shift()}`);
+    }
+    if (details.length > 0) {
+      output.push(`  ${details.join("; ")}`);
+    }
+  });
+
+  return output.join("\n");
+}
+
+function convertMarkdownTables(text) {
+  const lines = String(text || "").split("\n");
+  const output = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const tableStart = i;
+    const header = parseMarkdownTableRow(lines[i]);
+    const separator = parseMarkdownTableRow(lines[i + 1]);
+    if (!header || !separator || !isMarkdownTableSeparator(separator)) {
+      output.push(lines[i]);
+      i += 1;
+      continue;
+    }
+
+    const rows = [];
+    i += 2;
+    while (i < lines.length) {
+      const row = parseMarkdownTableRow(lines[i]);
+      if (!row) break;
+      rows.push(row);
+      i += 1;
+    }
+
+    if (rows.length === 0) {
+      output.push(...lines.slice(tableStart, i));
+      continue;
+    }
+    output.push(formatMarkdownTable(header, rows));
+  }
+
+  return output.join("\n");
+}
+
+function transformNonCodeSegments(text, transform) {
+  const segments = String(text || "").split("```");
+  return segments
+    .map((segment, index) => (index % 2 === 1 ? segment : transform(segment)))
+    .join("```");
+}
+
 function formatInline(text) {
   let escaped = escapeHtml(text);
   escaped = escaped.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
@@ -106,7 +204,7 @@ export function renderTelegramHtml(text) {
       output += `<pre><code>${escapeHtml(segment)}</code></pre>`;
       continue;
     }
-    output += renderInline(segment);
+    output += renderInline(convertMarkdownTables(segment));
   }
   return output.trim();
 }
@@ -117,6 +215,7 @@ export function renderTelegramPlain(text) {
   normalized = decodeEntities(normalized);
   normalized = replaceHtmlFormatting(normalized);
   normalized = stripHtml(normalized);
+  normalized = transformNonCodeSegments(normalized, convertMarkdownTables);
   normalized = stripMarkdown(normalized);
   normalized = normalized.replace(/\s+\n/g, "\n");
   normalized = normalized.replace(/\n{3,}/g, "\n\n");

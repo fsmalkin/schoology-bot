@@ -28,3 +28,33 @@ test("renderTelegramPlain strips tags and entities", () => {
   assert.ok(output.includes("code"));
   assert.ok(output.includes("italic"));
 });
+
+test("renderTelegramHtml converts markdown tables to readable lists", () => {
+  const input = [
+    "Here are the recent grades:",
+    "",
+    "| # | Assignment | Due | Score |",
+    "|---|---|---|---|",
+    "| 1 | U5 Compound Interest | 1/23/26 | **A 9/10** |",
+    "| 2 | Unit 5 MUA | 1/14/26 | A 100/100 |",
+  ].join("\n");
+  const output = renderTelegramHtml(input);
+  assert.ok(!output.includes("|---"));
+  assert.ok(!output.includes("| # |"));
+  assert.match(output, /1\. U5 Compound Interest/);
+  assert.match(output, /Due: 1\/23\/26; Score: <b>A 9\/10<\/b>/);
+  assert.match(output, /2\. Unit 5 MUA/);
+});
+
+test("renderTelegramPlain converts markdown tables to readable lists", () => {
+  const input = [
+    "| Assignment | Due | Score |",
+    "|---|---|---|",
+    "| U5 Compound Interest | 1/23/26 | **A 9/10** |",
+  ].join("\n");
+  const output = renderTelegramPlain(input);
+  assert.ok(!output.includes("|---"));
+  assert.ok(!output.includes("| Assignment |"));
+  assert.match(output, /- U5 Compound Interest/);
+  assert.match(output, /Due: 1\/23\/26; Score: A 9\/10/);
+});
