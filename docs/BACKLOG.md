@@ -7,7 +7,7 @@ This file tracks active and proposed work items with GitHub issue linkage.
    - Status: In progress
    - Project board: [FSM Engineering Board](https://github.com/users/fsmalkin/projects/3)
    - Planning doc: [docs/managed-agents/README.md](managed-agents/README.md)
-   - Outcome target: Replace the abandoned OpenClaw migration path with a Claude Managed Agents dev runtime, then promote to prod after parity and rollback gates pass.
+   - Outcome target: Replace the abandoned OpenClaw migration path with a Claude Managed Agents dev runtime, then promote to prod after parity, observability, cost, and rollback gates pass.
    - Acceptance gate:
       - Managed Agents session bridge supports Telegram message intake and response delivery in dev.
       - Claude custom tool requests execute existing deterministic Schoology tools without bypassing current DB/status/reminder rules.
@@ -16,9 +16,9 @@ This file tracks active and proposed work items with GitHub issue linkage.
       - Production cutover includes canary prompts, cost/idle monitoring, and 24h stabilization.
    - Slices:
       - [#27 Session mapping and dev config](https://github.com/fsmalkin/schoology-bot/issues/27) - done
-      - [#28 Telegram dev bridge](https://github.com/fsmalkin/schoology-bot/issues/28) - dev foundation implemented; live UAT blocked on Claude credentials/environment
+      - [#28 Telegram dev bridge](https://github.com/fsmalkin/schoology-bot/issues/28) - dev foundation implemented
       - [#29 Custom tool loop](https://github.com/fsmalkin/schoology-bot/issues/29) - hardening started
-      - [#30 Parity story suite and judge gate](https://github.com/fsmalkin/schoology-bot/issues/30)
+      - [#30 Parity story suite and judge gate](https://github.com/fsmalkin/schoology-bot/issues/30) - final beta Telegram container proof remains
       - [#31 Health, event log, and idle cost controls](https://github.com/fsmalkin/schoology-bot/issues/31)
       - [#32 Prod canary, rollback, and stabilization](https://github.com/fsmalkin/schoology-bot/issues/32)
 2. Managed Agents release gate modernization
@@ -60,12 +60,15 @@ This file tracks active and proposed work items with GitHub issue linkage.
    - Outcome target: Reuse beta reset + story gate + judge evidence flow in other repos as a standard release template.
 
 ## Archived or Superseded
-1. OpenClaw beta UAT and production promotion readiness
+1. Agent shell/runtime decision gate
+   - Status: Completed/superseded by Claude Managed Agents migration (2026-05-25).
+   - Note: The May 17 decision gate compared Claude App, GPT app, and managed agent paths. The selected path is Claude Managed Agents while preserving deterministic Schoology tool execution and local/server state ownership.
+2. OpenClaw beta UAT and production promotion readiness
    - Status: Superseded by Claude Managed Agents migration (2026-05-25).
    - Note: OpenClaw remains rollback/reference context only.
-2. OpenClaw upstream sync SOP
+3. OpenClaw upstream sync SOP
    - Status: Dropped unless explicitly requested.
-3. OpenClaw cron bootstrap hardening
+4. OpenClaw cron bootstrap hardening
    - Status: Dropped unless explicitly requested.
 
 ## Recently Groomed Issues
@@ -77,6 +80,7 @@ This file tracks active and proposed work items with GitHub issue linkage.
 6. #13 Completed in code: capability registry + planner/agent guardrails.
 7. Dashboard redesign (2026-03-15): sidebar nav, metric row, 2-column home layout shipped to prod.
 8. Schoology title derivation (2026-03-15): clean display names for no-link Schoology rows shipped to prod.
+9. Agent shell/runtime choice elevated to P1 (2026-05-17): decision gate completed with Claude Managed Agents selected.
 
 ## Planning Governance
 - Canonical backlog lives on `main`.
