@@ -101,13 +101,14 @@ export class ManagedAgentClient {
     };
   }
 
-  async createSession({ title, metadata } = {}) {
+  async createSession({ title, metadata, resources } = {}) {
     const body = {
       agent: this.config.agentId,
       environment_id: this.config.environmentId,
     };
     if (title) body.title = title;
     if (metadata && typeof metadata === "object") body.metadata = metadata;
+    if (Array.isArray(resources) && resources.length > 0) body.resources = resources;
 
     const response = await this.fetch(joinUrl(this.config.baseUrl, "/v1/sessions"), {
       method: "POST",

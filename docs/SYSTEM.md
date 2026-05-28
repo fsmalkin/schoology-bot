@@ -14,7 +14,8 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
 - Claude Managed Agents bridge (dev implementation)
   - Target replacement runtime for agent chat in dev, then prod after parity gates.
   - Telegram inbound resumes managed sessions; Claude custom tool requests call local deterministic tools.
-  - Dev agent enables only `web_search`/`web_fetch` built-ins for school-safe public reference lookups; Schoology data still comes only from deterministic local tools.
+  - Dev agent enables only `web_search`/`web_fetch` built-ins for school-safe public reference lookups plus Claude memory file tools (`read`, `write`, `edit`, `glob`, `grep`) for the mounted memory store under `/mnt/memory`; `bash` remains disabled.
+  - Claude managed memory is for durable preferences and operating lessons only. Schoology data still comes from deterministic local tools/SQLite and should not be copied into memory as raw grades, full assignment lists, or private student records.
   - Kid-safe input/output filtering blocks unsafe Telegram requests before model calls and suppresses unsafe final replies.
   - Session metadata stores the managed-agent definition revision; chats with stale revisions are forced onto a fresh Claude session.
   - Implemented entrypoints: `src/agent_runtime.js`, `src/managed_agent_bridge.js`, `src/managed_agent_client.js`.
@@ -63,6 +64,10 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
     chat_memory, and `managed_agent_sessions`.
 - data/beta/agent.runtime.db
   - Legacy beta runtime DB. Managed Agents implementation must decide whether to reuse this path for dev parity or replace it with a clearer managed-agent data path.
+- Claude managed memory store
+  - Remote Claude memory store mounted into configured managed sessions under `/mnt/memory`.
+  - Current dev store: `memstore_01F4pmYqg2GRep72inSfK2zi`.
+  - Stores durable preferences and operating lessons only, not secrets or raw Schoology records.
 - artifacts/beta-reset/*
   - Beta reset snapshots and parity report artifacts.
 - artifacts/agentic-story-suite/*
@@ -86,6 +91,8 @@ Key settings:
 - MANAGED_AGENTS_ENABLED / MANAGED_AGENTS_ENV
 - ANTHROPIC_API_KEY / CLAUDE_API_KEY
 - CLAUDE_MANAGED_AGENT_ID / CLAUDE_MANAGED_ENVIRONMENT_ID / CLAUDE_MANAGED_AGENTS_BETA
+- CLAUDE_MANAGED_MEMORY_STORE_ID / MANAGED_AGENT_MEMORY_STORE_ID
+- MANAGED_AGENT_MEMORY_STORE_ACCESS / MANAGED_AGENT_MEMORY_STORE_INSTRUCTIONS
 - MANAGED_AGENT_SESSION_TTL_MINUTES / MANAGED_AGENT_IDLE_TIMEOUT_MINUTES / MANAGED_AGENT_STREAM_TIMEOUT_MS / MANAGED_AGENT_MAX_TOOL_ROUNDS / MANAGED_AGENT_TOOL_RESULT_MAX_CHARS / MANAGED_AGENT_SESSION_NAMESPACE
 - AUTO_IGNORE_* and AUTO_UPCOMING_*
 - LIVE_CHECK_* (disabled by default)

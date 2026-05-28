@@ -56,6 +56,13 @@ export function buildManagedAgentsConfig(source = process.env) {
     ),
     baseUrl: env("ANTHROPIC_BASE_URL", "https://api.anthropic.com", source),
     betaHeader: env("CLAUDE_MANAGED_AGENTS_BETA", "managed-agents-2026-04-01", source),
+    memoryStoreId: env(
+      "CLAUDE_MANAGED_MEMORY_STORE_ID",
+      env("MANAGED_AGENT_MEMORY_STORE_ID", "", source),
+      source
+    ),
+    memoryStoreAccess: env("MANAGED_AGENT_MEMORY_STORE_ACCESS", "read_write", source),
+    memoryStoreInstructions: env("MANAGED_AGENT_MEMORY_STORE_INSTRUCTIONS", "", source),
     sessionTtlMinutes: numEnv("MANAGED_AGENT_SESSION_TTL_MINUTES", 1440, source),
     idleTimeoutMinutes: numEnv("MANAGED_AGENT_IDLE_TIMEOUT_MINUTES", 30, source),
     streamTimeoutMs: numEnv("MANAGED_AGENT_STREAM_TIMEOUT_MS", 120000, source),

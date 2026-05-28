@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildManagedAgentDefinition,
   MANAGED_AGENT_ALLOWED_BUILTIN_TOOLS,
+  MANAGED_AGENT_MEMORY_BUILTIN_TOOLS,
 } from "../src/managed_agent_definitions.js";
 
 test("managed agent system prompt preserves reminder default policy", () => {
@@ -20,9 +21,11 @@ test("managed agent system prompt preserves reminder default policy", () => {
   assert.match(definition.system, /kid-appropriate/i);
   assert.match(definition.system, /web_search and web_fetch/i);
   assert.match(definition.system, /Do not use web tools to search for unsafe/i);
+  assert.match(definition.system, /memory may be mounted under \/mnt\/memory/i);
+  assert.match(definition.system, /Never store secrets, credentials, tokens/i);
 });
 
-test("managed agent enables only safe web built-ins from the agent toolset", () => {
+test("managed agent enables safe web and memory file built-ins from the agent toolset", () => {
   const definition = buildManagedAgentDefinition({ environment: "dev" });
   const toolset = definition.tools.find((tool) => tool.type === "agent_toolset_20260401");
 
@@ -32,11 +35,14 @@ test("managed agent enables only safe web built-ins from the agent toolset", () 
     toolset.configs.map((config) => config.name).sort(),
     [...MANAGED_AGENT_ALLOWED_BUILTIN_TOOLS].sort()
   );
-  assert.equal(toolset.configs.length, 2);
+  assert.equal(toolset.configs.length, MANAGED_AGENT_ALLOWED_BUILTIN_TOOLS.length);
   assert.ok(toolset.configs.every((config) => config.enabled === true));
   assert.ok(
     toolset.configs.every((config) => config.permission_policy?.type === "always_allow")
   );
-  assert.ok(!toolset.configs.some((config) => ["bash", "read", "write", "edit", "glob", "grep"].includes(config.name)));
+  for (const name of MANAGED_AGENT_MEMORY_BUILTIN_TOOLS) {
+    assert.ok(toolset.configs.some((config) => config.name === name));
+  }
+  assert.ok(!toolset.configs.some((config) => config.name === "bash"));
   assert.ok(definition.tools.some((tool) => tool.type === "custom" && tool.name === "schoology_list_assignments"));
 });

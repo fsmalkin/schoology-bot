@@ -16,6 +16,11 @@ function usage() {
       "  node -r dotenv/config scripts/managed_agents_admin.mjs update-agent <agent_id> <version> [dev|prod]",
       "  node -r dotenv/config scripts/managed_agents_admin.mjs retrieve-agent <agent_id>",
       "  node -r dotenv/config scripts/managed_agents_admin.mjs list-agents",
+      "  node -r dotenv/config scripts/managed_agents_admin.mjs create-memory-store <name> <description>",
+      "  node -r dotenv/config scripts/managed_agents_admin.mjs list-memory-stores",
+      "  node -r dotenv/config scripts/managed_agents_admin.mjs retrieve-memory-store <memory_store_id>",
+      "  node -r dotenv/config scripts/managed_agents_admin.mjs create-memory <memory_store_id> <path> <content>",
+      "  node -r dotenv/config scripts/managed_agents_admin.mjs list-memories <memory_store_id> [path_prefix]",
       "  node -r dotenv/config scripts/managed_agents_admin.mjs create-environment [dev|prod]",
       "  node -r dotenv/config scripts/managed_agents_admin.mjs retrieve-environment <environment_id>",
       "  node -r dotenv/config scripts/managed_agents_admin.mjs list-environments",
@@ -84,6 +89,9 @@ function hintForCreatedResource(kind, result) {
   if (kind === "environment") {
     console.error(`\nSet this in your env file:\nCLAUDE_MANAGED_ENVIRONMENT_ID=${result.id}`);
   }
+  if (kind === "memory-store") {
+    console.error(`\nSet this in your env file:\nCLAUDE_MANAGED_MEMORY_STORE_ID=${result.id}`);
+  }
 }
 
 async function main() {
@@ -131,6 +139,46 @@ async function main() {
     }
     case "list-agents": {
       printJson(await apiRequest("GET", "/v1/agents"));
+      return;
+    }
+    case "create-memory-store": {
+      if (!arg1 || !arg2) usage();
+      const result = await apiRequest("POST", "/v1/memory_stores", {
+        name: arg1,
+        description: arg2,
+      });
+      printJson(result);
+      hintForCreatedResource("memory-store", result);
+      return;
+    }
+    case "list-memory-stores": {
+      printJson(await apiRequest("GET", "/v1/memory_stores"));
+      return;
+    }
+    case "retrieve-memory-store": {
+      if (!arg1) usage();
+      printJson(await apiRequest("GET", `/v1/memory_stores/${encodeURIComponent(arg1)}`));
+      return;
+    }
+    case "create-memory": {
+      if (!arg1 || !arg2 || !arg3) usage();
+      printJson(
+        await apiRequest("POST", `/v1/memory_stores/${encodeURIComponent(arg1)}/memories`, {
+          path: arg2,
+          content: arg3,
+        })
+      );
+      return;
+    }
+    case "list-memories": {
+      if (!arg1) usage();
+      const prefix = arg2 || "/";
+      printJson(
+        await apiRequest(
+          "GET",
+          `/v1/memory_stores/${encodeURIComponent(arg1)}/memories?path_prefix=${encodeURIComponent(prefix)}`
+        )
+      );
       return;
     }
     case "create-environment": {

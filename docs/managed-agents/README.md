@@ -68,6 +68,9 @@ Implemented foundation:
 - `CLAUDE_MANAGED_ENVIRONMENT_ID` / `MANAGED_AGENTS_ENVIRONMENT_ID`: target Claude environment id.
 - `ANTHROPIC_BASE_URL`: defaults to `https://api.anthropic.com`.
 - `CLAUDE_MANAGED_AGENTS_BETA`: defaults to `managed-agents-2026-04-01`.
+- `CLAUDE_MANAGED_MEMORY_STORE_ID` / `MANAGED_AGENT_MEMORY_STORE_ID`: optional Claude memory store id mounted into new managed sessions.
+- `MANAGED_AGENT_MEMORY_STORE_ACCESS`: memory store access mode; defaults to `read_write`.
+- `MANAGED_AGENT_MEMORY_STORE_INSTRUCTIONS`: optional per-resource memory instructions.
 - `MANAGED_AGENT_SESSION_TTL_MINUTES`: defaults to `1440`.
 - `MANAGED_AGENT_IDLE_TIMEOUT_MINUTES`: defaults to `30`.
 - `MANAGED_AGENT_STREAM_TIMEOUT_MS`: defaults to `120000`.
@@ -103,13 +106,17 @@ Implemented dev bridge foundation:
 - Claude custom tool names use the API-valid `schoology_` prefix, for example
   `schoology_list_assignments`. The local bridge maps those names back to
   deterministic app tools such as `list_assignments`.
-- The managed agent now enables only the built-in `web_search` and `web_fetch`
-  tools from Anthropic's agent toolset. The toolset default is disabled, so
-  shell and file tools remain unavailable.
+- The managed agent enables only `web_search`, `web_fetch`, and the memory file
+  tools `read`, `write`, `edit`, `glob`, and `grep` from Anthropic's agent
+  toolset. The toolset default is disabled, and `bash` remains unavailable.
+- When `CLAUDE_MANAGED_MEMORY_STORE_ID` is configured, new Claude sessions attach
+  that store as a `memory_store` resource. The agent may consult or update files
+  under `/mnt/memory`, but Schoology data remains authoritative in the local app
+  DB/tools.
 - A kid-safe content guard blocks unsafe Telegram input before any model/API
   call and replaces unsafe final assistant output before Telegram delivery.
 - The custom tool loop rejects unsupported custom tools with explicit tool
-  result errors, allows only `web_search`/`web_fetch` built-in confirmations,
+  result errors, allows only safe web and memory file built-in confirmations,
   denies other non-custom tool confirmations, and bounds tool result payloads
   before sending them back to Claude.
 
@@ -119,14 +126,18 @@ Local/mock UAT coverage:
 - `tests/managed_agent_bridge.test.js` verifies session reuse and a custom
   Schoology tool call returning local assignment data.
 - `tests/managed_agent_bridge.test.js` also verifies unsupported tool errors,
-  web built-in confirmation allow-listing, unsupported built-in denial, kid-safe
-  input/output blocking, stale definition revision replacement, deterministic
-  invalid-arg errors, bounded large result payloads, and tool-round limits.
+  web and memory file built-in confirmation allow-listing, memory store resource
+  attachment, unsupported built-in denial, kid-safe input/output blocking, stale
+  definition revision replacement, deterministic invalid-arg errors, bounded
+  large result payloads, and tool-round limits.
 - `tests/managed_agent_tools.test.js` verifies exported custom tool definitions
   cover the full Schoology tool surface.
 - `tests/kid_safe_content_filter.test.js` verifies ordinary schoolwork and safe
   web lookup prompts pass while adult, violent, dangerous, cyber-abuse,
   harassment, and self-harm requests are blocked or redirected.
+- `tests/managed_agent_definitions.test.js` verifies the memory prompt guardrails
+  prohibit storing secrets, raw grades, full assignment lists, private student
+  records, unsafe content, or verbatim fetched/web content in Claude memory.
 - `scripts/run_agentic_story_suite.mjs` calls `runChatMessage`, so setting
   `RUNTIME_STACK=managed-agents` or `MANAGED_AGENTS_ENABLED=1` points the parity
   runner at the Managed Agents bridge instead of the legacy OpenAI runtime.
@@ -146,6 +157,7 @@ Live dev UAT status:
 Current API-created resources:
 - Dev environment: `env_01ED1rmcXotjKBkTPmqfpP4o`
 - Dev agent: `agent_01JNsvgRBG7d6ubtr72PCFGF`
+- Dev memory store: `memstore_01F4pmYqg2GRep72inSfK2zi`
 - Prod environment: `env_01WZsUiGGrKh72bpUEkGYtHp`
 - Prod agent: `agent_01RZvAqM6cEgSJjQmhzHcns4`
 
@@ -206,6 +218,15 @@ Live dev API smoke completed:
   session created, and Schoology submitted/ungraded routing through
   `list_assignments` from the recreated Dockerized managed-dev poller
   (`sesn_01Uw4f9QtyPcvkTeKJxdPFCW`).
+- Claude managed memory is implemented in code and covered by local tests. The
+  dev cloud agent was updated to version `7` on 2026-05-28 with memory file
+  tools enabled and `bash` still disabled. A live policy memory was seeded at
+  `/operating_rules/schoology_bot_memory_policy.md`, the agent wrote
+  `/preferences/parent_preferences.md`, and a fresh session recalled that Fred
+  prefers concise replies during beta UAT (`sesn_015nNuouPRitk1mvHgPWLF7e`).
+  After Docker rebuild/recreate, the managed-dev poller created
+  `sesn_015dSmmxjCgtVVTei98gVkDF` with the memory store attached and recalled
+  the same preference from inside the container.
 
 ## API Management
 Tracked by [#30](https://github.com/fsmalkin/schoology-bot/issues/30).
@@ -239,6 +260,21 @@ The create commands print the IDs to copy into `.env.managed-dev`:
 ```env
 CLAUDE_MANAGED_ENVIRONMENT_ID=...
 CLAUDE_MANAGED_AGENT_ID=...
+```
+
+Create and inspect a Claude memory store:
+
+```powershell
+node scripts/managed_agents_admin.mjs create-memory-store "Schoology Bot Dev Memory" "Durable parent preferences and operating lessons; no secrets, raw grades, full assignment lists, or private student records."
+node scripts/managed_agents_admin.mjs list-memory-stores
+node scripts/managed_agents_admin.mjs retrieve-memory-store memstore_...
+```
+
+Seed and list memories:
+
+```powershell
+node scripts/managed_agents_admin.mjs create-memory memstore_... /operating_rules/schoology_bot_memory_policy.md "..."
+node scripts/managed_agents_admin.mjs list-memories memstore_... /
 ```
 
 ## Parity Stories

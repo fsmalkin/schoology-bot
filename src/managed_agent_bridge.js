@@ -21,6 +21,11 @@ import {
 } from "./kid_safe_content_filter.js";
 
 const ALLOWED_BUILTIN_TOOL_SET = new Set(MANAGED_AGENT_ALLOWED_BUILTIN_TOOLS);
+const DEFAULT_MEMORY_STORE_INSTRUCTIONS = [
+  "Use this memory store only for durable parent preferences, household workflow conventions, and stable Schoology Bot operating lessons.",
+  "Do not store secrets, credentials, tokens, raw Schoology grade details, full assignment lists, private student records, unsafe content, or copied web/fetched content.",
+  "Schoology custom tools and local DB results are authoritative for assignments, grades, reminders, tasks, statuses, and notes.",
+].join(" ");
 
 function normalizeEnvironment(config) {
   const managed = config.managedAgents || {};
@@ -38,6 +43,25 @@ function addMinutesIso(baseIso, minutes) {
   const n = Number(minutes);
   if (!Number.isFinite(n) || n <= 0) return null;
   return new Date(baseMs + n * 60 * 1000).toISOString();
+}
+
+function normalizeMemoryStoreAccess(value) {
+  const raw = String(value || "read_write").trim().toLowerCase();
+  return raw === "read_only" ? "read_only" : "read_write";
+}
+
+function buildMemoryStoreResources(config) {
+  const managed = config?.managedAgents || {};
+  const memoryStoreId = String(managed.memoryStoreId || "").trim();
+  if (!memoryStoreId) return [];
+  const resource = {
+    type: "memory_store",
+    memory_store_id: memoryStoreId,
+    access: normalizeMemoryStoreAccess(managed.memoryStoreAccess),
+    instructions:
+      String(managed.memoryStoreInstructions || "").trim() || DEFAULT_MEMORY_STORE_INSTRUCTIONS,
+  };
+  return [resource];
 }
 
 function parseToolInput(value) {
@@ -158,6 +182,7 @@ async function getOrStartSession({ db, config, client, chatId, now }) {
         ? "expired"
         : current.status
     : "missing";
+  const resources = buildMemoryStoreResources(config);
   const created = await client.createSession({
     title: `Schoology Bot ${environment} chat ${chatId}`,
     metadata: {
@@ -167,6 +192,7 @@ async function getOrStartSession({ db, config, client, chatId, now }) {
       create_reason: reason,
       agent_definition_revision: expectedRevision,
     },
+    resources,
   });
   const sessionId = String(created?.id || "").trim();
   if (!sessionId) throw new Error("Claude Managed Agents did not return a session id.");
@@ -187,6 +213,7 @@ async function getOrStartSession({ db, config, client, chatId, now }) {
       claudeStatus: created?.status || null,
       environmentId: config.managedAgents.environmentId,
       agentDefinitionRevision: expectedRevision,
+      memoryStoreIds: resources.map((resource) => resource.memory_store_id),
     },
   });
   return { sessionId, created: true, reason, session: stored.session };

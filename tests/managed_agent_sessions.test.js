@@ -35,6 +35,9 @@ test("managed agents config reads explicit dev runtime values", () => {
     MANAGED_AGENT_MAX_TOOL_ROUNDS: "3",
     MANAGED_AGENT_TOOL_RESULT_MAX_CHARS: "4000",
     MANAGED_AGENT_SESSION_NAMESPACE: "schoology-dev",
+    CLAUDE_MANAGED_MEMORY_STORE_ID: "memstore_123",
+    MANAGED_AGENT_MEMORY_STORE_ACCESS: "read_only",
+    MANAGED_AGENT_MEMORY_STORE_INSTRUCTIONS: "Read durable household preferences only.",
   });
 
   assert.equal(config.enabled, true);
@@ -48,6 +51,9 @@ test("managed agents config reads explicit dev runtime values", () => {
   assert.equal(config.maxToolRounds, 3);
   assert.equal(config.toolResultMaxChars, 4000);
   assert.equal(config.sessionNamespace, "schoology-dev");
+  assert.equal(config.memoryStoreId, "memstore_123");
+  assert.equal(config.memoryStoreAccess, "read_only");
+  assert.equal(config.memoryStoreInstructions, "Read durable household preferences only.");
   assert.doesNotThrow(() => validateManagedAgentsConfig({ managedAgents: config }));
 });
 

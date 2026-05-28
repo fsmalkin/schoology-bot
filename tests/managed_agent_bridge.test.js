@@ -140,6 +140,87 @@ test("managed agent bridge starts a new session when the agent definition revisi
   db.close();
 });
 
+test("managed agent bridge attaches configured Claude memory store to new sessions", async () => {
+  const db = createDb();
+  const config = makeConfig();
+  config.managedAgents.memoryStoreId = "memstore_test";
+  config.managedAgents.memoryStoreAccess = "read_write";
+  config.managedAgents.memoryStoreInstructions = "Remember stable household preferences only.";
+  const client = makeMockClient({
+    sessionId: "sesn_with_memory",
+    streams: [[{ id: "idle", type: "session.status_idle", stop_reason: { type: "end_turn" } }]],
+  });
+
+  const result = await runManagedAgentMessage({
+    chatId: "chat-memory",
+    text: "remember that I prefer compact replies",
+    clientOverride: client,
+    configOverride: config,
+    dbOverride: db,
+    debug: true,
+  });
+
+  assert.equal(result.sessionCreated, true);
+  assert.equal(result.sessionId, "sesn_with_memory");
+  assert.deepEqual(client.calls.createSession[0].resources, [
+    {
+      type: "memory_store",
+      memory_store_id: "memstore_test",
+      access: "read_write",
+      instructions: "Remember stable household preferences only.",
+    },
+  ]);
+  const stored = getManagedAgentSession(db, "chat-memory", "schoology-dev");
+  assert.deepEqual(stored.metadata.memoryStoreIds, ["memstore_test"]);
+  db.close();
+});
+
+test("managed agent bridge allows memory file built-in tool confirmations", async () => {
+  const db = createDb();
+  const client = makeMockClient({
+    streams: [
+      [
+        {
+          id: "memory_read_1",
+          type: "agent.tool_use",
+          name: "read",
+        },
+        {
+          id: "idle_tool",
+          type: "session.status_idle",
+          stop_reason: { type: "requires_action", event_ids: ["memory_read_1"] },
+        },
+        {
+          id: "msg_done",
+          type: "agent.message",
+          content: [{ type: "text", text: "I checked memory." }],
+        },
+        {
+          id: "idle_done",
+          type: "session.status_idle",
+          stop_reason: { type: "end_turn" },
+        },
+      ],
+    ],
+  });
+
+  const result = await runManagedAgentMessage({
+    chatId: "chat-memory-read",
+    text: "check memory",
+    clientOverride: client,
+    configOverride: makeConfig(),
+    dbOverride: db,
+    debug: true,
+  });
+
+  assert.equal(result.reply, "I checked memory.");
+  const confirmation = client.calls.sendEvents[1].events[0];
+  assert.equal(confirmation.type, "user.tool_confirmation");
+  assert.equal(confirmation.tool_use_id, "memory_read_1");
+  assert.equal(confirmation.result, "allow");
+  db.close();
+});
+
 test("managed agent bridge reuses a session and resolves custom Schoology tool calls", async () => {
   const db = createDb();
   syncAssignmentsFromState(db, {
