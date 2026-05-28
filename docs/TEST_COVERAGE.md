@@ -13,6 +13,7 @@ Unit tests
 - Reminder assumption inference (cadence/time defaults and unsupported cadence fallback).
 - Reminder normalization edge-cases (model-supplied time override, unsupported-cadence warning when recurrence is pre-normalized, and date-cue preservation while defaulting time).
 - Refresh login-failure messaging when `SCHOLOGY_IDP` is already configured (avoids redundant provider prompts).
+- Schoology auth flow coverage for Microsoft/BCPS keep-signed-in handling, remote-auth SAML handoff, BCPS local credential forms, native Schoology fallback, and explicit saved-credential rejection diagnostics.
 - Login-failure Telegram alert throttling (first alert, cooldown suppression, changed-error resend, post-success resend).
 - Assignment identity canonicalization (`assignment:<id>`) and legacy-key merge behavior.
 - Assignment identity migration v6 (backfill `assignment_id`, dedupe by ID, and reference relink for notes/tasks).
@@ -106,6 +107,7 @@ Managed Agents stack
 - Beta Schoology auth was refreshed after stale storage was confirmed, and a live Managed Agents dev repro passed with Claude session `sesn_018Gc6shAGPFyDd6DGXhLSw9`: `refresh_schoology` succeeded against real Schoology data, then `list_assignments` returned zero actionable, pending, or ignored missing assignments.
 - A live Managed Agents submitted/ungraded icon-query smoke passed with Claude session `sesn_017YiTWYQ4FT6unZ6DLXaMp8`, calling `list_assignments` with `status=submitted_awaiting_grade` and returning the two historical beta rows marked by Schoology's hidden submitted/ungraded text.
 - After the bridge speculative-text fix, live beta-data Managed Agents submitted/ungraded smokes passed locally (`sesn_01LaHRC29pzSYAsH6uTvcbvy`) and inside the recreated Dockerized managed-dev poller image (`sesn_01BdpvdhXf1VwMAhqEWxEoSg`), both returning the two submitted/ungraded beta rows.
+- Live beta auth refresh on 2026-05-28 now reaches the rendered BCPS SAML login form from the Dockerized managed-dev poller, but is blocked by BCPS rejecting the saved `SCHOLOGY_USERNAME`/`SCHOLOGY_PASSWORD`; `login-diagnostic.json` now captures visible selectors and the page text snippet showing the credential rejection.
 - Live Telegram outbound to the beta thread was smoke-tested through `.env.managed-dev`; one inbound beta-thread message was handled by the Managed Agents path before the poller was moved into the current Docker container.
 - No automated coverage yet for managed-session event history beyond the local store or idle/termination policy.
 - No dashboard health coverage yet for Managed Agents bridge/session status.

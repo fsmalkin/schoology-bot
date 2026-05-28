@@ -6,6 +6,8 @@ import { deriveSchoologyAssignmentTitle } from "./text_utils.js";
 const MAX_DETAIL_FALLBACK_ROWS = 25;
 const MISSING_HINT_RE = /\b(missing|not completed|not submitted|no submission|not turned in|incomplete|absent)\b/i;
 const SUBMITTED_AWAITING_GRADE_RE = /submitted, awaiting grade|submission that has not been graded|assignment submitted/i;
+const CREDENTIAL_REJECTED_RE =
+  /username or password provided in the request are invalid|email address and password combination .* cannot be recognized|enter a valid email address/i;
 
 function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) {
@@ -29,6 +31,14 @@ async function hasSelector(page, selector) {
   }
 }
 
+async function hasElement(page, selector) {
+  try {
+    return (await page.locator(selector).first().count()) > 0;
+  } catch {
+    return false;
+  }
+}
+
 async function clickByText(page, regex) {
   const button = page.getByRole("button", { name: regex }).first();
   if (await isVisible(button)) {
@@ -43,6 +53,21 @@ async function clickByText(page, regex) {
   return false;
 }
 
+async function getBodyTextSnippet(page, maxLength = 1000) {
+  try {
+    const text = await page.locator("body").innerText({ timeout: 1000 });
+    return text.replace(/\s+/g, " ").trim().slice(0, maxLength);
+  } catch {
+    return "";
+  }
+}
+
+async function throwIfCredentialRejected(page, label = "Schoology") {
+  const bodyText = await getBodyTextSnippet(page);
+  if (!CREDENTIAL_REJECTED_RE.test(bodyText)) return;
+  throw new Error(`${label} login rejected the saved credentials. Verify SCHOLOGY_USERNAME/SCHOLOGY_PASSWORD and retry.`);
+}
+
 async function waitForRenderedLoginControls(page, timeout = 15000) {
   try {
     await page.waitForFunction(
@@ -53,6 +78,8 @@ async function waitForRenderedLoginControls(page, timeout = 15000) {
           "input#i0116",
           "#signInName",
           "#password",
+          "input#edit-mail",
+          "input#edit-pass",
           "#next",
           "#idSIButton9",
           "#AzureADBCPSOrgExchange",
@@ -74,19 +101,31 @@ async function waitForRenderedLoginControls(page, timeout = 15000) {
 }
 
 async function maybeHandleMicrosoftKmsi(page) {
-  const noButton = page.locator("#idBtn_Back");
+  const prompt = page.getByText(/Stay signed in|Keep me signed in/i).first();
+  const yesButton = page.locator("#idSIButton9").first();
+  const noButton = page.locator("#idBtn_Back").first();
+
   try {
-    await noButton.first().waitFor({ state: "visible", timeout: 12000 });
-    await noButton.first().click();
-    return true;
+    await page.locator("#idSIButton9, #idBtn_Back").first().waitFor({ state: "visible", timeout: 12000 });
   } catch {
-    // fall through
+    // No KMSI controls appeared.
   }
 
-  // Fallback for flows that only expose "Yes" on the KMSI step.
-  const yesButton = page.locator("#idSIButton9");
-  if (String(page.url() || "").toLowerCase().includes("/kmsi") && (await isVisible(yesButton.first()))) {
-    await yesButton.first().click();
+  const isKmsiPage =
+    String(page.url() || "").toLowerCase().includes("/kmsi") || (await isVisible(prompt));
+  if (!isKmsiPage) return false;
+
+  if (await isVisible(yesButton)) {
+    await yesButton.click();
+    return true;
+  }
+
+  if (await clickByText(page, /^Yes$/i)) {
+    return true;
+  }
+
+  if (await isVisible(noButton)) {
+    await noButton.click();
     return true;
   }
 
@@ -106,6 +145,31 @@ async function loginWithSchoologyForm(page, username, password) {
   return true;
 }
 
+function buildSchoologySamlUrl(config) {
+  const loginUrl = new URL(config.schoology.loginUrl);
+  const gradesUrl = new URL(config.schoology.gradesUrl, loginUrl);
+  const destination = `${gradesUrl.pathname.replace(/^\/+/, "")}${gradesUrl.search || ""}` || "grades/grades";
+  loginUrl.pathname = "/login/saml";
+  loginUrl.search = `?destination=${encodeURIComponent(destination)}`;
+  return loginUrl.toString();
+}
+
+async function maybeStartSchoologySamlLogin(page, config) {
+  if (await isBcpsB2CPage(page)) return true;
+
+  const remoteSchoologyForm =
+    (await hasElement(page, "input#edit-school-nid")) &&
+    ((await hasSelector(page, "input#edit-mail")) || (await hasSelector(page, "input#edit-name")));
+  if (!remoteSchoologyForm) return false;
+
+  await page.goto(buildSchoologySamlUrl(config), { waitUntil: "domcontentloaded" });
+  await waitForRenderedLoginControls(page, 30000);
+  return await isBcpsB2CPage(page);
+}
+
+async function hasBcpsLocalCredentialForm(page) {
+  return (await hasSelector(page, "#signInName")) && (await hasSelector(page, "#password"));
+}
 
 async function loginWithMicrosoft(page, username, password) {
   await waitForRenderedLoginControls(page);
@@ -123,7 +187,9 @@ async function loginWithMicrosoft(page, username, password) {
     await clickByText(page, /Sign in|Next/i);
     await page.waitForLoadState("domcontentloaded").catch(() => {});
     await page.waitForTimeout(1200);
+    await throwIfCredentialRejected(page, "Microsoft");
     await maybeHandleMicrosoftKmsi(page);
+    await throwIfCredentialRejected(page, "Microsoft");
     return true;
   };
 
@@ -160,7 +226,9 @@ async function loginWithMicrosoft(page, username, password) {
 
   await page.waitForLoadState("domcontentloaded").catch(() => {});
   await page.waitForTimeout(1200);
+  await throwIfCredentialRejected(page, "BCPS");
   await maybeHandleMicrosoftKmsi(page);
+  await throwIfCredentialRejected(page, "BCPS");
 
   return true;
 }
@@ -369,17 +437,23 @@ async function runLoginFlow(page, config, provider) {
 
   if (idp === "microsoft") {
     await maybeEnterSsoSchool(page, config);
+    await maybeStartSchoologySamlLogin(page, config);
     if (await isBcpsB2CPage(page)) {
-      await selectClaimsProvider(page, "microsoft");
+      if (!(await hasBcpsLocalCredentialForm(page))) {
+        await selectClaimsProvider(page, "microsoft");
+      }
     }
-    return await loginWithMicrosoft(page, username, password);
+    if (await loginWithMicrosoft(page, username, password)) return true;
+    return await loginWithSchoologyForm(page, username, password);
   }
   if (idp === "azuread") {
     await maybeEnterSsoSchool(page, config);
+    await maybeStartSchoologySamlLogin(page, config);
     if (await isBcpsB2CPage(page)) {
       await selectClaimsProvider(page, "azuread");
     }
-    return await loginWithMicrosoft(page, username, password);
+    if (await loginWithMicrosoft(page, username, password)) return true;
+    return await loginWithSchoologyForm(page, username, password);
   }
   if (idp === "google") {
     const selected = await selectClaimsProvider(page, "google");
@@ -876,6 +950,7 @@ async function writeLoginDiagnostic(config, page, error, { attempt, maxAttempts,
       pageUrl: page?.url?.() || "",
       error: String(error?.message || error || ""),
       visibleSelectors: await visibleLoginSelectorsSnapshot(page),
+      bodyTextSnippet: await getBodyTextSnippet(page),
       storagePath: config?.paths?.storagePath || "",
       storagePathExists: Boolean(config?.paths?.storagePath && fs.existsSync(config.paths.storagePath)),
     };
@@ -969,3 +1044,9 @@ export async function extractAssignmentsFromHtml(html, options = {}) {
     await browser.close();
   }
 }
+
+export const schoologyLoginTestHooks = {
+  buildSchoologySamlUrl,
+  maybeHandleMicrosoftKmsi,
+  runLoginFlow,
+};
