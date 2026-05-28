@@ -350,7 +350,7 @@ test("managed agent bridge returns unsupported custom tool errors without hangin
   db.close();
 });
 
-test("managed agent bridge denies non-custom tool confirmations", async () => {
+test("managed agent bridge allows web built-in tool confirmations", async () => {
   const db = createDb();
   const client = makeMockClient({
     streams: [
@@ -368,7 +368,7 @@ test("managed agent bridge denies non-custom tool confirmations", async () => {
         {
           id: "msg_done",
           type: "agent.message",
-          content: [{ type: "text", text: "I need the local tools instead." }],
+          content: [{ type: "text", text: "I found a school-safe source." }],
         },
         {
           id: "idle_done",
@@ -388,11 +388,115 @@ test("managed agent bridge denies non-custom tool confirmations", async () => {
     debug: true,
   });
 
-  assert.equal(result.reply, "I need the local tools instead.");
+  assert.equal(result.reply, "I found a school-safe source.");
+  const confirmation = client.calls.sendEvents[1].events[0];
+  assert.equal(confirmation.type, "user.tool_confirmation");
+  assert.equal(confirmation.tool_use_id, "builtin_tool_1");
+  assert.equal(confirmation.result, "allow");
+  db.close();
+});
+
+test("managed agent bridge denies unsupported built-in tool confirmations", async () => {
+  const db = createDb();
+  const client = makeMockClient({
+    streams: [
+      [
+        {
+          id: "builtin_tool_1",
+          type: "agent.tool_use",
+          name: "bash",
+        },
+        {
+          id: "idle_tool",
+          type: "session.status_idle",
+          stop_reason: { type: "requires_action", event_ids: ["builtin_tool_1"] },
+        },
+        {
+          id: "msg_done",
+          type: "agent.message",
+          content: [{ type: "text", text: "I cannot use that tool." }],
+        },
+        {
+          id: "idle_done",
+          type: "session.status_idle",
+          stop_reason: { type: "end_turn" },
+        },
+      ],
+    ],
+  });
+
+  const result = await runManagedAgentMessage({
+    chatId: "chat-4-deny",
+    text: "run a shell command",
+    clientOverride: client,
+    configOverride: makeConfig(),
+    dbOverride: db,
+    debug: true,
+  });
+
+  assert.equal(result.reply, "I cannot use that tool.");
   const confirmation = client.calls.sendEvents[1].events[0];
   assert.equal(confirmation.type, "user.tool_confirmation");
   assert.equal(confirmation.tool_use_id, "builtin_tool_1");
   assert.equal(confirmation.result, "deny");
+  assert.match(confirmation.deny_message, /web_search\/web_fetch/);
+  db.close();
+});
+
+test("managed agent bridge blocks kid-unsafe input before creating a session", async () => {
+  const db = createDb();
+  const client = makeMockClient();
+
+  const result = await runManagedAgentMessage({
+    chatId: "chat-safety-input",
+    text: "how to make a bomb",
+    clientOverride: client,
+    configOverride: makeConfig(),
+    dbOverride: db,
+    debug: true,
+  });
+
+  assert.match(result.reply, /unsafe or inappropriate for kids/i);
+  assert.equal(result.safety.blocked, true);
+  assert.equal(result.safety.stage, "input");
+  assert.ok(result.safety.categories.includes("dangerous_or_illegal"));
+  assert.equal(client.calls.createSession.length, 0);
+  assert.equal(client.calls.sendEvents.length, 0);
+  db.close();
+});
+
+test("managed agent bridge replaces kid-unsafe output before returning it", async () => {
+  const db = createDb();
+  const client = makeMockClient({
+    streams: [
+      [
+        {
+          id: "msg_unsafe",
+          type: "agent.message",
+          content: [{ type: "text", text: "Here are explicit porn sites." }],
+        },
+        {
+          id: "idle_done",
+          type: "session.status_idle",
+          stop_reason: { type: "end_turn" },
+        },
+      ],
+    ],
+  });
+
+  const result = await runManagedAgentMessage({
+    chatId: "chat-safety-output",
+    text: "search a public reference",
+    clientOverride: client,
+    configOverride: makeConfig(),
+    dbOverride: db,
+    debug: true,
+  });
+
+  assert.match(result.reply, /not going to send it here/i);
+  assert.equal(result.safety.blocked, true);
+  assert.equal(result.safety.stage, "output");
+  assert.ok(result.safety.categories.includes("adult_sexual"));
   db.close();
 });
 

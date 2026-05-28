@@ -100,9 +100,15 @@ Implemented dev bridge foundation:
 - Claude custom tool names use the API-valid `schoology_` prefix, for example
   `schoology_list_assignments`. The local bridge maps those names back to
   deterministic app tools such as `list_assignments`.
+- The managed agent now enables only the built-in `web_search` and `web_fetch`
+  tools from Anthropic's agent toolset. The toolset default is disabled, so
+  shell and file tools remain unavailable.
+- A kid-safe content guard blocks unsafe Telegram input before any model/API
+  call and replaces unsafe final assistant output before Telegram delivery.
 - The custom tool loop rejects unsupported custom tools with explicit tool
-  result errors, denies non-custom tool confirmations by default, and bounds
-  tool result payloads before sending them back to Claude.
+  result errors, allows only `web_search`/`web_fetch` built-in confirmations,
+  denies other non-custom tool confirmations, and bounds tool result payloads
+  before sending them back to Claude.
 
 Local/mock UAT coverage:
 - `tests/managed_agent_bridge.test.js` verifies Telegram text -> session event
@@ -110,10 +116,14 @@ Local/mock UAT coverage:
 - `tests/managed_agent_bridge.test.js` verifies session reuse and a custom
   Schoology tool call returning local assignment data.
 - `tests/managed_agent_bridge.test.js` also verifies unsupported tool errors,
-  built-in tool denial, deterministic invalid-arg errors, bounded large result
+  web built-in confirmation allow-listing, unsupported built-in denial, kid-safe
+  input/output blocking, deterministic invalid-arg errors, bounded large result
   payloads, and tool-round limits.
 - `tests/managed_agent_tools.test.js` verifies exported custom tool definitions
   cover the full Schoology tool surface.
+- `tests/kid_safe_content_filter.test.js` verifies ordinary schoolwork and safe
+  web lookup prompts pass while adult, violent, dangerous, cyber-abuse,
+  harassment, and self-harm requests are blocked or redirected.
 - `scripts/run_agentic_story_suite.mjs` calls `runChatMessage`, so setting
   `RUNTIME_STACK=managed-agents` or `MANAGED_AGENTS_ENABLED=1` points the parity
   runner at the Managed Agents bridge instead of the legacy OpenAI runtime.
@@ -185,6 +195,14 @@ Live dev API smoke completed:
   required custom-tool result. This prevents Telegram replies from combining a
   pre-tool guess with the confirmed tool result; the regression is covered in
   `tests/managed_agent_bridge.test.js`.
+- Web search/fetch and kid-safe guardrails are implemented in code and covered
+  by local tests. The dev cloud agent was updated to version `5` on
+  2026-05-28 with only `web_search`/`web_fetch` enabled from the built-in
+  toolset. Live smokes passed for safe BCPS calendar web lookup
+  (`sesn_01XemzqCm6qiasnsqKYScfvA`), unsafe input blocking with no Claude
+  session created, and Schoology submitted/ungraded routing through
+  `list_assignments` from the recreated Dockerized managed-dev poller
+  (`sesn_01Uw4f9QtyPcvkTeKJxdPFCW`).
 
 ## API Management
 Tracked by [#30](https://github.com/fsmalkin/schoology-bot/issues/30).
@@ -230,6 +248,8 @@ The Managed Agents dev runtime must pass the same user-facing stories before UAT
 6. Generate the daily summary with manual statuses honored.
 7. Handle login/session failure with a clear user alert.
 8. Avoid tool-call loops and repeated clarification loops.
+9. Use web search/fetch only for school-safe public reference lookups, while
+   keeping Schoology data routed through deterministic local tools.
 
 Current status:
 - Reminder/recurrence parity story suite and judge passed for both legacy and

@@ -1,11 +1,16 @@
 import { buildManagedAgentCustomToolDefinitions } from "./managed_agent_tools.js";
 
+export const MANAGED_AGENT_ALLOWED_BUILTIN_TOOLS = ["web_search", "web_fetch"];
+
 export const SCHOOLLOGY_MANAGED_AGENT_SYSTEM = [
   "You are Schoology Bot, a parent-facing assistant for keeping schoolwork, reminders, and assignment follow-up organized.",
   "You answer concisely and use Schoology custom tools whenever the user asks about assignments, reminders, tasks, daily summaries, or status updates.",
   "Never invent Schoology data. If tool results are missing details or show an error, explain the gap briefly and ask for the exact missing detail.",
   "Manual statuses, notes, tasks, and reminders are local Schoology Bot records. Only claim an update succeeded when the custom tool result confirms it.",
-  "Keep production safety first: avoid duplicate actions, prefer clarification for ambiguous assignment references, and do not use built-in shell/web/file tools for Schoology data.",
+  "Keep production safety first: avoid duplicate actions, prefer clarification for ambiguous assignment references, and do not use built-in web tools for Schoology data.",
+  "Audience safety matters because Telegram may be read by a school-age child. Keep replies kid-appropriate, avoid explicit or graphic detail, and refuse unsafe, adult, hateful, violent, self-harm, weapons, drug-abuse, or cyber-abuse requests with a brief safe redirect.",
+  "Use web_search and web_fetch only for current external facts, links, or public reference lookups. Do not use web tools to search for unsafe or age-inappropriate content, and do not use shell or file tools.",
+  "When web results inform an answer, include short clickable source links. If a web result looks unsafe for kids, do not summarize it; offer to reframe the question in a school-safe way.",
   "For reminder and task requests, proactively infer reasonable defaults instead of asking for missing time, cadence, or timezone when a safe default exists.",
   "Times default to America/New_York. Do not ask the user for timezone unless they explicitly ask to use a different timezone or the request cannot be interpreted safely.",
   "Recurring reminder cadence supports only daily, weekdays, and weekly. If the user asks for a recurring reminder without cadence, call the task tool with recurrence=weekdays.",
@@ -18,6 +23,18 @@ export const SCHOOLLOGY_MANAGED_AGENT_SYSTEM = [
   "The user is a busy parent. Optimize for clear next actions, short status summaries, and low-drama follow-up.",
 ].join("\n\n");
 
+export function buildManagedAgentBuiltinToolset() {
+  return {
+    type: "agent_toolset_20260401",
+    default_config: { enabled: false },
+    configs: MANAGED_AGENT_ALLOWED_BUILTIN_TOOLS.map((name) => ({
+      name,
+      enabled: true,
+      permission_policy: { type: "always_allow" },
+    })),
+  };
+}
+
 export function buildManagedAgentDefinition({ environment = "dev" } = {}) {
   const env = String(environment || "dev").trim().toLowerCase() || "dev";
   return {
@@ -29,7 +46,10 @@ export function buildManagedAgentDefinition({ environment = "dev" } = {}) {
     model: "claude-sonnet-4-6",
     system: SCHOOLLOGY_MANAGED_AGENT_SYSTEM,
     mcp_servers: [],
-    tools: buildManagedAgentCustomToolDefinitions({ namespace: "schoology_" }),
+    tools: [
+      buildManagedAgentBuiltinToolset(),
+      ...buildManagedAgentCustomToolDefinitions({ namespace: "schoology_" }),
+    ],
     skills: [],
     metadata: {
       repo: "fsmalkin/schoology-bot",

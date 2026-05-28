@@ -14,6 +14,8 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
 - Claude Managed Agents bridge (dev implementation)
   - Target replacement runtime for agent chat in dev, then prod after parity gates.
   - Telegram inbound resumes managed sessions; Claude custom tool requests call local deterministic tools.
+  - Dev agent enables only `web_search`/`web_fetch` built-ins for school-safe public reference lookups; Schoology data still comes only from deterministic local tools.
+  - Kid-safe input/output filtering blocks unsafe Telegram requests before model calls and suppresses unsafe final replies.
   - Implemented entrypoints: `src/agent_runtime.js`, `src/managed_agent_bridge.js`, `src/managed_agent_client.js`.
   - Tracking: [#25](https://github.com/fsmalkin/schoology-bot/issues/25), [Managed Agents migration doc](managed-agents/README.md), [FSM Engineering Board](https://github.com/users/fsmalkin/projects/3).
 - OpenClaw beta stack (rollback-only)
@@ -37,6 +39,7 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
    - Assignment-linked reminders with `auto_cancel_on_resolve=1` are auto-completed when the assignment resolves, is auto-ignored, or is submitted-awaiting-grade.
 4) Agent chat
    - `telegram-agent` calls `runChatMessage`, which selects legacy OpenAI Responses or Claude Managed Agents from config.
+   - Kid-safe guardrails block unsafe/adult/graphic/dangerous requests before agent calls and replace unsafe final text before Telegram delivery.
    - Capability gate checks for unsupported requests and proposes nearest supported fallback.
    - Planner selects tools, executes, then composes final message.
    - Pending actions, chat memory snapshots, and message style preferences are stored per chat for multi-step confirmations and long-thread continuity.

@@ -42,6 +42,12 @@ import {
   capabilityListForPrompt,
 } from "./capabilities.js";
 import { buildReadableToolResponse } from "./readable_messages.js";
+import {
+  buildKidSafeBlockedReply,
+  detectKidUnsafeContent,
+  KID_SAFE_OUTPUT_FALLBACK,
+  safetyDebugPayload,
+} from "./kid_safe_content_filter.js";
 
 const MESSAGE_STYLE = {
   COMPACT: "compact",
@@ -66,6 +72,7 @@ function buildResponsePrompt(config, allowedTools = TOOL_NAMES, { messageStyle =
     "Never claim updates unless tool results confirm success.",
     "If tool results include errors, explain them briefly and ask for the missing detail.",
     idpInstruction,
+    "Telegram may be read by a school-age child. Keep replies kid-appropriate, avoid explicit or graphic detail, and refuse unsafe, adult, hateful, violent, self-harm, weapons, drug-abuse, or cyber-abuse requests with a brief safe redirect.",
     "When talking about tasks or assignment reminders, use the term 'Reminders' and combine them unless the user asks for a specific type.",
     "If a note implies a follow-up action, ask if the user wants a reminder created.",
     "Manual statuses, assignment notes, and reminders are stored locally (not in Schoology) and can be updated immediately via tools.",
@@ -1568,6 +1575,20 @@ export async function runAgentMessage({ chatId, text, clientOverride, now = null
   const db = getDb(config);
   ensureDbSeeded(db, config.paths.statePath);
 
+  const inputSafety = detectKidUnsafeContent(text);
+  if (!inputSafety.safe) {
+    const reply = buildKidSafeBlockedReply(inputSafety);
+    if (debug) {
+      return {
+        reply,
+        executed: [],
+        responseId: null,
+        safety: safetyDebugPayload("input", inputSafety),
+      };
+    }
+    return reply;
+  }
+
   const chatState = getChatState(db, chatId);
   const chatMemory = getChatMemory(db, chatId);
   const pendingAction = getPendingAction(db, chatId);
@@ -1825,10 +1846,16 @@ export async function runAgentMessage({ chatId, text, clientOverride, now = null
   }
 
   const fallbackSummary = formatUpdateSummary(executed, db, currentStyle);
-  const reply =
+  let reply =
     !normalized || isRepetitiveOutput(finalText) || isToolingLoop(finalText)
       ? normalizeAscii(fallbackSummary || normalized || "Done.")
       : normalized;
+  const outputSafety = detectKidUnsafeContent(reply);
+  let safety = null;
+  if (!outputSafety.safe) {
+    reply = KID_SAFE_OUTPUT_FALLBACK;
+    safety = safetyDebugPayload("output", outputSafety);
+  }
   const memorySnapshot = buildChatMemorySnapshot({
     chatId,
     text,
@@ -1847,6 +1874,7 @@ export async function runAgentMessage({ chatId, text, clientOverride, now = null
       reply,
       executed,
       responseId: compactedId || responseIdToStore || null,
+      ...(safety ? { safety } : {}),
     };
   }
   return reply;

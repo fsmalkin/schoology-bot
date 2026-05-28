@@ -7,8 +7,17 @@ import {
   upsertManagedAgentSession,
 } from "./db.js";
 import { createManagedAgentClient } from "./managed_agent_client.js";
+import { MANAGED_AGENT_ALLOWED_BUILTIN_TOOLS } from "./managed_agent_definitions.js";
 import { runToolByName, TOOL_NAMES } from "./tool_runner.js";
 import { normalizeAscii, sanitizeRepeatedText } from "./text_utils.js";
+import {
+  buildKidSafeBlockedReply,
+  detectKidUnsafeContent,
+  KID_SAFE_OUTPUT_FALLBACK,
+  safetyDebugPayload,
+} from "./kid_safe_content_filter.js";
+
+const ALLOWED_BUILTIN_TOOL_SET = new Set(MANAGED_AGENT_ALLOWED_BUILTIN_TOOLS);
 
 function normalizeEnvironment(config) {
   const managed = config.managedAgents || {};
@@ -117,7 +126,11 @@ function extractCustomToolUse(event) {
 function extractToolConfirmation(event) {
   const type = String(event?.type || "");
   if (type !== "agent.tool_use" && type !== "agent.mcp_tool_use") return null;
-  return { id: eventId(event), type };
+  return {
+    id: eventId(event),
+    type,
+    name: event?.name || event?.tool_name || event?.toolName || event?.tool?.name || "",
+  };
 }
 
 async function getOrStartSession({ db, config, client, chatId, now }) {
@@ -201,8 +214,21 @@ function denyToolConfirmationEvent(event) {
     type: "user.tool_confirmation",
     tool_use_id: event.id,
     result: "deny",
-    deny_message: "Schoology Bot Telegram bridge only grants local Schoology custom tools.",
+    deny_message:
+      "Schoology Bot Telegram bridge only grants Schoology custom tools plus web_search/web_fetch.",
   };
+}
+
+function toolConfirmationEvent(event) {
+  const name = String(event?.name || "").trim();
+  if (ALLOWED_BUILTIN_TOOL_SET.has(name)) {
+    return {
+      type: "user.tool_confirmation",
+      tool_use_id: event.id,
+      result: "allow",
+    };
+  }
+  return denyToolConfirmationEvent(event);
 }
 
 export async function runManagedAgentMessage({
@@ -216,6 +242,22 @@ export async function runManagedAgentMessage({
 } = {}) {
   const config = configOverride || getConfig();
   validateManagedAgentsConfig(config);
+  const inputSafety = detectKidUnsafeContent(text);
+  if (!inputSafety.safe) {
+    const reply = buildKidSafeBlockedReply(inputSafety);
+    if (debug) {
+      return {
+        reply,
+        sessionId: null,
+        sessionCreated: false,
+        executed: [],
+        executedTools: [],
+        streamPasses: 0,
+        safety: safetyDebugPayload("input", inputSafety),
+      };
+    }
+    return reply;
+  }
   const db = dbOverride || getDb(config);
   ensureDbSeeded(db, config.paths.statePath);
   const client = clientOverride || createManagedAgentClient(config.managedAgents);
@@ -288,7 +330,7 @@ export async function runManagedAgentMessage({
               const confirmation = extractToolConfirmation(blockedEvent);
               if (confirmation) {
                 completedActionIds.add(actionId);
-                actionEvents.push(denyToolConfirmationEvent(confirmation));
+                actionEvents.push(toolConfirmationEvent(confirmation));
               }
             }
             if (actionEvents.length > 0) {
@@ -322,7 +364,13 @@ export async function runManagedAgentMessage({
     throw new Error("Claude Managed Agents exceeded the local tool round limit.");
   }
 
-  const reply = normalizeAscii(sanitizeRepeatedText(replyParts.join("\n").trim())) || "Done.";
+  let reply = normalizeAscii(sanitizeRepeatedText(replyParts.join("\n").trim())) || "Done.";
+  const outputSafety = detectKidUnsafeContent(reply);
+  let safety = null;
+  if (!outputSafety.safe) {
+    reply = KID_SAFE_OUTPUT_FALLBACK;
+    safety = safetyDebugPayload("output", outputSafety);
+  }
   markManagedAgentSessionEvent(db, {
     chatId,
     environment: normalizeEnvironment(config),
@@ -349,6 +397,7 @@ export async function runManagedAgentMessage({
       executed,
       executedTools,
       streamPasses,
+      ...(safety ? { safety } : {}),
     };
   }
   return reply;
