@@ -7,7 +7,10 @@ import {
   upsertManagedAgentSession,
 } from "./db.js";
 import { createManagedAgentClient } from "./managed_agent_client.js";
-import { MANAGED_AGENT_ALLOWED_BUILTIN_TOOLS } from "./managed_agent_definitions.js";
+import {
+  MANAGED_AGENT_ALLOWED_BUILTIN_TOOLS,
+  MANAGED_AGENT_DEFINITION_REVISION,
+} from "./managed_agent_definitions.js";
 import { runToolByName, TOOL_NAMES } from "./tool_runner.js";
 import { normalizeAscii, sanitizeRepeatedText } from "./text_utils.js";
 import {
@@ -136,11 +139,25 @@ function extractToolConfirmation(event) {
 async function getOrStartSession({ db, config, client, chatId, now }) {
   const environment = normalizeEnvironment(config);
   const current = getManagedAgentSession(db, chatId, environment, { now });
-  if (current && current.status === "active" && !current.isExpired) {
+  const currentRevision = String(current?.metadata?.agentDefinitionRevision || "").trim();
+  const expectedRevision = MANAGED_AGENT_DEFINITION_REVISION;
+  const isStaleAgentDefinition = Boolean(
+    current &&
+      current.status === "active" &&
+      !current.isExpired &&
+      currentRevision !== expectedRevision
+  );
+  if (current && current.status === "active" && !current.isExpired && !isStaleAgentDefinition) {
     return { sessionId: current.sessionId, created: false, reason: "existing", session: current };
   }
 
-  const reason = current ? (current.isExpired ? "expired" : current.status) : "missing";
+  const reason = current
+    ? isStaleAgentDefinition
+      ? "agent_definition_revision_changed"
+      : current.isExpired
+        ? "expired"
+        : current.status
+    : "missing";
   const created = await client.createSession({
     title: `Schoology Bot ${environment} chat ${chatId}`,
     metadata: {
@@ -148,6 +165,7 @@ async function getOrStartSession({ db, config, client, chatId, now }) {
       chat_id: String(chatId),
       environment,
       create_reason: reason,
+      agent_definition_revision: expectedRevision,
     },
   });
   const sessionId = String(created?.id || "").trim();
@@ -168,6 +186,7 @@ async function getOrStartSession({ db, config, client, chatId, now }) {
       previousSessionId: current?.sessionId || null,
       claudeStatus: created?.status || null,
       environmentId: config.managedAgents.environmentId,
+      agentDefinitionRevision: expectedRevision,
     },
   });
   return { sessionId, created: true, reason, session: stored.session };

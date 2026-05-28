@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createDb, getManagedAgentSession, syncAssignmentsFromState } from "../src/db.js";
+import {
+  createDb,
+  getManagedAgentSession,
+  syncAssignmentsFromState,
+  upsertManagedAgentSession,
+} from "../src/db.js";
+import { MANAGED_AGENT_DEFINITION_REVISION } from "../src/managed_agent_definitions.js";
 import { runManagedAgentMessage } from "../src/managed_agent_bridge.js";
 
 function makeConfig() {
@@ -90,6 +96,47 @@ test("managed agent bridge creates a session, sends Telegram text, and returns a
   const stored = getManagedAgentSession(db, "chat-1", "schoology-dev");
   assert.equal(stored.sessionId, "sesn_test");
   assert.equal(stored.metadata.environmentId, "env_test");
+  assert.equal(stored.metadata.agentDefinitionRevision, MANAGED_AGENT_DEFINITION_REVISION);
+  db.close();
+});
+
+test("managed agent bridge starts a new session when the agent definition revision changes", async () => {
+  const db = createDb();
+  upsertManagedAgentSession(db, {
+    chatId: "chat-stale-definition",
+    environment: "schoology-dev",
+    sessionId: "sesn_old_definition",
+    createdAt: "2026-05-28T04:00:00.000Z",
+    updatedAt: "2026-05-28T04:00:00.000Z",
+    expiresAt: "2026-05-29T04:00:00.000Z",
+    metadata: { agentDefinitionRevision: "old-definition" },
+  });
+  const client = makeMockClient({
+    sessionId: "sesn_new_definition",
+    streams: [[{ id: "idle", type: "session.status_idle", stop_reason: { type: "end_turn" } }]],
+  });
+
+  const result = await runManagedAgentMessage({
+    chatId: "chat-stale-definition",
+    text: "can you search the web?",
+    clientOverride: client,
+    configOverride: makeConfig(),
+    dbOverride: db,
+    debug: true,
+  });
+
+  assert.equal(result.sessionCreated, true);
+  assert.equal(result.sessionId, "sesn_new_definition");
+  assert.equal(client.calls.createSession.length, 1);
+  assert.equal(client.calls.createSession[0].metadata.create_reason, "agent_definition_revision_changed");
+  assert.equal(
+    client.calls.createSession[0].metadata.agent_definition_revision,
+    MANAGED_AGENT_DEFINITION_REVISION
+  );
+  const stored = getManagedAgentSession(db, "chat-stale-definition", "schoology-dev");
+  assert.equal(stored.sessionId, "sesn_new_definition");
+  assert.equal(stored.metadata.previousSessionId, "sesn_old_definition");
+  assert.equal(stored.metadata.agentDefinitionRevision, MANAGED_AGENT_DEFINITION_REVISION);
   db.close();
 });
 

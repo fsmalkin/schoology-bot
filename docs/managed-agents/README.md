@@ -89,6 +89,9 @@ Implemented dev bridge foundation:
 - `src/managed_agent_bridge.js` creates/reuses Claude sessions, sends
   `user.message` events, streams session events, collects `agent.message` text,
   and resolves `agent.custom_tool_use` events through local `runToolByName`.
+  Existing sessions are replaced when the local managed-agent definition
+  revision changes, so prompt/toolset changes do not leave beta chats stuck on
+  stale instructions.
 - `src/managed_agent_client.js` is a thin REST/SSE client for Claude Managed
   Agents session creation, event send, event stream, and session retrieval.
 - `src/managed_agent_tools.js` exports the Schoology custom tool definitions
@@ -117,8 +120,8 @@ Local/mock UAT coverage:
   Schoology tool call returning local assignment data.
 - `tests/managed_agent_bridge.test.js` also verifies unsupported tool errors,
   web built-in confirmation allow-listing, unsupported built-in denial, kid-safe
-  input/output blocking, deterministic invalid-arg errors, bounded large result
-  payloads, and tool-round limits.
+  input/output blocking, stale definition revision replacement, deterministic
+  invalid-arg errors, bounded large result payloads, and tool-round limits.
 - `tests/managed_agent_tools.test.js` verifies exported custom tool definitions
   cover the full Schoology tool surface.
 - `tests/kid_safe_content_filter.test.js` verifies ordinary schoolwork and safe

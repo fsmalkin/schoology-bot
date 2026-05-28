@@ -1,6 +1,7 @@
 import { buildManagedAgentCustomToolDefinitions } from "./managed_agent_tools.js";
 
 export const MANAGED_AGENT_ALLOWED_BUILTIN_TOOLS = ["web_search", "web_fetch"];
+export const MANAGED_AGENT_DEFINITION_REVISION = "2026-05-28-web-search-kid-safe-v1";
 
 export const SCHOOLLOGY_MANAGED_AGENT_SYSTEM = [
   "You are Schoology Bot, a parent-facing assistant for keeping schoolwork, reminders, and assignment follow-up organized.",

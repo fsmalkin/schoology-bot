@@ -16,6 +16,7 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
   - Telegram inbound resumes managed sessions; Claude custom tool requests call local deterministic tools.
   - Dev agent enables only `web_search`/`web_fetch` built-ins for school-safe public reference lookups; Schoology data still comes only from deterministic local tools.
   - Kid-safe input/output filtering blocks unsafe Telegram requests before model calls and suppresses unsafe final replies.
+  - Session metadata stores the managed-agent definition revision; chats with stale revisions are forced onto a fresh Claude session.
   - Implemented entrypoints: `src/agent_runtime.js`, `src/managed_agent_bridge.js`, `src/managed_agent_client.js`.
   - Tracking: [#25](https://github.com/fsmalkin/schoology-bot/issues/25), [Managed Agents migration doc](managed-agents/README.md), [FSM Engineering Board](https://github.com/users/fsmalkin/projects/3).
 - OpenClaw beta stack (rollback-only)
