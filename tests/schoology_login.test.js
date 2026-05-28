@@ -59,42 +59,28 @@ test("Microsoft-configured auth can submit the native Schoology login form", asy
 
 test("Microsoft-configured remote Schoology form starts SAML and prefers the BCPS account provider", async () => {
   await withPage(async (page) => {
-    let microsoftRouteHit = false;
     await page.route("https://bcps.schoology.com/login/saml?**", async (route) => {
       await route.fulfill({
         contentType: "text/html",
         body: `
-          <form>
-            <button id="AzureADBCPSOrgExchange" type="button" onclick="
-              window.location.href = 'https://login.microsoftonline.com/test';
-            ">
-              Login with your BCPS Account
-            </button>
-            <label>Sign in name <input id="signInName" /></label>
-            <label>Password <input id="password" type="password" /></label>
-          </form>
-        `,
-      });
-    });
-    await page.route("https://login.microsoftonline.com/test", async (route) => {
-      microsoftRouteHit = true;
-      await route.fulfill({
-        contentType: "text/html",
-        body: `
           <script>
-            let submits = 0;
-            function submitStep() {
-              submits += 1;
-              window.emailLength = document.querySelector("#i0116").value.length;
-              if (submits < 2) return;
-              window.passwordLength = document.querySelector("#i0118").value.length;
-              document.body.innerHTML = '<h1>Stay signed in?</h1><button id="idSIButton9" onclick="window.clickedKmsi=true">Yes</button>';
+            window.localFieldTouched = false;
+            function showMicrosoftForm() {
+              window.clickedAzure = true;
+              document.body.innerHTML =
+                '<form>' +
+                '<input id="i0116" name="loginfmt" type="email" />' +
+                '<input id="i0118" name="passwd" type="password" />' +
+                '<button id="idSIButton9" type="button" onclick="window.submitCount = (window.submitCount || 0) + 1">Next</button>' +
+                '</form>';
             }
           </script>
-          <form onsubmit="event.preventDefault(); submitStep();">
-            <input id="i0116" name="loginfmt" type="email" />
-            <input id="i0118" name="passwd" type="password" />
-            <button id="idSIButton9" type="submit">Next</button>
+          <form>
+            <button id="AzureADBCPSOrgExchange" type="button" onclick="showMicrosoftForm()">
+              Login with your BCPS Account
+            </button>
+            <label>Sign in name <input id="signInName" oninput="window.localFieldTouched = true" /></label>
+            <label>Password <input id="password" type="password" oninput="window.localFieldTouched = true" /></label>
           </form>
         `,
       });
@@ -124,7 +110,11 @@ test("Microsoft-configured remote Schoology form starts SAML and prefers the BCP
     );
 
     assert.equal(didAttempt, true);
-    assert.equal(microsoftRouteHit, true);
+    assert.equal(await page.evaluate(() => window.clickedAzure), true);
+    assert.equal(await page.evaluate(() => window.localFieldTouched), false);
+    assert.equal(await page.inputValue("#i0116"), "bcps-student");
+    assert.equal(await page.inputValue("#i0118"), "saved-password");
+    assert.equal(await page.evaluate(() => window.submitCount), 2);
   });
 });
 
