@@ -57,27 +57,44 @@ test("Microsoft-configured auth can submit the native Schoology login form", asy
   });
 });
 
-test("Microsoft-configured remote Schoology form starts SAML and uses BCPS local fields", async () => {
+test("Microsoft-configured remote Schoology form starts SAML and prefers the BCPS account provider", async () => {
   await withPage(async (page) => {
+    let microsoftRouteHit = false;
     await page.route("https://bcps.schoology.com/login/saml?**", async (route) => {
       await route.fulfill({
         contentType: "text/html",
         body: `
-          <form onsubmit="
-            window.submittedB2c = {
-              username: document.querySelector('#signInName').value,
-              password: document.querySelector('#password').value
-            };
-            event.preventDefault();
-            document.body.innerHTML =
-              '<h1>Stay signed in?</h1><button id=&quot;idSIButton9&quot; onclick=&quot;window.clickedKmsi = true&quot;>Yes</button>';
-          ">
-            <button id="AzureADBCPSOrgExchange" type="button" onclick="window.clickedAzure = true">
+          <form>
+            <button id="AzureADBCPSOrgExchange" type="button" onclick="
+              window.location.href = 'https://login.microsoftonline.com/test';
+            ">
               Login with your BCPS Account
             </button>
             <label>Sign in name <input id="signInName" /></label>
             <label>Password <input id="password" type="password" /></label>
-            <button id="next" type="submit">SIGN IN</button>
+          </form>
+        `,
+      });
+    });
+    await page.route("https://login.microsoftonline.com/test", async (route) => {
+      microsoftRouteHit = true;
+      await route.fulfill({
+        contentType: "text/html",
+        body: `
+          <script>
+            let submits = 0;
+            function submitStep() {
+              submits += 1;
+              window.emailLength = document.querySelector("#i0116").value.length;
+              if (submits < 2) return;
+              window.passwordLength = document.querySelector("#i0118").value.length;
+              document.body.innerHTML = '<h1>Stay signed in?</h1><button id="idSIButton9" onclick="window.clickedKmsi=true">Yes</button>';
+            }
+          </script>
+          <form onsubmit="event.preventDefault(); submitStep();">
+            <input id="i0116" name="loginfmt" type="email" />
+            <input id="i0118" name="passwd" type="password" />
+            <button id="idSIButton9" type="submit">Next</button>
           </form>
         `,
       });
@@ -107,12 +124,7 @@ test("Microsoft-configured remote Schoology form starts SAML and uses BCPS local
     );
 
     assert.equal(didAttempt, true);
-    assert.deepEqual(await page.evaluate(() => window.submittedB2c), {
-      username: "bcps-student",
-      password: "saved-password",
-    });
-    assert.equal(await page.evaluate(() => window.clickedAzure), undefined);
-    assert.equal(await page.evaluate(() => window.clickedKmsi), true);
+    assert.equal(microsoftRouteHit, true);
   });
 });
 

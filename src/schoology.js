@@ -100,6 +100,32 @@ async function waitForRenderedLoginControls(page, timeout = 15000) {
   }
 }
 
+async function waitForMicrosoftCredentialControls(page, timeout = 30000) {
+  try {
+    await page.waitForFunction(
+      () => {
+        const selectors = [
+          "input[type='email']",
+          "input[name='loginfmt']",
+          "input#i0116",
+          "input[name='passwd']",
+          "input#i0118",
+        ];
+        const isVisible = (element) => {
+          if (!element) return false;
+          const style = window.getComputedStyle(element);
+          return style.display !== "none" && style.visibility !== "hidden" && element.offsetParent !== null;
+        };
+        return selectors.some((selector) => isVisible(document.querySelector(selector)));
+      },
+      undefined,
+      { timeout }
+    );
+  } catch {
+    // Caller will continue with normal recognition/failure handling.
+  }
+}
+
 async function maybeHandleMicrosoftKmsi(page) {
   const prompt = page.getByText(/Stay signed in|Keep me signed in/i).first();
   const yesButton = page.locator("#idSIButton9").first();
@@ -167,10 +193,6 @@ async function maybeStartSchoologySamlLogin(page, config) {
   return await isBcpsB2CPage(page);
 }
 
-async function hasBcpsLocalCredentialForm(page) {
-  return (await hasSelector(page, "#signInName")) && (await hasSelector(page, "#password"));
-}
-
 async function loginWithMicrosoft(page, username, password) {
   await waitForRenderedLoginControls(page);
 
@@ -182,7 +204,8 @@ async function loginWithMicrosoft(page, username, password) {
     await clickByText(page, /Next|Sign in/i);
 
     const passwordInput = page.locator('input[type="password"], input[name="passwd"], input#i0118');
-    await passwordInput.first().waitFor({ timeout: 15000 });
+    await throwIfCredentialRejected(page, "Microsoft");
+    await passwordInput.first().waitFor({ state: "visible", timeout: 15000 });
     await passwordInput.first().fill(password);
     await clickByText(page, /Sign in|Next/i);
     await page.waitForLoadState("domcontentloaded").catch(() => {});
@@ -198,6 +221,8 @@ async function loginWithMicrosoft(page, username, password) {
   }
 
   // BCPS unified page can present local Sign in name + Password fields.
+  if (await hasSelector(page, "#AzureADBCPSOrgExchange")) return false;
+
   const signInNameInput = page.locator("#signInName, input[name='signInName'], input[name='Sign in name']");
   if (!(await isVisible(signInNameInput.first()))) return false;
 
@@ -439,8 +464,8 @@ async function runLoginFlow(page, config, provider) {
     await maybeEnterSsoSchool(page, config);
     await maybeStartSchoologySamlLogin(page, config);
     if (await isBcpsB2CPage(page)) {
-      if (!(await hasBcpsLocalCredentialForm(page))) {
-        await selectClaimsProvider(page, "microsoft");
+      if (await selectClaimsProvider(page, "microsoft")) {
+        await waitForMicrosoftCredentialControls(page);
       }
     }
     if (await loginWithMicrosoft(page, username, password)) return true;
