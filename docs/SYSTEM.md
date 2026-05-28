@@ -18,6 +18,7 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
   - Claude managed memory is for durable preferences and operating lessons only. Schoology data still comes from deterministic local tools/SQLite and should not be copied into memory as raw grades, full assignment lists, or private student records.
   - Kid-safe input/output filtering blocks unsafe Telegram requests before model calls and suppresses unsafe final replies.
   - Session metadata stores the managed-agent definition revision; chats with stale revisions are forced onto a fresh Claude session.
+  - Managed session metadata is not a transcript store. It carries only bounded local retry context for the last failed user request so `try again` can survive stream failures and forced session resets.
   - Implemented entrypoints: `src/agent_runtime.js`, `src/managed_agent_bridge.js`, `src/managed_agent_client.js`.
   - Tracking: [#25](https://github.com/fsmalkin/schoology-bot/issues/25), [Managed Agents migration doc](managed-agents/README.md), [FSM Engineering Board](https://github.com/users/fsmalkin/projects/3).
 - OpenClaw beta stack (rollback-only)
@@ -63,6 +64,8 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
 - data/agent.db
   - SQLite for assignments, unified task/reminder records, notes, chat_state,
     chat_memory, and `managed_agent_sessions`.
+  - `managed_agent_sessions` includes Claude session mapping plus bounded local
+    retry metadata for the last failed Telegram request.
 - data/beta/agent.runtime.db
   - Legacy beta runtime DB. Managed Agents implementation must decide whether to reuse this path for dev parity or replace it with a clearer managed-agent data path.
 - Claude managed memory store

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   createDb,
   getManagedAgentSession,
+  resetManagedAgentSession,
   syncAssignmentsFromState,
   upsertManagedAgentSession,
 } from "../src/db.js";
@@ -31,13 +32,14 @@ function makeConfig() {
   };
 }
 
-function makeMockClient({ sessionId = "sesn_test", streams = [] } = {}) {
+function makeMockClient({ sessionId = "sesn_test", streams = [], streamErrors = [] } = {}) {
   const calls = {
     createSession: [],
     sendEvents: [],
     streamEvents: [],
   };
   const streamQueue = streams.map((stream) => [...stream]);
+  const errorQueue = [...streamErrors];
   return {
     calls,
     createSession: async (payload) => {
@@ -50,6 +52,8 @@ function makeMockClient({ sessionId = "sesn_test", streams = [] } = {}) {
     },
     streamEvents: async function* (id) {
       calls.streamEvents.push({ sessionId: id });
+      const error = errorQueue.shift();
+      if (error) throw error;
       const next = streamQueue.shift() || [];
       for (const event of next) {
         yield event;
@@ -172,6 +176,80 @@ test("managed agent bridge attaches configured Claude memory store to new sessio
   ]);
   const stored = getManagedAgentSession(db, "chat-memory", "schoology-dev");
   assert.deepEqual(stored.metadata.memoryStoreIds, ["memstore_test"]);
+  db.close();
+});
+
+test("managed agent bridge preserves failed request context for retry after session reset", async () => {
+  const db = createDb();
+  const abort = new Error("aborted by test");
+  abort.name = "AbortError";
+  const failingClient = makeMockClient({
+    sessionId: "sesn_failed",
+    streamErrors: [abort],
+  });
+
+  await assert.rejects(
+    () =>
+      runManagedAgentMessage({
+        chatId: "chat-retry",
+        text: "mark everything before 4/4 as no action needed",
+        clientOverride: failingClient,
+        configOverride: makeConfig(),
+        dbOverride: db,
+      }),
+    /stream timed out/
+  );
+
+  const failed = getManagedAgentSession(db, "chat-retry", "schoology-dev");
+  assert.equal(failed.metadata.lastFailedUserText, "mark everything before 4/4 as no action needed");
+  assert.match(failed.metadata.lastFailedError, /stream timed out/);
+
+  resetManagedAgentSession(db, {
+    chatId: "chat-retry",
+    environment: "schoology-dev",
+    resetAt: "2026-05-28T22:00:00.000Z",
+    reason: "test-reset",
+  });
+
+  const retryClient = makeMockClient({
+    sessionId: "sesn_retry",
+    streams: [
+      [
+        {
+          id: "msg_retry",
+          type: "agent.message",
+          content: [{ type: "text", text: "Retried the previous request." }],
+        },
+        {
+          id: "idle_retry",
+          type: "session.status_idle",
+          stop_reason: { type: "end_turn" },
+        },
+      ],
+    ],
+  });
+
+  const result = await runManagedAgentMessage({
+    chatId: "chat-retry",
+    text: "try again",
+    clientOverride: retryClient,
+    configOverride: makeConfig(),
+    dbOverride: db,
+    debug: true,
+  });
+
+  assert.equal(result.sessionCreated, true);
+  assert.equal(result.sessionId, "sesn_retry");
+  assert.equal(retryClient.calls.createSession[0].metadata.create_reason, "reset");
+  assert.equal(retryClient.calls.createSession[0].metadata.last_failed_user_text, undefined);
+  const sentText = retryClient.calls.sendEvents[0].events[0].content[0].text;
+  assert.match(sentText, /Local Schoology Bot retry context/);
+  assert.match(sentText, /mark everything before 4\/4 as no action needed/);
+  assert.match(sentText, /stream timed out/);
+  const stored = getManagedAgentSession(db, "chat-retry", "schoology-dev");
+  assert.equal(stored.metadata.previousSessionId, "sesn_failed");
+  assert.equal(stored.metadata.lastRetryUserText, "mark everything before 4/4 as no action needed");
+  assert.equal(stored.metadata.lastFailedUserText, null);
   db.close();
 });
 

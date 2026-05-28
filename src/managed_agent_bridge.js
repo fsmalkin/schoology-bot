@@ -26,6 +26,10 @@ const DEFAULT_MEMORY_STORE_INSTRUCTIONS = [
   "Do not store secrets, credentials, tokens, raw Schoology grade details, full assignment lists, private student records, unsafe content, or copied web/fetched content.",
   "Schoology custom tools and local DB results are authoritative for assignments, grades, reminders, tasks, statuses, and notes.",
 ].join(" ");
+const RETRY_SHORTHAND_RE =
+  /^(?:try\s+again|retry|again|rerun|run\s+(?:it|that)\s+again|please\s+try\s+again)[.!?]*$/i;
+const MAX_RETRY_CONTEXT_CHARS = 2500;
+const MAX_RETRY_ERROR_CHARS = 500;
 
 function normalizeEnvironment(config) {
   const managed = config.managedAgents || {};
@@ -62,6 +66,70 @@ function buildMemoryStoreResources(config) {
       String(managed.memoryStoreInstructions || "").trim() || DEFAULT_MEMORY_STORE_INSTRUCTIONS,
   };
   return [resource];
+}
+
+function compactMetadataText(value, maxChars = MAX_RETRY_CONTEXT_CHARS) {
+  if (value === undefined || value === null) return "";
+  const text = String(value).trim();
+  if (!text) return "";
+  const limit = Number(maxChars);
+  if (!Number.isFinite(limit) || limit <= 0 || text.length <= limit) return text;
+  return `${text.slice(0, limit)}...`;
+}
+
+function retryCarryoverMetadata(session) {
+  const metadata = session?.metadata || {};
+  const lastFailedUserText = compactMetadataText(metadata.lastFailedUserText);
+  if (!lastFailedUserText) return {};
+  return {
+    lastFailedUserText,
+    lastFailedAt: compactMetadataText(metadata.lastFailedAt, 80) || null,
+    lastFailedError: compactMetadataText(metadata.lastFailedError, MAX_RETRY_ERROR_CHARS) || null,
+    lastFailedSessionId: session?.sessionId || metadata.lastFailedSessionId || null,
+  };
+}
+
+function buildRetryRequest(userText, metadata = {}) {
+  const text = String(userText || "").trim();
+  if (!RETRY_SHORTHAND_RE.test(text)) {
+    return { text: String(userText || ""), previousText: null, isRetry: false };
+  }
+  const previousText = compactMetadataText(metadata.lastFailedUserText);
+  if (!previousText) {
+    return { text: String(userText || ""), previousText: null, isRetry: false };
+  }
+  const lastFailedError = compactMetadataText(metadata.lastFailedError, MAX_RETRY_ERROR_CHARS);
+  const context = [
+    "Local Schoology Bot retry context:",
+    'The user just said "try again". Retry the previous failed Telegram request below using the current tools and data.',
+    "Do not ask what to retry unless the previous request is unsafe or impossible.",
+    "Before performing writes, inspect current state and avoid duplicating any side effect that may already have completed.",
+    lastFailedError ? `Previous local failure: ${lastFailedError}` : "",
+    "Previous failed request:",
+    previousText,
+  ].filter(Boolean);
+  return { text: context.join("\n\n"), previousText, isRetry: true };
+}
+
+function recordManagedAgentFailure(db, { chatId, config, attemptedUserText, error }) {
+  try {
+    const lastFailedUserText = compactMetadataText(attemptedUserText);
+    if (!lastFailedUserText) return;
+    const failedAt = new Date().toISOString();
+    markManagedAgentSessionEvent(db, {
+      chatId,
+      environment: normalizeEnvironment(config),
+      lastEventAt: failedAt,
+      metadata: {
+        lastEventType: "telegram_error",
+        lastFailedUserText,
+        lastFailedAt: failedAt,
+        lastFailedError: compactMetadataText(error?.message || String(error || ""), MAX_RETRY_ERROR_CHARS),
+      },
+    });
+  } catch {
+    // Failure recording must never mask the original agent error.
+  }
 }
 
 function parseToolInput(value) {
@@ -183,6 +251,7 @@ async function getOrStartSession({ db, config, client, chatId, now }) {
         : current.status
     : "missing";
   const resources = buildMemoryStoreResources(config);
+  const carryover = retryCarryoverMetadata(current);
   const created = await client.createSession({
     title: `Schoology Bot ${environment} chat ${chatId}`,
     metadata: {
@@ -214,6 +283,7 @@ async function getOrStartSession({ db, config, client, chatId, now }) {
       environmentId: config.managedAgents.environmentId,
       agentDefinitionRevision: expectedRevision,
       memoryStoreIds: resources.map((resource) => resource.memory_store_id),
+      ...carryover,
     },
   });
   return { sessionId, created: true, reason, session: stored.session };
@@ -310,141 +380,161 @@ export async function runManagedAgentMessage({
   const now = new Date().toISOString();
   const sessionInfo = await getOrStartSession({ db, config, client, chatId, now });
   const sessionId = sessionInfo.sessionId;
+  const originalText = String(text || "");
+  const retryRequest = buildRetryRequest(originalText, sessionInfo.session?.metadata || {});
+  const outboundUserText = retryRequest.text;
+  const attemptedUserText = retryRequest.previousText || originalText;
   const eventsById = new Map();
   const replyParts = [];
   const seenTextEvents = new Set();
   const executedTools = [];
   const completedActionIds = new Set();
 
-  await client.sendEvents(sessionId, [
-    {
-      type: "user.message",
-      content: [{ type: "text", text: String(text || "") }],
-    },
-  ]);
-
-  let finished = false;
   let streamPasses = 0;
-  const maxToolRounds = Number(config.managedAgents.maxToolRounds || 8);
-  const timeoutMs = Number(config.managedAgents.streamTimeoutMs || 120000);
-  const toolResultMaxChars = Number(config.managedAgents.toolResultMaxChars || 20000);
-
-  while (!finished && streamPasses < Math.max(1, maxToolRounds)) {
-    streamPasses += 1;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    let sentActions = false;
-    try {
-      for await (const event of client.streamEvents(sessionId, { signal: controller.signal })) {
-        const id = eventId(event);
-        if (id) eventsById.set(id, event);
-
-        const messageText = extractAgentMessageText(event);
-        if (messageText && (!id || !seenTextEvents.has(id))) {
-          if (id) seenTextEvents.add(id);
-          replyParts.push(messageText);
-        }
-
-        const customTool = extractCustomToolUse(event);
-        if (customTool?.id) {
-          eventsById.set(customTool.id, event);
-        }
-
-        if (String(event?.type || "") === "session.error") {
-          throw new Error(event?.error?.message || event?.message || "Claude Managed Agents session error.");
-        }
-
-        if (String(event?.type || "") === "session.status_idle") {
-          const reason = stopReason(event);
-          const reasonType = stopReasonType(reason);
-          if (reasonType === "requires_action") {
-            const actionEvents = [];
-            const actionIds = Array.from(
-              new Set(stopReasonEventIds(reason).filter(Boolean).map((value) => String(value)))
-            );
-            for (const actionId of actionIds) {
-              if (completedActionIds.has(actionId)) continue;
-              const blockedEvent = eventsById.get(actionId);
-              const call = extractCustomToolUse(blockedEvent);
-              if (call) {
-                const output = await executeCustomToolUse({ db, call, userText: text, now: toolNow });
-                completedActionIds.add(actionId);
-                executedTools.push({ call, output });
-                actionEvents.push(customToolResultEvent(call, output, { maxChars: toolResultMaxChars }));
-                continue;
-              }
-              const confirmation = extractToolConfirmation(blockedEvent);
-              if (confirmation) {
-                completedActionIds.add(actionId);
-                actionEvents.push(toolConfirmationEvent(confirmation));
-              }
-            }
-            if (actionEvents.length > 0) {
-              replyParts.length = 0;
-              seenTextEvents.clear();
-              await client.sendEvents(sessionId, actionEvents);
-              sentActions = true;
-            } else if (actionIds.length > 0 && actionIds.every((actionId) => completedActionIds.has(actionId))) {
-              sentActions = true;
-            } else {
-              throw new Error("Claude Managed Agents required an unsupported action.");
-            }
-            continue;
-          }
-          finished = true;
-          break;
-        }
-      }
-    } catch (err) {
-      if (err?.name === "AbortError") {
-        throw new Error("Claude Managed Agents stream timed out.");
-      }
-      throw err;
-    } finally {
-      clearTimeout(timer);
-    }
-    if (!sentActions) break;
-  }
-
-  if (!finished && streamPasses >= Math.max(1, maxToolRounds)) {
-    throw new Error("Claude Managed Agents exceeded the local tool round limit.");
-  }
-
-  let reply = normalizeAscii(sanitizeRepeatedText(replyParts.join("\n").trim())) || "Done.";
-  const outputSafety = detectKidUnsafeContent(reply);
-  let safety = null;
-  if (!outputSafety.safe) {
-    reply = KID_SAFE_OUTPUT_FALLBACK;
-    safety = safetyDebugPayload("output", outputSafety);
-  }
-  markManagedAgentSessionEvent(db, {
-    chatId,
-    environment: normalizeEnvironment(config),
-    lastEventAt: new Date().toISOString(),
-    metadata: {
-      lastEventType: "telegram_message",
-      lastStreamPasses: streamPasses,
-      lastToolCount: executedTools.length,
-    },
-  });
-
-  if (debug) {
-    const executed = executedTools.map((entry) => ({
-      call: {
-        name: normalizeManagedToolName(entry.call?.name) || entry.call?.name || "",
-        arguments: entry.call?.input || {},
+  try {
+    await client.sendEvents(sessionId, [
+      {
+        type: "user.message",
+        content: [{ type: "text", text: outboundUserText }],
       },
-      output: entry.output,
-    }));
-    return {
-      reply,
-      sessionId,
-      sessionCreated: sessionInfo.created,
-      executed,
-      executedTools,
-      streamPasses,
-      ...(safety ? { safety } : {}),
-    };
+    ]);
+
+    let finished = false;
+    const maxToolRounds = Number(config.managedAgents.maxToolRounds || 8);
+    const timeoutMs = Number(config.managedAgents.streamTimeoutMs || 120000);
+    const toolResultMaxChars = Number(config.managedAgents.toolResultMaxChars || 20000);
+
+    while (!finished && streamPasses < Math.max(1, maxToolRounds)) {
+      streamPasses += 1;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      let sentActions = false;
+      try {
+        for await (const event of client.streamEvents(sessionId, { signal: controller.signal })) {
+          const id = eventId(event);
+          if (id) eventsById.set(id, event);
+
+          const messageText = extractAgentMessageText(event);
+          if (messageText && (!id || !seenTextEvents.has(id))) {
+            if (id) seenTextEvents.add(id);
+            replyParts.push(messageText);
+          }
+
+          const customTool = extractCustomToolUse(event);
+          if (customTool?.id) {
+            eventsById.set(customTool.id, event);
+          }
+
+          if (String(event?.type || "") === "session.error") {
+            throw new Error(event?.error?.message || event?.message || "Claude Managed Agents session error.");
+          }
+
+          if (String(event?.type || "") === "session.status_idle") {
+            const reason = stopReason(event);
+            const reasonType = stopReasonType(reason);
+            if (reasonType === "requires_action") {
+              const actionEvents = [];
+              const actionIds = Array.from(
+                new Set(stopReasonEventIds(reason).filter(Boolean).map((value) => String(value)))
+              );
+              for (const actionId of actionIds) {
+                if (completedActionIds.has(actionId)) continue;
+                const blockedEvent = eventsById.get(actionId);
+                const call = extractCustomToolUse(blockedEvent);
+                if (call) {
+                  const output = await executeCustomToolUse({
+                    db,
+                    call,
+                    userText: outboundUserText,
+                    now: toolNow,
+                  });
+                  completedActionIds.add(actionId);
+                  executedTools.push({ call, output });
+                  actionEvents.push(customToolResultEvent(call, output, { maxChars: toolResultMaxChars }));
+                  continue;
+                }
+                const confirmation = extractToolConfirmation(blockedEvent);
+                if (confirmation) {
+                  completedActionIds.add(actionId);
+                  actionEvents.push(toolConfirmationEvent(confirmation));
+                }
+              }
+              if (actionEvents.length > 0) {
+                replyParts.length = 0;
+                seenTextEvents.clear();
+                await client.sendEvents(sessionId, actionEvents);
+                sentActions = true;
+              } else if (actionIds.length > 0 && actionIds.every((actionId) => completedActionIds.has(actionId))) {
+                sentActions = true;
+              } else {
+                throw new Error("Claude Managed Agents required an unsupported action.");
+              }
+              continue;
+            }
+            finished = true;
+            break;
+          }
+        }
+      } catch (err) {
+        if (err?.name === "AbortError") {
+          throw new Error("Claude Managed Agents stream timed out.");
+        }
+        throw err;
+      } finally {
+        clearTimeout(timer);
+      }
+      if (!sentActions) break;
+    }
+
+    if (!finished && streamPasses >= Math.max(1, maxToolRounds)) {
+      throw new Error("Claude Managed Agents exceeded the local tool round limit.");
+    }
+
+    let reply = normalizeAscii(sanitizeRepeatedText(replyParts.join("\n").trim())) || "Done.";
+    const outputSafety = detectKidUnsafeContent(reply);
+    let safety = null;
+    if (!outputSafety.safe) {
+      reply = KID_SAFE_OUTPUT_FALLBACK;
+      safety = safetyDebugPayload("output", outputSafety);
+    }
+    markManagedAgentSessionEvent(db, {
+      chatId,
+      environment: normalizeEnvironment(config),
+      lastEventAt: new Date().toISOString(),
+      metadata: {
+        lastEventType: "telegram_message",
+        lastStreamPasses: streamPasses,
+        lastToolCount: executedTools.length,
+        lastUserText: compactMetadataText(originalText),
+        lastRetryUserText: retryRequest.previousText || null,
+        lastFailedUserText: null,
+        lastFailedAt: null,
+        lastFailedError: null,
+        lastFailedSessionId: null,
+      },
+    });
+
+    if (debug) {
+      const executed = executedTools.map((entry) => ({
+        call: {
+          name: normalizeManagedToolName(entry.call?.name) || entry.call?.name || "",
+          arguments: entry.call?.input || {},
+        },
+        output: entry.output,
+      }));
+      return {
+        reply,
+        sessionId,
+        sessionCreated: sessionInfo.created,
+        executed,
+        executedTools,
+        streamPasses,
+        ...(safety ? { safety } : {}),
+      };
+    }
+    return reply;
+  } catch (err) {
+    recordManagedAgentFailure(db, { chatId, config, attemptedUserText, error: err });
+    throw err;
   }
-  return reply;
 }

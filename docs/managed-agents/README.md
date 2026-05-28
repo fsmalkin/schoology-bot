@@ -113,6 +113,10 @@ Implemented dev bridge foundation:
   that store as a `memory_store` resource. The agent may consult or update files
   under `/mnt/memory`, but Schoology data remains authoritative in the local app
   DB/tools.
+- Claude managed memory is not used as a raw transcript store. The local bridge
+  stores only bounded last-failed-request retry context in `managed_agent_sessions`
+  and expands retry shorthand such as `try again` across stream failures and
+  forced session resets.
 - A kid-safe content guard blocks unsafe Telegram input before any model/API
   call and replaces unsafe final assistant output before Telegram delivery.
 - The custom tool loop rejects unsupported custom tools with explicit tool
@@ -128,8 +132,9 @@ Local/mock UAT coverage:
 - `tests/managed_agent_bridge.test.js` also verifies unsupported tool errors,
   web and memory file built-in confirmation allow-listing, memory store resource
   attachment, unsupported built-in denial, kid-safe input/output blocking, stale
-  definition revision replacement, deterministic invalid-arg errors, bounded
-  large result payloads, and tool-round limits.
+  definition revision replacement, local retry context after session reset,
+  deterministic invalid-arg errors, bounded large result payloads, and tool-round
+  limits.
 - `tests/managed_agent_tools.test.js` verifies exported custom tool definitions
   cover the full Schoology tool surface.
 - `tests/kid_safe_content_filter.test.js` verifies ordinary schoolwork and safe
@@ -237,6 +242,13 @@ Live dev API smoke completed:
   `2026-04-04` for the current 2025-26 school year. Live copied-DB repro
   `sesn_01Bj1VcoqpqDHWerrf8iTs88` updated the 7 intended beta rows in one
   tool call without timing out.
+- Retry context across forced session resets is implemented locally in the
+  bridge. On stream/tool-loop failures, the bridge stores only the bounded last
+  failed request in `managed_agent_sessions`; a later `try again` expands to
+  that request even after a session reset, without using Claude managed memory
+  as a transcript store. Docker exec live smoke `sesn_012qVBQKzbosWvGy85XTWgRR`
+  replied `retry context smoke OK` from a reset synthetic session and cleared
+  the failed-request marker.
 
 ## API Management
 Tracked by [#30](https://github.com/fsmalkin/schoology-bot/issues/30).
