@@ -23,6 +23,7 @@ test("managed agent system prompt preserves reminder default policy", () => {
   assert.match(definition.system, /Do not use web tools to search for unsafe/i);
   assert.match(definition.system, /memory may be mounted under \/mnt\/memory/i);
   assert.match(definition.system, /Never store secrets, credentials, tokens/i);
+  assert.match(definition.system, /bulk_update_assignments_by_filter/i);
 });
 
 test("managed agent enables safe web and memory file built-ins from the agent toolset", () => {
@@ -45,4 +46,9 @@ test("managed agent enables safe web and memory file built-ins from the agent to
   }
   assert.ok(!toolset.configs.some((config) => config.name === "bash"));
   assert.ok(definition.tools.some((tool) => tool.type === "custom" && tool.name === "schoology_list_assignments"));
+  assert.ok(
+    definition.tools.some(
+      (tool) => tool.type === "custom" && tool.name === "schoology_bulk_update_assignments_by_filter"
+    )
+  );
 });

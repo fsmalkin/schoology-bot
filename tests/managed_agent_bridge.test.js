@@ -308,6 +308,88 @@ test("managed agent bridge reuses a session and resolves custom Schoology tool c
   db.close();
 });
 
+test("managed agent bridge resolves date-filtered bulk status updates in one tool call", async () => {
+  const db = createDb();
+  syncAssignmentsFromState(db, {
+    assignments: {
+      oldMissing: {
+        key: "oldMissing",
+        course: "Science",
+        title: "Old Missing",
+        dueDate: "3/27/26 11:59pm",
+        status: "Missing",
+        isMissing: true,
+      },
+      cutoffMissing: {
+        key: "cutoffMissing",
+        course: "Science",
+        title: "Cutoff Missing",
+        dueDate: "4/04/26 11:59pm",
+        status: "Missing",
+        isMissing: true,
+      },
+    },
+  });
+
+  const client = makeMockClient({
+    streams: [
+      [
+        {
+          id: "tool_evt_bulk",
+          type: "agent.custom_tool_use",
+          name: "schoology_bulk_update_assignments_by_filter",
+          input: {
+            targetStatus: "No action needed",
+            assignmentStatus: "missing",
+            dueBefore: "2026-04-04",
+            includePending: true,
+            includeIgnored: false,
+            maxUpdates: 200,
+          },
+        },
+        {
+          id: "idle_tool",
+          type: "session.status_idle",
+          stop_reason: { type: "requires_action", event_ids: ["tool_evt_bulk"] },
+        },
+        {
+          id: "msg_done",
+          type: "agent.message",
+          content: [{ type: "text", text: "Marked 1 old assignment as no action needed." }],
+        },
+        {
+          id: "idle_done",
+          type: "session.status_idle",
+          stop_reason: { type: "end_turn" },
+        },
+      ],
+    ],
+  });
+
+  const result = await runManagedAgentMessage({
+    chatId: "chat-filtered-bulk",
+    text: "mark everything before 4/4 as no action needed",
+    clientOverride: client,
+    configOverride: makeConfig(),
+    dbOverride: db,
+    debug: true,
+    toolNow: "2026-05-28T12:00:00-04:00",
+  });
+
+  assert.equal(result.reply, "Marked 1 old assignment as no action needed.");
+  assert.equal(result.executed[0].call.name, "bulk_update_assignments_by_filter");
+  assert.equal(result.executed[0].output.updatedCount, 1);
+  assert.equal(
+    db.prepare("SELECT manual_status FROM assignments WHERE key = 'oldMissing'").get().manual_status,
+    "No way to fix it"
+  );
+  assert.equal(
+    db.prepare("SELECT manual_status FROM assignments WHERE key = 'cutoffMissing'").get().manual_status,
+    null
+  );
+  db.close();
+});
+
 test("managed agent bridge executes repeated action event ids only once", async () => {
   const db = createDb();
   syncAssignmentsFromState(db, {

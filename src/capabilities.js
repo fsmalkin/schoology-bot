@@ -13,6 +13,12 @@ const TOOL_CAPABILITY_REGISTRY = {
     supports: ["write_assignment_status"],
     requires: ["assignment selectors per row"],
   },
+  bulk_update_assignments_by_filter: {
+    summary: "Set one local manual status for assignments matching safe filters like dueBefore.",
+    supports: ["write_assignment_status"],
+    requires: ["targetStatus", "date or course filter"],
+    limitations: ["Defaults to missing assignments and a 200-row safety cap"],
+  },
   apply_numbered_statuses: {
     summary: "Apply manual statuses by index from the current missing list ordering.",
     supports: ["write_assignment_status"],

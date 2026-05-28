@@ -17,12 +17,22 @@ export const STATUS_CATEGORY = {
 
 const IGNORED_STATUSES = new Set([STATUS_CODE_MAP.A, STATUS_CODE_MAP.B, STATUS_CODE_MAP.C]);
 const PENDING_STATUSES = new Set([STATUS_CODE_MAP.D, STATUS_CODE_MAP.E, STATUS_CODE_MAP.F]);
+const STATUS_ALIAS_MAP = new Map([
+  ["no action needed", STATUS_CODE_MAP.C],
+  ["no action", STATUS_CODE_MAP.C],
+  ["nothing needed", STATUS_CODE_MAP.C],
+  ["not needed", STATUS_CODE_MAP.C],
+  ["ignore", STATUS_CODE_MAP.C],
+  ["ignored", STATUS_CODE_MAP.C],
+]);
 
 export function normalizeManualStatus(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
   const code = raw.toUpperCase();
   if (STATUS_CODE_MAP[code]) return STATUS_CODE_MAP[code];
+  const alias = STATUS_ALIAS_MAP.get(raw.toLowerCase().replace(/\s+/g, " "));
+  if (alias) return alias;
   return raw;
 }
 

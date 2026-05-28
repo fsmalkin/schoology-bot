@@ -49,6 +49,7 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
      - missing recurring cadence defaults to weekdays on explicit recurring asks,
      - missing recurring time defaults to 7:00 AM / 4:30 PM / 9:00 PM ET by cue type,
      - unsupported cadence falls back to weekly with explicit warning.
+   - Broad local status writes, such as marking everything before a due date as no action needed, route through a deterministic filtered bulk tool with missing-assignment defaults and a safety cap.
    - User-facing follow-up text expands `MUA` to `Mid-Unit Assessment`, can switch between `compact` and `plain_language`, and includes saved note/reminder context when available.
 5) Dashboard
    - `Home` reads SQLite to build a parent-first after-school plan with clickable assignment and follow-up cards.

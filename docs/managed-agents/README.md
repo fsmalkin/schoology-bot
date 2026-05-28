@@ -227,6 +227,16 @@ Live dev API smoke completed:
   After Docker rebuild/recreate, the managed-dev poller created
   `sesn_015dSmmxjCgtVVTei98gVkDF` with the memory store attached and recalled
   the same preference from inside the container.
+- Date-filtered bulk status updates are implemented in code and covered by
+  local/live copied-DB tests. The dev cloud agent was updated to version `8` on
+  2026-05-28 with `bulk_update_assignments_by_filter` available for requests
+  like "mark everything before 4/4 as no action needed." The deterministic tool
+  defaults to missing assignments, includes pending local statuses, excludes
+  ignored rows, uses a 200-row safety cap, maps "no action needed" to the local
+  ignored status, and resolves school-year shorthand dates such as `4/4` to
+  `2026-04-04` for the current 2025-26 school year. Live copied-DB repro
+  `sesn_01Bj1VcoqpqDHWerrf8iTs88` updated the 7 intended beta rows in one
+  tool call without timing out.
 
 ## API Management
 Tracked by [#30](https://github.com/fsmalkin/schoology-bot/issues/30).
@@ -289,6 +299,8 @@ The Managed Agents dev runtime must pass the same user-facing stories before UAT
 8. Avoid tool-call loops and repeated clarification loops.
 9. Use web search/fetch only for school-safe public reference lookups, while
    keeping Schoology data routed through deterministic local tools.
+10. Handle broad due-date status updates through deterministic filtered bulk
+    tools instead of model-enumerated row-by-row updates.
 
 Current status:
 - Reminder/recurrence parity story suite and judge passed for both legacy and

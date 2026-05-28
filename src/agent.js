@@ -76,6 +76,7 @@ function buildResponsePrompt(config, allowedTools = TOOL_NAMES, { messageStyle =
     "When talking about tasks or assignment reminders, use the term 'Reminders' and combine them unless the user asks for a specific type.",
     "If a note implies a follow-up action, ask if the user wants a reminder created.",
     "Manual statuses, assignment notes, and reminders are stored locally (not in Schoology) and can be updated immediately via tools.",
+    "If the user asks to mark everything before/on a due date, use the date-filtered bulk status tool instead of listing and updating assignments one by one. Treat 'no action needed' as status C.",
     "If a pending action is confirmed, do not ask for confirmation again. Execute the queued update and report the result.",
     `Manual status codes: ${statusGuideText()}.`,
     "Default reporting buckets: Actionable, Pending, Ignored. Hide Ignored by default unless asked.",
@@ -324,6 +325,7 @@ const TOOL_GROUPS = {
     "list_assignments",
     "update_assignment_status",
     "bulk_update_assignment_statuses",
+    "bulk_update_assignments_by_filter",
     "apply_numbered_statuses",
     "add_assignment_note",
     "schedule_reminder",
@@ -427,6 +429,58 @@ export function toolDefinitions() {
           },
         },
         ["updates"]
+      ),
+    },
+    {
+      type: "function",
+      name: "bulk_update_assignments_by_filter",
+      description:
+        "Set one local manual status for missing assignments matching safe filters such as dueBefore or dueOnOrBefore. Use for requests like 'mark everything before 4/4 as no action needed'.",
+      strict: true,
+      parameters: buildStrictParams(
+        {
+          targetStatus: {
+            type: "string",
+            description:
+              "New manual status. Use C or 'No action needed' when the user says no action needed.",
+          },
+          assignmentStatus: {
+            type: "string",
+            enum: ["missing", "resolved", "all", "submitted_awaiting_grade"],
+            description: "Assignment source filter. Default missing.",
+          },
+          course: {
+            type: "string",
+            description: "Optional course name substring.",
+          },
+          dueBefore: {
+            type: "string",
+            description: "Optional exclusive due-date cutoff, preferably YYYY-MM-DD.",
+          },
+          dueOnOrBefore: {
+            type: "string",
+            description: "Optional inclusive due-date cutoff, preferably YYYY-MM-DD.",
+          },
+          includePending: {
+            type: "boolean",
+            description: "Include pending manual statuses; default true.",
+          },
+          includeIgnored: {
+            type: "boolean",
+            description: "Include already ignored/local no-action statuses; default false.",
+          },
+          maxUpdates: {
+            type: "integer",
+            minimum: 1,
+            maximum: 1000,
+            description: "Safety cap; default 200.",
+          },
+          dryRun: {
+            type: "boolean",
+            description: "Preview only without writing.",
+          },
+        },
+        ["targetStatus"]
       ),
     },
     {
@@ -950,6 +1004,7 @@ function buildToolPlanInstructions(allowedTools = TOOL_NAMES, config = null) {
     "User: refresh and list missing -> {\"action\":\"call_tools\",\"tool\":\"refresh_schoology\",\"args\":\"{}\",\"calls\":[{\"tool\":\"refresh_schoology\",\"args\":\"{}\"},{\"tool\":\"list_assignments\",\"args\":\"{\\\"status\\\":\\\"missing\\\",\\\"includePending\\\":true,\\\"includeIgnored\\\":false,\\\"bucketed\\\":true}\"}]}",
     "User: what are my missing assignments -> {\"action\":\"call_tool\",\"tool\":\"list_assignments\",\"args\":\"{\\\"status\\\":\\\"missing\\\",\\\"includePending\\\":true,\\\"includeIgnored\\\":false,\\\"bucketed\\\":true}\",\"calls\":null}",
     "User: what has been submitted but not graded -> {\"action\":\"call_tool\",\"tool\":\"list_assignments\",\"args\":\"{\\\"status\\\":\\\"submitted_awaiting_grade\\\",\\\"includePending\\\":true,\\\"includeIgnored\\\":true,\\\"bucketed\\\":true,\\\"limit\\\":1000}\",\"calls\":null}",
+    "User: mark everything before 4/4 as no action needed -> {\"action\":\"call_tool\",\"tool\":\"bulk_update_assignments_by_filter\",\"args\":\"{\\\"targetStatus\\\":\\\"C\\\",\\\"assignmentStatus\\\":\\\"missing\\\",\\\"dueBefore\\\":\\\"2026-04-04\\\",\\\"includePending\\\":true,\\\"includeIgnored\\\":false,\\\"maxUpdates\\\":200}\",\"calls\":null}",
     "User: add note to Latin Quiz 1 -> {\"action\":\"call_tool\",\"tool\":\"add_assignment_note\",\"args\":\"{\\\"title\\\":\\\"Quiz 1\\\",\\\"course\\\":\\\"Latin\\\",\\\"note\\\":\\\"Submitted. Waiting for grade.\\\"}\",\"calls\":null}",
     "User: mark Latin Quiz 1 as Waiting on teacher -> {\"action\":\"call_tool\",\"tool\":\"update_assignment_status\",\"args\":\"{\\\"title\\\":\\\"Quiz 1\\\",\\\"course\\\":\\\"Latin\\\",\\\"status\\\":\\\"E\\\"}\",\"calls\":null}",
     "User: remind me Thu 7:15am to follow up on Algebra Homework 1 -> {\"action\":\"call_tool\",\"tool\":\"schedule_reminder\",\"args\":\"{\\\"title\\\":\\\"Homework 1\\\",\\\"course\\\":\\\"Algebra\\\",\\\"remindAt\\\":\\\"Thu 7:15am\\\",\\\"message\\\":\\\"Follow up with teacher\\\"}\",\"calls\":null}",

@@ -12,6 +12,7 @@ import {
   deleteTask,
   updateAssignmentStatus,
   updateAssignmentStatuses,
+  updateAssignmentStatusesByFilter,
   normalizeRecurrenceKind,
   updateReminder,
   updateTask,
@@ -36,6 +37,7 @@ export const TOOL_NAMES = [
   "list_assignments",
   "update_assignment_status",
   "bulk_update_assignment_statuses",
+  "bulk_update_assignments_by_filter",
   "apply_numbered_statuses",
   "add_assignment_note",
   "schedule_reminder",
@@ -361,6 +363,12 @@ export async function runToolByName(db, toolName, args, context = {}) {
       return updateAssignmentStatus(db, args);
     case "bulk_update_assignment_statuses":
       return updateAssignmentStatuses(db, args.updates || []);
+    case "bulk_update_assignments_by_filter":
+      return updateAssignmentStatusesByFilter(db, args || {}, {
+        timeZone,
+        now: context?.now,
+        userText: context?.userText,
+      });
     case "apply_numbered_statuses":
       return applyNumberedStatuses(db, args);
     case "add_assignment_note":

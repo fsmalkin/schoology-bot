@@ -1006,6 +1006,33 @@ export function buildReadableToolResponse({
       continue;
     }
 
+    if (name === "bulk_update_assignments_by_filter") {
+      if (output?.ok) {
+        const status = formatFriendlyStatus(output.status || args.targetStatus || args.status);
+        const count = Number(output.updatedCount || 0);
+        doneNow.push(
+          makeItem(
+            count === 1
+              ? `Updated 1 assignment -> ${status}.`
+              : `Updated ${count} assignments -> ${status}.`
+          )
+        );
+        for (const row of Array.isArray(output.assignments) ? output.assignments.slice(0, 8) : []) {
+          info.push(
+            makeItem(
+              `${assignmentInlineLabel(row, row)}${row.dueDate ? ` | Due ${row.dueDate}` : ""}`
+            )
+          );
+        }
+        if (Number(output.omittedCount || 0) > 0) {
+          info.push(makeItem(`${output.omittedCount} more not shown.`));
+        }
+      } else if (output?.error) {
+        doneNow.push(makeItem(`Need your input: ${output.error}`));
+      }
+      continue;
+    }
+
     if (name === "apply_numbered_statuses") {
       for (const row of Array.isArray(output?.results) ? output.results : []) {
         const result = row?.result || {};

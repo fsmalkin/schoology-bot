@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
 import { getManualStatusCategory, normalizeManualStatus } from "./statuses.js";
-import { nowIso, parseSchoologyDate } from "./time.js";
+import { formatDateYmd, getLocalDateParts, nowIso, parseSchoologyDate } from "./time.js";
 import { extractAssignmentId, loadState } from "./storage.js";
 import { deriveSchoologyAssignmentTitle } from "./text_utils.js";
 
@@ -1715,6 +1715,177 @@ export function updateAssignmentStatuses(db, updates = []) {
     results.push({ input: update, result });
   }
   return { ok: true, successCount, total: results.length, results };
+}
+
+function normalizeBulkFilterDate(value, { now = new Date(), timeZone = "America/New_York" } = {}) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const iso = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) {
+    const year = Number(iso[1]);
+    const month = Number(iso[2]);
+    const day = Number(iso[3]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+
+  const slash = raw.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
+  if (slash) {
+    const month = Number(slash[1]);
+    const day = Number(slash[2]);
+    let year = slash[3] ? Number(slash[3]) : null;
+    if (year !== null && year < 100) year += 2000;
+    if (year === null) {
+      const parts = getLocalDateParts(now, timeZone);
+      year = parts?.year || now.getFullYear();
+    }
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+
+  const direct = new Date(raw);
+  if (Number.isFinite(direct.getTime())) {
+    return formatDateYmd(direct, timeZone);
+  }
+  return null;
+}
+
+function inferSchoolYearDateYmdFromText(text, { now = new Date(), timeZone = "America/New_York" } = {}) {
+  const raw = String(text || "");
+  const match = raw.match(/\b(\d{1,2})\/(\d{1,2})(?!\/\d)\b/);
+  if (!match) return null;
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const nowParts = getLocalDateParts(now, timeZone);
+  const currentYear = nowParts?.year || now.getFullYear();
+  const currentMonth = nowParts?.month || now.getMonth() + 1;
+  const year =
+    currentMonth >= 8
+      ? month >= 8
+        ? currentYear
+        : currentYear + 1
+      : month >= 8
+      ? currentYear - 1
+      : currentYear;
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+export function updateAssignmentStatusesByFilter(db, options = {}, context = {}) {
+  const timeZone = context.timeZone || "America/New_York";
+  const now = context.now ? new Date(context.now) : new Date();
+  const targetStatus = normalizeManualStatus(options.targetStatus ?? options.status);
+  if (!targetStatus) return { ok: false, error: "Target status is required." };
+
+  const userTextDateYmd = inferSchoolYearDateYmdFromText(context.userText, { now, timeZone });
+  const dueBeforeYmd =
+    options.dueBefore && userTextDateYmd
+      ? userTextDateYmd
+      : normalizeBulkFilterDate(options.dueBefore, { now, timeZone });
+  const dueOnOrBeforeYmd =
+    options.dueOnOrBefore && userTextDateYmd
+      ? userTextDateYmd
+      : normalizeBulkFilterDate(options.dueOnOrBefore, { now, timeZone });
+  if ((options.dueBefore && !dueBeforeYmd) || (options.dueOnOrBefore && !dueOnOrBeforeYmd)) {
+    return { ok: false, error: "Date filter is invalid. Use YYYY-MM-DD or M/D/YYYY." };
+  }
+  if (!dueBeforeYmd && !dueOnOrBeforeYmd && !options.course) {
+    return {
+      ok: false,
+      error: "A date or course filter is required for bulk status updates.",
+    };
+  }
+
+  const assignmentStatus = normalizeAssignmentListStatus(options.assignmentStatus || "missing");
+  const includeIgnored = options.includeIgnored === true;
+  const includePending = options.includePending !== false;
+  const maxUpdates = Number.isFinite(Number(options.maxUpdates))
+    ? Math.max(1, Math.min(Number(options.maxUpdates), 1000))
+    : 200;
+
+  const candidates = listAssignments(db, {
+    status: assignmentStatus,
+    course: options.course || null,
+    includeIgnored: true,
+    includePending: true,
+    limit: 1000,
+  });
+
+  const matches = candidates.filter((row) => {
+    if (!includeIgnored && row.statusCategory === "ignored") return false;
+    if (!includePending && row.statusCategory === "pending") return false;
+    const due = parseSchoologyDate(row.dueDate, timeZone);
+    const dueYmd = due ? formatDateYmd(due, timeZone) : "";
+    if (dueBeforeYmd && (!dueYmd || dueYmd >= dueBeforeYmd)) return false;
+    if (dueOnOrBeforeYmd && (!dueYmd || dueYmd > dueOnOrBeforeYmd)) return false;
+    return true;
+  });
+
+  const preview = matches.slice(0, 25).map((row) => ({
+    key: row.key,
+    course: row.course,
+    title: row.title,
+    dueDate: row.dueDate,
+    previousStatus: row.manualStatus || row.effectiveStatus || row.status || "",
+  }));
+
+  if (matches.length > maxUpdates) {
+    return {
+      ok: false,
+      error: `Matched ${matches.length} assignments, which is above the safety limit of ${maxUpdates}. Narrow the filter or raise maxUpdates.`,
+      matchedCount: matches.length,
+      maxUpdates,
+      assignments: preview,
+      omittedCount: Math.max(0, matches.length - preview.length),
+      filter: {
+        assignmentStatus,
+        course: options.course || null,
+        dueBefore: dueBeforeYmd,
+        dueOnOrBefore: dueOnOrBeforeYmd,
+        includePending,
+        includeIgnored,
+      },
+    };
+  }
+
+  const dryRun = options.dryRun === true;
+  if (!dryRun && matches.length > 0) {
+    const update = db.prepare(
+      `
+      UPDATE assignments
+      SET manual_status = @status,
+          manual_status_updated_at = @updated_at
+      WHERE key = @key
+    `
+    );
+    const tx = db.transaction((rows) => {
+      const updatedAt = nowIso();
+      for (const row of rows) {
+        update.run({ key: row.key, status: targetStatus, updated_at: updatedAt });
+      }
+    });
+    tx(matches);
+  }
+
+  return {
+    ok: true,
+    status: targetStatus,
+    matchedCount: matches.length,
+    updatedCount: dryRun ? 0 : matches.length,
+    dryRun,
+    assignments: preview,
+    omittedCount: Math.max(0, matches.length - preview.length),
+    filter: {
+      assignmentStatus,
+      course: options.course || null,
+      dueBefore: dueBeforeYmd,
+      dueOnOrBefore: dueOnOrBeforeYmd,
+      includePending,
+      includeIgnored,
+    },
+  };
 }
 
 export function applyNumberedStatuses(db, { statusByIndex = [], listStatus = "missing" } = {}) {

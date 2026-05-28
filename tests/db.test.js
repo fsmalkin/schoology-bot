@@ -4,6 +4,7 @@ import {
   createDb,
   syncAssignmentsFromState,
   updateAssignmentStatus,
+  updateAssignmentStatusesByFilter,
   applyNumberedStatuses,
   listAssignments,
   findAssignments,
@@ -56,6 +57,113 @@ test("updateAssignmentStatus maps letter codes", () => {
   assert.equal(result.ok, true);
   const row = db.prepare("SELECT manual_status FROM assignments WHERE key = ?").get("a1");
   assert.equal(row.manual_status, "Practice / not for grade");
+});
+
+test("updateAssignmentStatus maps no-action wording to ignored status", () => {
+  const db = createDb();
+  seedDb(db);
+
+  const result = updateAssignmentStatus(db, { key: "a1", status: "No action needed" });
+  assert.equal(result.ok, true);
+  const row = db.prepare("SELECT manual_status FROM assignments WHERE key = ?").get("a1");
+  assert.equal(row.manual_status, "No way to fix it");
+  assert.equal(listAssignments(db, { status: "missing" }).some((item) => item.key === "a1"), false);
+});
+
+test("updateAssignmentStatusesByFilter handles date-scoped no-action updates", () => {
+  const db = createDb();
+  syncAssignmentsFromState(db, {
+    assignments: {
+      oldActionable: {
+        key: "oldActionable",
+        course: "Science",
+        title: "Old Missing",
+        dueDate: "3/27/26 11:59pm",
+        status: "Missing",
+        isMissing: true,
+      },
+      oldPending: {
+        key: "oldPending",
+        course: "Chorus",
+        title: "Old Waiting",
+        dueDate: "2/10/26 11:59pm",
+        status: "Missing",
+        isMissing: true,
+      },
+      onCutoff: {
+        key: "onCutoff",
+        course: "Science",
+        title: "Cutoff Missing",
+        dueDate: "4/04/26 11:59pm",
+        status: "Missing",
+        isMissing: true,
+      },
+      resolvedOld: {
+        key: "resolvedOld",
+        course: "Science",
+        title: "Resolved Old",
+        dueDate: "3/01/26 11:59pm",
+        status: "A 10 / 10",
+        isMissing: false,
+      },
+    },
+  });
+  updateAssignmentStatus(db, { key: "oldPending", status: "E" });
+
+  const result = updateAssignmentStatusesByFilter(
+    db,
+    {
+      targetStatus: "No action needed",
+      dueBefore: "2025-04-04",
+      assignmentStatus: "missing",
+      includePending: true,
+      includeIgnored: false,
+    },
+    {
+      now: "2026-05-28T12:00:00-04:00",
+      timeZone: "America/New_York",
+      userText: "mark everything before 4/4 as no action needed",
+    }
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.status, "No way to fix it");
+  assert.equal(result.filter.dueBefore, "2026-04-04");
+  assert.equal(result.matchedCount, 2);
+  assert.equal(result.updatedCount, 2);
+  assert.deepEqual(
+    db
+      .prepare("SELECT key, manual_status AS manualStatus FROM assignments ORDER BY key")
+      .all(),
+    [
+      { key: "oldActionable", manualStatus: "No way to fix it" },
+      { key: "oldPending", manualStatus: "No way to fix it" },
+      { key: "onCutoff", manualStatus: null },
+      { key: "resolvedOld", manualStatus: null },
+    ]
+  );
+});
+
+test("updateAssignmentStatusesByFilter enforces safety cap without writing", () => {
+  const db = createDb();
+  seedDb(db);
+  db.prepare("UPDATE assignments SET due_date = ? WHERE key = ?").run("1/01/26 11:59pm", "a1");
+  db.prepare("UPDATE assignments SET due_date = ? WHERE key = ?").run("1/02/26 11:59pm", "a2");
+
+  const result = updateAssignmentStatusesByFilter(
+    db,
+    {
+      targetStatus: "C",
+      dueOnOrBefore: "2026-01-31",
+      maxUpdates: 1,
+    },
+    { now: "2026-05-28T12:00:00-04:00", timeZone: "America/New_York" }
+  );
+
+  assert.equal(result.ok, false);
+  assert.match(result.error, /above the safety limit/);
+  const rows = db.prepare("SELECT manual_status FROM assignments").all();
+  assert.ok(rows.every((row) => row.manual_status === null));
 });
 
 test("applyNumberedStatuses updates by list index", () => {
