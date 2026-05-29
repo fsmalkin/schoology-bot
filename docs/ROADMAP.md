@@ -35,11 +35,11 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 - Bug filing uses a draft+validate+submit skill (no empty issues).
 - Schoology "submitted but not graded" indicators are auto-archived (Ignored) in summaries/lists by default.
 - Schoology title text like `(Graded: <date>)` is treated as descriptive only; it does not, by itself, prove the current student's assignment is graded or resolved.
-- OpenClaw beta is deprecated as a migration path and kept rollback-only; do not spend new implementation effort on OpenClaw UAT, cron hardening, or upstream sync unless explicitly requested.
+- OpenClaw is rejected as a runtime and should be removed from code, compose files, scripts, and active docs under [#34](https://github.com/fsmalkin/schoology-bot/issues/34). The rollback target is the current committed Docker prod runtime, not OpenClaw.
 - Claude Managed Agents is the top-priority replacement runtime: implement in dev first, validate against parity gates, then promote to prod.
 - Managed Agents dev bridge routes Telegram inbound through managed sessions when enabled; Claude custom tool requests execute through the existing deterministic tool runner in-process, and local scheduler/reminder delivery stays authoritative until parity and idle-cost controls are proven.
 - Managed Agents dev/prod separation must keep distinct env, session mapping, data, health, and rollback boundaries.
-- Existing OpenClaw beta reset/runtime commands remain legacy-only until the Managed Agents dev runtime replaces them.
+- Existing OpenClaw beta reset/runtime commands are pending deletion; do not use them for new UAT or rollback planning.
 - Disaster-recovery automation uses scheduled backup + freshness checks with off-machine folder sync.
 - Agentic release gate is mandatory before UAT for agent runtime changes:
   - Run Managed Agents dev against copied prod memory/state.
@@ -51,7 +51,7 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 ## Status Snapshot (2026-05-27)
 - Delivered:
   - Runtime migrated from laptop to local server and is running in Docker Compose with health checks.
-  - OpenClaw beta one-gateway runtime reached a usable rollback/reference state but is no longer the promotion target.
+  - OpenClaw beta one-gateway runtime reached a usable historical state but is no longer a rollback/reference target and is scheduled for removal in [#34](https://github.com/fsmalkin/schoology-bot/issues/34).
   - Agent shell/runtime decision gate completed: Claude Managed Agents is the selected replacement path while deterministic Schoology tool execution and local/server state ownership remain intact.
   - Recovery runbook and operations scripts added for start/backup/restore/freshness/task registration.
   - Login failure messaging now respects configured `SCHOLOGY_IDP` and avoids unnecessary provider-selection prompts.
@@ -67,6 +67,7 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
   - Managed Agents parity runner prep and live dev evidence delivered in [#30](https://github.com/fsmalkin/schoology-bot/issues/30): story suite routing through `runChatMessage`, live story judge artifacts, scoped JTBD UAT, beta Schoology auth refresh, and live `refresh_schoology` repro against real Schoology data.
 - In progress:
   - Capture one fresh inbound beta-thread Telegram message against the current Dockerized `schoology-managed-dev-telegram-agent`.
+  - Remove OpenClaw code/repo artifacts in [#34](https://github.com/fsmalkin/schoology-bot/issues/34) before prod canary.
   - Continue [#31](https://github.com/fsmalkin/schoology-bot/issues/31) health, event log, and idle cost controls before any prod canary.
   - Dashboard Phase 1 polish remains useful but is behind the Managed Agents migration.
 
@@ -78,14 +79,15 @@ Decision requirements that remain active:
 - Keep Schoology actions deterministic and app-executed; the model may plan, but code performs writes.
 - Keep local/server data ownership unless an explicit migration decision is made.
 - Require parity checks for refresh, summary, reminders, status updates, notes, dashboard health, and failure alerts.
-- Maintain rollback to the existing Docker prod runtime until the managed path passes prod canary gates.
+- Maintain rollback to the existing Docker prod runtime until the managed path passes prod canary gates. Do not use OpenClaw as rollback.
 
 ## Active Queue (P1)
 1. [#25 Claude Managed Agents dev runtime and production cutover plan](https://github.com/fsmalkin/schoology-bot/issues/25) ([tracking doc](managed-agents/README.md)).
 2. [#30 Managed Agents parity gate](https://github.com/fsmalkin/schoology-bot/issues/30): refresh, list missing, update status, notes, reminders, daily summary, Telegram UX, failure handling, and no duplicate responses.
-3. [#31 Managed Agents observability/cost controls](https://github.com/fsmalkin/schoology-bot/issues/31): session mapping, idle/termination policy, event logs, health dashboard signal, and rollback switch to legacy prod.
-4. [#32 Managed Agents prod canary, rollback, and stabilization](https://github.com/fsmalkin/schoology-bot/issues/32).
-5. Login/session resilience follow-up while keeping secrets-based unattended login (#18) parked unless strategy changes.
+3. [#34 Remove OpenClaw code and repo artifacts](https://github.com/fsmalkin/schoology-bot/issues/34): delete OpenClaw source, compose, scripts, tests, and active docs; keep current prod Docker as rollback.
+4. [#31 Managed Agents observability/cost controls](https://github.com/fsmalkin/schoology-bot/issues/31): session mapping, idle/termination policy, event logs, health dashboard signal, and rollback switch to current prod Docker.
+5. [#32 Managed Agents prod canary, rollback, and stabilization](https://github.com/fsmalkin/schoology-bot/issues/32).
+6. Login/session resilience follow-up while keeping secrets-based unattended login (#18) parked unless strategy changes.
 
 ## Ready Next (P2)
 1. Dashboard Phase 1: sidebar nav fix, course color stripes, mobile bottom tab bar, system status dot in right column.
@@ -103,7 +105,7 @@ Decision requirements that remain active:
 4. Daily cost summary.
 
 ## Standard Release Flow (Mandatory for Agent Runtime Changes)
-1. Preserve current prod Docker runtime as rollback target.
+1. Preserve current committed prod Docker runtime as rollback target; OpenClaw is not a rollback path.
 2. Run the Managed Agents dev stack against copied prod memory/state and keep parity artifacts.
 3. Run agentic story suite and collect transcripts/tool snapshots.
 4. Run one judge pass on artifacts and review evidence.
@@ -117,7 +119,7 @@ Decision requirements that remain active:
 ## Branch Governance
 - `main` is the canonical planning source of truth (`docs/ROADMAP.md` + `docs/BACKLOG.md`).
 - Feature branches may carry temporary planning edits during execution, but must reconcile to `main` before promotion.
-- Managed Agents migration notes live under `docs/managed-agents/`; OpenClaw notes remain archived under `docs/openclaw/`.
+- Managed Agents migration notes live under `docs/managed-agents/`; OpenClaw notes are removal/archive candidates under [#34](https://github.com/fsmalkin/schoology-bot/issues/34), not active planning material.
 
 ## Execution Tracking Canon (2026-03-02)
 - Execution status, intake state, and handoffs are tracked on the GitHub Project `FSM Engineering Board`.

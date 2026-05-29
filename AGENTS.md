@@ -26,15 +26,14 @@ Codex owns Docker operations for this repo. Do not ask the user to restart servi
   `docker compose -p schoology-prod down`
 
 ## Beta reset operations
-- Use `npm run beta:reset-memory` to refresh beta from prod.
-- This command is legacy OpenClaw-only until the Claude Managed Agents dev runtime replaces the beta path.
-- Beta runtime DB lives at `data/beta/agent.runtime.db`; reset/restore scripts must install it via container-side copy, not host-side `Copy-Item`, or SQLite can fail to open the bind-mounted file.
-- Treat `docker-compose.beta-openclaw.yml`, `schoology-openclaw-beta`, `docker-compose.beta.yml`, and `schoology-beta` as rollback-only unless a task explicitly calls for legacy beta/OpenClaw.
+- Do not use OpenClaw beta reset/runtime commands for new work.
+- `npm run beta:reset-memory`, `docker-compose.beta-openclaw.yml`, `schoology-openclaw-beta`, `docker-compose.beta.yml`, and `schoology-beta` are removal targets under #34.
+- Beta runtime DB lives at `data/beta/agent.runtime.db`; any remaining reset/restore work must install it via container-side copy, not host-side `Copy-Item`, or SQLite can fail to open the bind-mounted file.
 
 ## Managed Agents migration
 - Claude Managed Agents is the active dev-to-prod replacement path for the agent runtime.
-- Do not add new OpenClaw UAT, cron hardening, or upstream sync work unless explicitly requested.
-- Preserve the current Docker prod runtime as rollback target while implementing Managed Agents in dev.
+- Remove OpenClaw code/repo artifacts under #34; do not add new OpenClaw UAT, cron hardening, upstream sync, or rollback work.
+- Preserve the current committed Docker prod runtime as rollback target while implementing Managed Agents in dev.
 - Route Claude custom tool requests through existing deterministic Schoology tool execution; do not bypass current DB/status/reminder rules.
 
 ## Agent usage
@@ -52,7 +51,7 @@ Codex owns Docker operations for this repo. Do not ask the user to restart servi
   - `docs/BACKLOG.md`
   - `docs/SYSTEM.md`
   - `docs/TEST_COVERAGE.md`
-- Managed Agents migration notes live under `docs/managed-agents/`; archived OpenClaw notes live under `docs/openclaw/`.
+- Managed Agents migration notes live under `docs/managed-agents/`; OpenClaw notes are removal/archive candidates under #34, not active planning.
 - Before opening PRs or promoting beta/prod, reconcile planning docs against `main`:
   - `git diff --name-status main..HEAD -- docs/ROADMAP.md docs/BACKLOG.md docs/SYSTEM.md docs/TEST_COVERAGE.md`
 - If branch edits are temporary, discard them before merge.

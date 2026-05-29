@@ -177,21 +177,14 @@ Place short, ASCII-only markdown files in `skills/` to extend the agent with loc
 These are loaded into the agent context on each run.
 
 ## Legacy beta compose
-`docker-compose.beta.yml` is deprecated for routine operations and should not be used for normal Schoology unattended flow.
+`docker-compose.beta.yml` is deprecated, is not a rollback target, and is scheduled for removal under [#34](https://github.com/fsmalkin/schoology-bot/issues/34).
 
 ## Beta OpenClaw One-Gateway Stack
-Use this to evaluate gateway-native Telegram + gateway cron with Schoology tools exposed by `schoology-tool-api`.
-1. Create `.env.beta` with beta bot credentials and required Schoology/OpenAI values.
-2. Set `OPENCLAW_GATEWAY_TOKEN` in your environment (or `.env.beta`).
-3. Run:
-   `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta up -d --build`
-4. Compose uses one shared image tag (`schoology-beta-openclaw-unified:latest`) for gateway/tool-api/cron/dashboard services. Dashboard is profile-gated and stays off by default.
-5. Validate startup logs:
-   - `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta logs --tail 200 openclaw-cron-sync`
-   - `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta logs --tail 200 openclaw-gateway`
-6. Optional dashboard:
-   - `docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p openclaw-beta --profile dashboard up -d dashboard`
-   - `http://127.0.0.1:8788` (override with `BETA_DASHBOARD_PORT`).
+OpenClaw is no longer an evaluation, rollback, or beta UAT path. Its code,
+compose files, scripts, and active docs are scheduled for removal under
+[#34](https://github.com/fsmalkin/schoology-bot/issues/34). Use the Managed
+Agents dev runtime and the current committed prod Docker runtime for rollback
+planning.
 
 ## Tasks and Reminders
 You can create personal tasks (not tied to Schoology) and get Telegram reminders.

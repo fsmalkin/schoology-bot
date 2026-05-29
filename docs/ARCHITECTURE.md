@@ -23,8 +23,8 @@ The system is a local-first automation that:
   - Managed session bridge maps Telegram chats to Claude managed sessions.
   - Claude custom tool requests execute deterministic Schoology/task tools through app code or `schoology-tool-api`.
   - Local scheduler/reminder delivery remains authoritative until parity and cost gates prove otherwise.
-- OpenClaw beta runtime (rollback-only)
-  - Kept as reference context; no new promotion or cron-hardening work by default.
+- OpenClaw beta runtime (deprecated)
+  - Scheduled for removal under [#34](https://github.com/fsmalkin/schoology-bot/issues/34); it is not a rollback path.
 
 ## Data Stores
 - `data/agent.db` (SQLite)
@@ -38,7 +38,7 @@ The system is a local-first automation that:
 - `data/storage.json`: Playwright session storage for login reuse.
 - `data/health/*.heartbeat.json`: service heartbeats for scheduler, telegram-agent, and dashboard.
 - `data/beta/health/*.heartbeat.json`: beta service heartbeats. Managed Agents health work will add bridge/session health under [#31](https://github.com/fsmalkin/schoology-bot/issues/31).
-- `openclaw_workspace/`: historical OpenClaw workspace state kept only for rollback/reference until cleanup.
+- `openclaw_workspace/`: historical OpenClaw workspace state scheduled for removal/archive under [#34](https://github.com/fsmalkin/schoology-bot/issues/34).
 
 ## Data Flow
 1. Scheduler triggers scrape -> Playwright logs in -> grades page parsed.
@@ -57,15 +57,15 @@ The system is a local-first automation that:
 - Primary runtime: WSL2 + systemd (`schoology.target`) installed via `scripts/install_schoology_native_services.ps1`.
 - Native orchestration entrypoint: `scripts/start_schoology_stacks.ps1 -RuntimeMode native` (default).
 - Docker fallback: `scripts/start_schoology_stacks.ps1 -RuntimeMode docker`.
-- Legacy beta (`docker-compose.beta.yml`) is deprecated for routine operations.
+- Legacy beta (`docker-compose.beta.yml`) and OpenClaw beta compose files are deprecated and scheduled for removal under [#34](https://github.com/fsmalkin/schoology-bot/issues/34).
 - Optional auto-update: `scripts/auto_update.ps1` to pull a branch and rebuild Docker (no CI/CD by default).
 - CI (optional): GitHub Actions runs `npm test` on PRs/pushes to main with live tests disabled.
 
 ## Beta/Prod Separation
 - Beta uses `.env.beta` with `DATA_DIR=data/beta`.
-- Managed Agents dev runtime must remain separate from prod and preserve rollback to the current Docker runtime.
-- OpenClaw beta ports (`8788`, `18799`, `18800`) are historical rollback reservations until the Managed Agents implementation replaces them.
-- Legacy beta (`schoology-beta`) remains available only for rollback/testing.
+- Managed Agents dev runtime must remain separate from prod and preserve rollback to the current committed Docker prod runtime.
+- OpenClaw beta ports (`8788`, `18799`, `18800`) are historical reservations to remove under [#34](https://github.com/fsmalkin/schoology-bot/issues/34).
+- Legacy beta (`schoology-beta`) is a cleanup target, not a rollback/testing target.
 - Promotion merges beta changes into main and rebuilds prod.
 
 ## Reliability
@@ -75,4 +75,4 @@ The system is a local-first automation that:
 
 ## Future Enhancements
 - Claude Managed Agents bridge live UAT, parity tests, health/cost controls, and production cutover.
-- Managed-session observability, idle/cost controls, and rollback automation.
+- Managed-session observability, idle/cost controls, and current-prod-Docker rollback automation.

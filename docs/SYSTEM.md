@@ -9,8 +9,8 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
   - Handles chat messages, tool routing, and responses.
 - dashboard
   - Local health UI + JSON status endpoint for operations visibility.
-- schoology-tool-api (legacy beta sidecar; future Managed Agents tool bridge)
-  - Exposes deterministic Schoology/task tools for agent runtimes.
+- schoology-tool-api (legacy sidecar)
+  - Historical OpenClaw-facing tool API; scheduled for removal under [#34](https://github.com/fsmalkin/schoology-bot/issues/34) unless a current-runtime dependency is proven.
 - Claude Managed Agents bridge (dev implementation)
   - Target replacement runtime for agent chat in dev, then prod after parity gates.
   - Telegram inbound resumes managed sessions; Claude custom tool requests call local deterministic tools.
@@ -21,8 +21,8 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
   - Managed session metadata is not a transcript store. It carries only bounded local retry context for the last failed user request so `try again` can survive stream failures and forced session resets.
   - Implemented entrypoints: `src/agent_runtime.js`, `src/managed_agent_bridge.js`, `src/managed_agent_client.js`.
   - Tracking: [#25](https://github.com/fsmalkin/schoology-bot/issues/25), [Managed Agents migration doc](managed-agents/README.md), [FSM Engineering Board](https://github.com/users/fsmalkin/projects/3).
-- OpenClaw beta stack (rollback-only)
-  - Former beta runtime; keep only as reference/rollback context unless explicitly requested.
+- OpenClaw beta stack (deprecated)
+  - Former beta runtime; scheduled for code/repo removal under [#34](https://github.com/fsmalkin/schoology-bot/issues/34). It is not a rollback path.
 
 ## Core flows
 1) Scrape
@@ -67,7 +67,7 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
   - `managed_agent_sessions` includes Claude session mapping plus bounded local
     retry metadata for the last failed Telegram request.
 - data/beta/agent.runtime.db
-  - Legacy beta runtime DB. Managed Agents implementation must decide whether to reuse this path for dev parity or replace it with a clearer managed-agent data path.
+  - Current managed-dev beta runtime DB. Remove legacy OpenClaw-specific reset/restore assumptions under [#34](https://github.com/fsmalkin/schoology-bot/issues/34).
 - Claude managed memory store
   - Remote Claude memory store mounted into configured managed sessions under `/mnt/memory`.
   - Current dev store: `memstore_01F4pmYqg2GRep72inSfK2zi`.
@@ -111,15 +111,15 @@ Key settings:
 - Tests: `npm test`
 - Agentic stories: `npm run stories:run`
 - Agentic judge: `npm run stories:judge`
-- Legacy OpenClaw beta reset from prod memory: `npm run beta:reset-memory`
+- Legacy OpenClaw beta reset from prod memory: `npm run beta:reset-memory` (scheduled for removal under [#34](https://github.com/fsmalkin/schoology-bot/issues/34))
 
 ## Runtime
 Primary runtime (unattended):
 - Docker Compose only.
 - Start command: `powershell -ExecutionPolicy Bypass -File scripts/start_schoology_stacks.ps1 -RuntimeMode docker`.
 - Startup waits for Docker engine readiness before compose actions and retries until timeout with diagnostics.
-- OpenClaw beta (`docker-compose.beta-openclaw.yml`) and legacy beta (`docker-compose.beta.yml`) are rollback-only for routine operations.
-- Managed Agents dev runtime is the next implementation target and should preserve the current prod Docker runtime as fallback.
+- OpenClaw beta (`docker-compose.beta-openclaw.yml`) and legacy beta (`docker-compose.beta.yml`) are scheduled for removal under [#34](https://github.com/fsmalkin/schoology-bot/issues/34).
+- Managed Agents dev runtime is the active implementation target and should preserve the current committed prod Docker runtime as fallback.
 
 Scheduled startup mode:
 - Register tasks with stored-password logon mode (`/RU` + `/RP`) so jobs run while logged off.

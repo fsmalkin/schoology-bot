@@ -16,14 +16,19 @@ Implementation slices:
 4. [#30 Managed Agents parity story suite and judge gate](https://github.com/fsmalkin/schoology-bot/issues/30)
 5. [#31 Managed Agents health, event log, and idle cost controls](https://github.com/fsmalkin/schoology-bot/issues/31)
 6. [#32 Managed Agents prod canary, rollback, and stabilization](https://github.com/fsmalkin/schoology-bot/issues/32)
+7. [#34 Remove OpenClaw code and repo artifacts](https://github.com/fsmalkin/schoology-bot/issues/34)
 
 ## Decision
 Claude Managed Agents is the new top-priority agent-runtime path for Schoology Bot.
 OpenClaw is no longer a production promotion candidate because it has proven too
-unstable and too much operational work to keep shaping.
+unstable and too much operational work to keep shaping. OpenClaw is now slated
+for removal from code, compose files, scripts, tests, and active docs under
+[#34](https://github.com/fsmalkin/schoology-bot/issues/34).
 
 Production stays on the current Docker runtime until the Managed Agents dev
 runtime passes parity, observability, cost, and rollback gates.
+Rollback means rebuilding the current committed Docker prod runtime, not
+starting OpenClaw.
 
 ## Target Architecture
 1. Telegram receives a user message through the existing bot boundary.
@@ -54,7 +59,9 @@ Acceptance criteria:
   health/cost-controls slice, not a blocker for dev Telegram UAT.
 - Health dashboard can show bridge/session status. Tracked as the next
   health/cost-controls slice, not a blocker for dev Telegram UAT.
-- Legacy prod Docker runtime can be restored without data loss.
+- Current committed prod Docker runtime can be restored without data loss.
+- OpenClaw artifacts are removed before prod canary unless a concrete
+  current-runtime dependency is proven.
 
 ## Dev Config
 Tracked by [#27](https://github.com/fsmalkin/schoology-bot/issues/27).
@@ -333,11 +340,12 @@ Current status:
    session hours, or unexpected tool writes.
 
 ## OpenClaw Disposition
-OpenClaw files, compose definitions, and scripts remain only for rollback or
-reference until they are removed intentionally in a later cleanup issue.
+OpenClaw files, compose definitions, scripts, tests, and active docs should be
+removed under [#34](https://github.com/fsmalkin/schoology-bot/issues/34).
 
-Do not add new OpenClaw UAT, cron-bootstrap, or upstream-sync work unless the
-user explicitly asks to revive that path.
+Do not add new OpenClaw UAT, cron-bootstrap, upstream-sync, or rollback work.
+If a removal task finds a concrete dependency needed by the current prod Docker
+runtime, document that dependency explicitly before preserving it.
 
 ## Reference Links
 - Claude Managed Agents overview: https://platform.claude.com/docs/en/managed-agents/overview
