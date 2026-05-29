@@ -7,13 +7,13 @@ This file tracks active and proposed work items with GitHub issue linkage.
    - Status: In progress
    - Project board: [FSM Engineering Board](https://github.com/users/fsmalkin/projects/3)
    - Planning doc: [docs/managed-agents/README.md](managed-agents/README.md)
-   - Outcome target: Replace the abandoned OpenClaw migration path with a Claude Managed Agents dev runtime, remove OpenClaw code/repo artifacts, then promote to prod after parity, observability, cost, and rollback gates pass.
+   - Outcome target: Replace the abandoned agent-runtime experiment with a Claude Managed Agents dev runtime, remove retired runtime artifacts, then promote to prod after parity, observability, cost, and rollback gates pass.
    - Acceptance gate:
       - Managed Agents session bridge supports Telegram message intake and response delivery in dev.
       - Claude custom tool requests execute existing deterministic Schoology tools without bypassing current DB/status/reminder rules.
       - Dev parity covers refresh, list missing, update status, notes, reminders, daily summary, Telegram formatting, failure handling, and duplicate-response prevention.
       - Runtime has session mapping, idle/termination policy, event logging, health signal, and explicit rollback to the current committed prod Docker runtime.
-      - OpenClaw code, compose, scripts, tests, and active docs are removed before prod canary unless a concrete current-runtime dependency is proven.
+      - Retired runtime code, compose, scripts, tests, and active docs are removed before prod canary unless a concrete current-runtime dependency is proven.
       - Production cutover includes canary prompts, cost/idle monitoring, and 24h stabilization.
    - Slices:
       - [#27 Session mapping and dev config](https://github.com/fsmalkin/schoology-bot/issues/27) - done
@@ -22,18 +22,18 @@ This file tracks active and proposed work items with GitHub issue linkage.
       - [#30 Parity story suite and judge gate](https://github.com/fsmalkin/schoology-bot/issues/30) - final beta Telegram container proof remains
       - [#31 Health, event log, and idle cost controls](https://github.com/fsmalkin/schoology-bot/issues/31)
       - [#32 Prod canary, rollback, and stabilization](https://github.com/fsmalkin/schoology-bot/issues/32)
-      - [#34 OpenClaw code/repo removal](https://github.com/fsmalkin/schoology-bot/issues/34)
-2. [#34 Remove OpenClaw code and repo artifacts](https://github.com/fsmalkin/schoology-bot/issues/34)
+      - [#34 Retired runtime code/repo removal](https://github.com/fsmalkin/schoology-bot/issues/34)
+2. [#34 Remove retired runtime code and repo artifacts](https://github.com/fsmalkin/schoology-bot/issues/34)
    - Status: Open
-   - Outcome target: Delete OpenClaw runtime code, compose files, bootstrap/reset paths, tests, and active docs now that current prod Docker is the rollback target.
+   - Outcome target: Delete retired runtime code, compose files, bootstrap/reset paths, tests, and active docs now that current prod Docker is the rollback target.
    - Acceptance gate:
-      - No package scripts, active compose files, startup scripts, dashboard branches, or tests present OpenClaw as a runnable path.
-      - Managed Agents/prod Docker docs and commands replace OpenClaw beta instructions.
+      - No package scripts, active compose files, startup scripts, dashboard branches, or tests present the retired runtime as a runnable path.
+      - Managed Agents/prod Docker docs and commands replace legacy beta instructions.
       - Historical notes are either deleted or clearly archived with no operational instructions.
       - Docker rebuild, managed-dev poller, dashboard health, and relevant agent smokes pass after removal.
 3. Managed Agents release gate modernization
    - Status: Not yet filed
-   - Outcome target: Replace OpenClaw-specific beta reset/release gate assumptions with Managed Agents dev artifacts and judge evidence.
+   - Outcome target: Replace legacy beta reset/release gate assumptions with Managed Agents dev artifacts and judge evidence.
 4. Login/session resilience follow-up
    - Status: Open (#18 parked unless strategy changes)
    - Outcome target: Keep Schoology login/session recovery reliable across the Managed Agents cutover.
@@ -73,12 +73,12 @@ This file tracks active and proposed work items with GitHub issue linkage.
 1. Agent shell/runtime decision gate
    - Status: Completed/superseded by Claude Managed Agents migration (2026-05-25).
    - Note: The May 17 decision gate compared Claude App, GPT app, and managed agent paths. The selected path is Claude Managed Agents while preserving deterministic Schoology tool execution and local/server state ownership.
-2. OpenClaw beta UAT and production promotion readiness
+2. Retired runtime beta UAT and production promotion readiness
    - Status: Superseded by Claude Managed Agents migration and removal issue #34.
-   - Note: OpenClaw is no longer rollback/reference context; delete active artifacts unless a current-runtime dependency is proven.
-3. OpenClaw upstream sync SOP
+   - Note: The retired runtime is no longer rollback/reference context; delete active artifacts unless a current-runtime dependency is proven.
+3. Retired runtime upstream sync SOP
    - Status: Dropped unless explicitly requested.
-4. OpenClaw cron bootstrap hardening
+4. Retired runtime cron bootstrap hardening
    - Status: Dropped unless explicitly requested.
 
 ## Recently Groomed Issues
@@ -94,7 +94,7 @@ This file tracks active and proposed work items with GitHub issue linkage.
 
 ## Planning Governance
 - Canonical backlog lives on `main`.
-- Managed Agents migration notes live under `docs/managed-agents/`; OpenClaw beta experiments are removal/archive candidates under #34 and must not be used as active planning.
+- Managed Agents migration notes live under `docs/managed-agents/`; retired beta experiments must not be used as active planning.
 - Intake first: duplicate-check evidence is required before creating/adding work items.
 - Active execution state lives on the GitHub Project `FSM Engineering Board`; this backlog stays strategic.
 - Cross-thread handoff also updates `docs/WORKLOG.md`.

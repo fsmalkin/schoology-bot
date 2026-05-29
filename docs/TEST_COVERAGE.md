@@ -65,10 +65,9 @@ Smoke tests
 CLI checks
 - Manual CLI runs via `npm run agent:cli -- "..."` for basic flows.
 - Release gate scripts:
-  - `npm run beta:reset-memory` (legacy OpenClaw beta only until Managed Agents dev runtime replaces this gate)
   - `npm run stories:run`
   - `npm run stories:judge`
-- Managed Agents migration must add dev parity artifacts before this becomes the runtime release gate. `stories:judge` must run after `stories:run` completes because it consumes the completed artifact directory.
+- Managed Agents dev parity artifacts are the runtime release gate. `stories:judge` must run after `stories:run` completes because it consumes the completed artifact directory.
 - Recovery/operations scripts:
   - `powershell -ExecutionPolicy Bypass -File scripts/start_schoology_stacks.ps1 -RuntimeMode docker`
   - `powershell -ExecutionPolicy Bypass -File scripts/create_schoology_pre_cutover_snapshot.ps1`
@@ -116,7 +115,6 @@ Managed Agents stack
 - Live Telegram outbound to the beta thread was smoke-tested through `.env.managed-dev`; one inbound beta-thread message was handled by the Managed Agents path before the poller was moved into the current Docker container.
 - No automated coverage yet for a full managed-session event-history store or idle/termination policy beyond the bounded last-failed-request retry metadata.
 - No dashboard health coverage yet for Managed Agents bridge/session status.
-- OpenClaw-specific coverage is legacy rollback-only; do not expand it unless OpenClaw is explicitly revived.
 
 Performance and reliability
 - No load or soak tests.

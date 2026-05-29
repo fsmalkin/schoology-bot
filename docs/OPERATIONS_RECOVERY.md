@@ -5,17 +5,13 @@ Purpose: restore and operate `schoology-bot` on Windows using a Docker-only unat
 ## Canonical runtime
 1. Primary stack: `docker-compose.yml` (`schoology`, `telegram-agent`, `dashboard`).
 2. Claude Managed Agents dev/prod bridge is the active replacement target.
-3. Beta OpenClaw stack (`docker-compose.beta-openclaw.yml`) is rollback/reference only.
-4. Legacy `docker-compose.beta.yml` is deprecated for routine operations.
 
 ## Coexistence contract
-Schoology runtime state, Managed Agents dev state, and historical OpenClaw state must stay isolated.
+Schoology runtime state and Managed Agents dev state must stay isolated.
 
 Schoology reserved ports:
 1. `8787` prod dashboard
-2. `8788` beta dashboard
-3. Managed Agents dev bridge currently runs in-process through `telegram-agent`; add separate ports only if a sidecar is introduced.
-4. Historical OpenClaw rollback ports: `18799`, `18800`
+2. Managed Agents dev bridge currently runs in-process through `telegram-agent`; add separate ports only if a sidecar is introduced.
 
 Chasebot reference ports:
 1. `19789`, `19790`
@@ -46,7 +42,6 @@ Health checks:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8787/api/health
-Invoke-RestMethod http://127.0.0.1:8788/api/health
 ```
 
 ## Backup workflow
@@ -70,9 +65,8 @@ Default backup locations:
 Archive includes:
 1. `data/state.json`, `data/storage.json`, `data/agent.db`
 2. `data/beta/state.json`, `data/beta/storage.json`, `data/beta/agent.runtime.db` until the Managed Agents dev data path is finalized
-3. `data/openclaw-beta/`, `openclaw_workspace/` as historical rollback/reference state
-4. Prod DB SQLite bundle: `db/agent.db.prod`, `db/agent.db.prod-wal`, `db/agent.db.prod-shm`
-5. `manifest.json` checksums
+3. Prod DB SQLite bundle: `db/agent.db.prod`, `db/agent.db.prod-wal`, `db/agent.db.prod-shm`
+4. `manifest.json` checksums
 
 ## Restore workflow
 Restore latest local archive:
@@ -89,7 +83,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\restore_schoology_state.ps1 -
 
 Restore behavior:
 1. Stops compose stacks.
-2. Restores state/data directories, including historical OpenClaw state while it remains in backups.
+2. Restores state/data files.
 3. Restores prod DB bundle into Docker volume.
 4. Restarts stacks and runs health checks.
 

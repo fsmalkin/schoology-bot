@@ -176,15 +176,10 @@ Tips:
 Place short, ASCII-only markdown files in `skills/` to extend the agent with local skills.
 These are loaded into the agent context on each run.
 
-## Legacy beta compose
-`docker-compose.beta.yml` is deprecated, is not a rollback target, and is scheduled for removal under [#34](https://github.com/fsmalkin/schoology-bot/issues/34).
-
-## Beta OpenClaw One-Gateway Stack
-OpenClaw is no longer an evaluation, rollback, or beta UAT path. Its code,
-compose files, scripts, and active docs are scheduled for removal under
-[#34](https://github.com/fsmalkin/schoology-bot/issues/34). Use the Managed
-Agents dev runtime and the current committed prod Docker runtime for rollback
-planning.
+## Managed Agents Dev Runtime
+Claude Managed Agents is the active dev-to-prod replacement path for agent chat.
+Use the managed-dev bot/thread for beta UAT and the current committed prod Docker
+runtime for rollback planning until the managed path passes canary.
 
 ## Tasks and Reminders
 You can create personal tasks (not tied to Schoology) and get Telegram reminders.

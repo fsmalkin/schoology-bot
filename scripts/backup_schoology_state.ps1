@@ -1,6 +1,6 @@
 param(
   [string]$RepoRoot = "",
-  [ValidateSet("native", "docker")][string]$RuntimeMode = "native",
+  [ValidateSet("docker")][string]$RuntimeMode = "docker",
   [string]$BackupLocalRoot = "D:\backups\schoology\local",
   [string]$BackupSyncRoot = "D:\backups\schoology\sync",
   [string]$ProdVolumeName = "schoology_agent_db_prod",
@@ -242,16 +242,6 @@ $filePaths = @(
 )
 foreach ($relative in $filePaths) {
   if (Copy-FileIfExists -repoRoot $RepoRoot -snapshotRoot $snapshotRoot -relativePath $relative) {
-    $copiedItems += $relative
-  }
-}
-
-$directoryPaths = @(
-  "data\openclaw-beta",
-  "openclaw_workspace"
-)
-foreach ($relative in $directoryPaths) {
-  if (Copy-DirectoryIfExists -repoRoot $RepoRoot -snapshotRoot $snapshotRoot -relativePath $relative) {
     $copiedItems += $relative
   }
 }

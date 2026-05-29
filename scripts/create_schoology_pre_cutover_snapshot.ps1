@@ -121,7 +121,7 @@ $taskIndexPath = Join-Path $tasksRoot "task-export-index.json"
 Ensure-Directory $snapshotRoot
 
 $copied = @()
-foreach ($relativePath in @("data", "openclaw_workspace", ".env", ".env.beta", "scripts")) {
+foreach ($relativePath in @("data", ".env", ".env.beta", "scripts")) {
   if (Copy-RelativePath -BasePath $RepoRoot -SnapshotRoot $snapshotRoot -RelativePath $relativePath) {
     $copied += $relativePath
   }

@@ -60,9 +60,7 @@ Purpose: local-first parent dashboard for managing one child's schoolwork after 
 Heartbeat writers:
 - Scheduler writes `scheduler.heartbeat.json`.
 - Telegram agent writes `telegram-agent.heartbeat.json`.
-- Schoology Tool API writes `schoology-tool-api.heartbeat.json` in legacy beta/sidecar modes.
 - Managed Agents bridge heartbeat is tracked in [#31](https://github.com/fsmalkin/schoology-bot/issues/31).
-- OpenClaw gateway monitor heartbeat is rollback-only historical context.
 - Dashboard writes `dashboard.heartbeat.json`.
 
 ## Run

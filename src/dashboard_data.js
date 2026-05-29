@@ -47,8 +47,6 @@ function serviceSnapshot(config, serviceName, nowDate, staleMs, heartbeatOverrid
   const labels = {
     scheduler: "Scheduler",
     "telegram-agent": "Telegram Agent",
-    "schoology-tool-api": "Schoology Tool API",
-    "openclaw-gateway": "OpenClaw Gateway",
   };
   const label = labels[serviceName] || serviceName;
   return {
@@ -63,14 +61,7 @@ function serviceSnapshot(config, serviceName, nowDate, staleMs, heartbeatOverrid
   };
 }
 
-function getRuntimeStack(config) {
-  return String(config?.runtime?.stack || "legacy").toLowerCase();
-}
-
 function getServiceNames(config) {
-  if (getRuntimeStack(config) === "openclaw") {
-    return ["schoology-tool-api", "openclaw-gateway"];
-  }
   return ["scheduler", "telegram-agent"];
 }
 
@@ -209,33 +200,17 @@ export function buildDashboardSnapshot({
       coverage: "docs/TEST_COVERAGE.md",
       dashboard: "docs/DASHBOARD.md",
     },
-    quickCommands:
-      getRuntimeStack(config) === "openclaw"
-        ? [
-            "docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p schoology-openclaw-beta up -d --build",
-            "docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p schoology-openclaw-beta logs --tail 200 openclaw-gateway",
-            "docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p schoology-openclaw-beta logs --tail 200 schoology-tool-api",
-            "docker compose --env-file .env.beta -f docker-compose.beta-openclaw.yml -p schoology-openclaw-beta down",
-          ]
-        : [
-            "docker compose -f docker-compose.yml -p schoology-prod up -d --build",
-            "docker compose -f docker-compose.yml -p schoology-prod logs --tail 200 telegram-agent",
-            "docker compose -f docker-compose.yml -p schoology-prod logs --tail 200 schoology",
-            "docker compose -f docker-compose.yml -p schoology-prod down",
-          ],
-    howItWorks:
-      getRuntimeStack(config) === "openclaw"
-        ? [
-            "OpenClaw gateway handles Telegram chat and cron-triggered automation.",
-            "Schoology Tool API executes deterministic Schoology/task actions against local DB/state.",
-            "Gateway cron runs scrape refresh, daily summary, and due reminder jobs.",
-            "Dashboard reads local state/DB/heartbeat files to show health.",
-          ]
-        : [
-            "Scheduler scrapes Schoology and updates local state + DB.",
-            "Agent chat updates local statuses, notes, reminders, and tasks.",
-            "Summary sends once daily; reminders run on reminder cron.",
-            "Dashboard reads local state/DB/heartbeat files to show health.",
-          ],
+    quickCommands: [
+      "docker compose -f docker-compose.yml -p schoology-prod up -d --build",
+      "docker compose -f docker-compose.yml -p schoology-prod logs --tail 200 telegram-agent",
+      "docker compose -f docker-compose.yml -p schoology-prod logs --tail 200 schoology",
+      "docker compose -f docker-compose.yml -p schoology-prod down",
+    ],
+    howItWorks: [
+      "Scheduler scrapes Schoology and updates local state + DB.",
+      "Agent chat updates local statuses, notes, reminders, and tasks.",
+      "Summary sends once daily; reminders run on reminder cron.",
+      "Dashboard reads local state/DB/heartbeat files to show health.",
+    ],
   };
 }

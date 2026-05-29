@@ -1,6 +1,6 @@
 param(
   [string]$RepoRoot = "",
-  [ValidateSet("native", "docker")][string]$RuntimeMode = "docker",
+  [ValidateSet("docker")][string]$RuntimeMode = "docker",
   [string]$WslDistro = "Ubuntu-24.04",
   [string]$BackupLocalRoot = "D:\backups\schoology\local",
   [string]$BackupSyncRoot = "D:\backups\schoology\sync",
@@ -58,10 +58,9 @@ function Install-StartupFallback($repoRoot, $runtimeMode, $wslDistro) {
   $startupDir = Split-Path -Parent (Get-StartupFallbackPath)
   $startupCmd = Get-StartupFallbackPath
   $startScript = Join-Path $repoRoot "scripts\start_schoology_stacks.ps1"
-  $keepAliveArg = if ($runtimeMode -eq "native") { " -KeepAlive" } else { "" }
   $contents = @(
     "@echo off",
-    "powershell -NoProfile -ExecutionPolicy Bypass -File `"$startScript`" -RepoRoot `"$repoRoot`" -RuntimeMode $runtimeMode -WslDistro `"$wslDistro`"$keepAliveArg"
+    "powershell -NoProfile -ExecutionPolicy Bypass -File `"$startScript`" -RepoRoot `"$repoRoot`" -RuntimeMode $runtimeMode -WslDistro `"$wslDistro`""
   ) -join "`r`n"
 
   if ($DryRun) {
@@ -172,9 +171,8 @@ if (-not [string]::IsNullOrWhiteSpace($RunAsUser)) {
 $backupCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$backupScript`" -RepoRoot `"$RepoRoot`" -RuntimeMode $RuntimeMode -BackupLocalRoot `"$BackupLocalRoot`" -BackupSyncRoot `"$BackupSyncRoot`""
 $freshnessStatusPath = Join-Path $BackupLocalRoot "backup-status\last-success.json"
 $freshnessCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$freshnessScript`" -StatusFile `"$freshnessStatusPath`" -MaxAgeHours 24"
-$startKeepAliveArg = if ($RuntimeMode -eq "native") { " -KeepAlive" } else { "" }
-$startSkipPortCheckArg = if ($RuntimeMode -eq "docker") { " -SkipPortCheck" } else { "" }
-$startCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$startScript`" -RepoRoot `"$RepoRoot`" -RuntimeMode $RuntimeMode -WslDistro `"$WslDistro`"$startKeepAliveArg$startSkipPortCheckArg"
+$startSkipPortCheckArg = " -SkipPortCheck"
+$startCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$startScript`" -RepoRoot `"$RepoRoot`" -RuntimeMode $RuntimeMode -WslDistro `"$WslDistro`"$startSkipPortCheckArg"
 $catalogCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$catalogScript`""
 $restoreDrillCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File `"$restoreDrillScript`" -Source local"
 

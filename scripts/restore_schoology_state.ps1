@@ -1,13 +1,12 @@
 param(
   [string]$RepoRoot = "",
-  [ValidateSet("native", "docker")][string]$RuntimeMode = "native",
+  [ValidateSet("docker")][string]$RuntimeMode = "docker",
   [string]$WslDistro = "Ubuntu-24.04",
   [ValidateSet("local", "sync")][string]$Source = "local",
   [string]$Snapshot = "latest",
   [string]$BackupLocalRoot = "D:\backups\schoology\local",
   [string]$BackupSyncRoot = "D:\backups\schoology\sync",
   [string]$ProdProject = "schoology-prod",
-  [string]$BetaProject = "schoology-openclaw-beta",
   [string]$ProdVolumeName = "schoology_agent_db_prod",
   [switch]$SkipStart,
   [switch]$AllowMissingDbSnapshot,
@@ -283,21 +282,7 @@ if ($DryRun) {
   Write-Step ("Extracted archive to " + $extractRoot)
 }
 
-if ($RuntimeMode -eq "native") {
-  Invoke-Wsl -Command "sudo systemctl stop schoology.target schoology-beta-cron-sync.timer || true" | Out-Null
-} else {
-  Invoke-Docker -DockerArgs @("compose", "-f", "docker-compose.yml", "-p", $ProdProject, "down") | Out-Null
-  Invoke-Docker -DockerArgs @(
-    "compose",
-    "--env-file",
-    ".env.beta",
-    "-f",
-    "docker-compose.beta-openclaw.yml",
-    "-p",
-    $BetaProject,
-    "down"
-  ) | Out-Null
-}
+Invoke-Docker -DockerArgs @("compose", "-f", "docker-compose.yml", "-p", $ProdProject, "down") | Out-Null
 
 $restoreFiles = @(
   "data\state.json",
@@ -314,9 +299,6 @@ $restoreFiles = @(
 foreach ($relative in $restoreFiles) {
   Restore-FileIfExists -extractRoot $extractRoot -repoRoot $RepoRoot -relativePath $relative
 }
-Restore-DirectoryIfExists -extractRoot $extractRoot -repoRoot $RepoRoot -relativePath "data\openclaw-beta"
-Restore-DirectoryIfExists -extractRoot $extractRoot -repoRoot $RepoRoot -relativePath "openclaw_workspace"
-
 if ($RuntimeMode -eq "docker") {
   $betaExtractedDb = Join-Path $extractRoot "data\beta\agent.runtime.db"
   $betaBindMountedDb = Join-Path $RepoRoot "data\beta\agent.runtime.db"
@@ -359,7 +341,7 @@ if (-not $SkipStart) {
   if ($DryRun) {
     Write-Step ("DRY RUN: powershell -ExecutionPolicy Bypass -File `"$startScript`" -RepoRoot `"$RepoRoot`" -RuntimeMode $RuntimeMode -NoBuild -WslDistro $WslDistro")
   } else {
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $startScript -RepoRoot $RepoRoot -RuntimeMode $RuntimeMode -NoBuild -WslDistro $WslDistro -ProdProject $ProdProject -BetaProject $BetaProject -SkipPortCheck
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $startScript -RepoRoot $RepoRoot -RuntimeMode $RuntimeMode -NoBuild -WslDistro $WslDistro -ProdProject $ProdProject -SkipPortCheck
     if ($LASTEXITCODE -ne 0) {
       throw "Failed to restart stacks after restore."
     }
@@ -372,12 +354,6 @@ if (-not $DryRun -and -not $SkipStart) {
     Write-Step ("Prod dashboard health ok: " + ($prodHealth | ConvertTo-Json -Compress))
   } catch {
     Write-Step "WARNING: failed to read prod dashboard health endpoint."
-  }
-  try {
-    $betaHealth = Invoke-RestMethod "http://127.0.0.1:8788/api/health"
-    Write-Step ("Beta dashboard health ok: " + ($betaHealth | ConvertTo-Json -Compress))
-  } catch {
-    Write-Step "WARNING: failed to read beta dashboard health endpoint."
   }
 }
 

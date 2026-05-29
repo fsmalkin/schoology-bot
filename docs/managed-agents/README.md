@@ -16,19 +16,19 @@ Implementation slices:
 4. [#30 Managed Agents parity story suite and judge gate](https://github.com/fsmalkin/schoology-bot/issues/30)
 5. [#31 Managed Agents health, event log, and idle cost controls](https://github.com/fsmalkin/schoology-bot/issues/31)
 6. [#32 Managed Agents prod canary, rollback, and stabilization](https://github.com/fsmalkin/schoology-bot/issues/32)
-7. [#34 Remove OpenClaw code and repo artifacts](https://github.com/fsmalkin/schoology-bot/issues/34)
+7. [#34 Remove retired runtime code and repo artifacts](https://github.com/fsmalkin/schoology-bot/issues/34)
 
 ## Decision
 Claude Managed Agents is the new top-priority agent-runtime path for Schoology Bot.
-OpenClaw is no longer a production promotion candidate because it has proven too
-unstable and too much operational work to keep shaping. OpenClaw is now slated
-for removal from code, compose files, scripts, tests, and active docs under
+The prior runtime experiment is no longer a production promotion candidate
+because it proved too unstable and too much operational work to keep shaping.
+Its code, compose files, scripts, tests, and active docs are removed under
 [#34](https://github.com/fsmalkin/schoology-bot/issues/34).
 
 Production stays on the current Docker runtime until the Managed Agents dev
 runtime passes parity, observability, cost, and rollback gates.
 Rollback means rebuilding the current committed Docker prod runtime, not
-starting OpenClaw.
+starting an alternate runtime.
 
 ## Target Architecture
 1. Telegram receives a user message through the existing bot boundary.
@@ -36,8 +36,7 @@ starting OpenClaw.
 3. The bridge appends the user event to the managed session and polls/streams the
    agent response.
 4. Claude custom tool requests are executed by existing deterministic app code:
-   `runToolByName` directly in-process for dev, or `schoology-tool-api` when a
-   sidecar boundary is useful.
+   `runToolByName` directly in-process for dev.
 5. Tool results are sent back to the managed session.
 6. Final assistant text is sent to Telegram through the existing sender.
 
@@ -60,7 +59,7 @@ Acceptance criteria:
 - Health dashboard can show bridge/session status. Tracked as the next
   health/cost-controls slice, not a blocker for dev Telegram UAT.
 - Current committed prod Docker runtime can be restored without data loss.
-- OpenClaw artifacts are removed before prod canary unless a concrete
+- Retired runtime artifacts are removed before prod canary unless a concrete
   current-runtime dependency is proven.
 
 ## Dev Config
@@ -188,7 +187,7 @@ Live dev API smoke completed:
   `http://127.0.0.1:8787` with no console/page errors.
 - Telegram beta-thread outbound smoke sent successfully through
   `.env.managed-dev` (message id `196`).
-- Legacy beta/OpenClaw was stopped and beta Telegram was moved to the Managed
+- Legacy beta runtime was stopped and beta Telegram was moved to the Managed
   Agents bridge. The first inbound beta-thread message was handled by the
   Managed Agents path and created an active `schoology-dev` Claude session
   (`sesn_01USppax1VA7hznML5paSh9C`). A follow-up inbound message is still
@@ -339,11 +338,11 @@ Current status:
 7. 24h stabilization confirms no duplicate replies, missed reminders, runaway
    session hours, or unexpected tool writes.
 
-## OpenClaw Disposition
-OpenClaw files, compose definitions, scripts, tests, and active docs should be
+## Retired Runtime Disposition
+Retired runtime files, compose definitions, scripts, tests, and active docs are
 removed under [#34](https://github.com/fsmalkin/schoology-bot/issues/34).
 
-Do not add new OpenClaw UAT, cron-bootstrap, upstream-sync, or rollback work.
+Do not add new legacy runtime UAT, cron-bootstrap, upstream-sync, or rollback work.
 If a removal task finds a concrete dependency needed by the current prod Docker
 runtime, document that dependency explicitly before preserving it.
 
