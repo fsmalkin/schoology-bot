@@ -4,6 +4,7 @@ param(
   [string]$BackupLocalRoot = "D:\backups\schoology\local",
   [string]$BackupSyncRoot = "D:\backups\schoology\sync",
   [string]$ProdVolumeName = "schoology_agent_db_prod",
+  [string]$HelperImage = "schoology-app:latest",
   [int]$RetentionDays = 30,
   [switch]$SkipSyncCopy,
   [switch]$AllowMissingDbSource,
@@ -248,73 +249,58 @@ foreach ($relative in $filePaths) {
 
 $dbExported = $false
 $dbSource = ""
-if ($RuntimeMode -eq "native") {
-  $nativeDb = Join-Path $RepoRoot "data\agent.db"
-  if (Copy-SqliteBundleIfExists -sourceMainPath $nativeDb -targetMainPath $snapshotDbFile) {
-    if (-not $DryRun) {
-      Warn-IfSuspiciousSqliteSnapshot -mainPath $snapshotDbFile
-    }
-    $dbExported = $true
-    $dbSource = "native-file"
-    Write-Step "Copied prod agent DB bundle from native file data\agent.db."
-  } elseif ($allowMissingDb) {
-    Write-Step "WARNING: native DB file data\agent.db not found; continuing due to allow-missing flag."
-    $dbSource = "native-file-missing"
-  } else {
-    throw "Native runtime selected but data\agent.db was not found. Use -AllowMissingDbSource to continue."
-  }
+if ($DryRun) {
+  Invoke-Docker -DockerArgs @(
+    "run",
+    "--rm",
+    "-v",
+    "${ProdVolumeName}:/from:ro",
+    "-v",
+    "${snapshotDbRoot}:/out",
+    $HelperImage,
+    "node",
+    "--input-type=module",
+    "-e",
+    "import Database from 'better-sqlite3'; import fs from 'node:fs'; if (fs.existsSync('/from/agent.db')) { const db = new Database('/from/agent.db', { readonly: true, fileMustExist: true }); await db.backup('/out/agent.db.prod'); db.close(); }"
+  ) | Out-Null
+  $dbExported = $true
+  $dbSource = "docker-volume-online-backup"
 } else {
-  if ($DryRun) {
+  $exportAttempted = $false
+  try {
     Invoke-Docker -DockerArgs @(
       "run",
       "--rm",
       "-v",
-      "${ProdVolumeName}:/from",
+      "${ProdVolumeName}:/from:ro",
       "-v",
       "${snapshotDbRoot}:/out",
-      "alpine:3.20",
-      "sh",
-      "-lc",
-      "if [ -f /from/agent.db ]; then cp /from/agent.db /out/agent.db.prod; fi; if [ -f /from/agent.db-wal ]; then cp /from/agent.db-wal /out/agent.db.prod-wal; fi; if [ -f /from/agent.db-shm ]; then cp /from/agent.db-shm /out/agent.db.prod-shm; fi"
+      $HelperImage,
+      "node",
+      "--input-type=module",
+      "-e",
+      "import Database from 'better-sqlite3'; import fs from 'node:fs'; if (fs.existsSync('/from/agent.db')) { const db = new Database('/from/agent.db', { readonly: true, fileMustExist: true }); await db.backup('/out/agent.db.prod'); db.close(); }"
     ) | Out-Null
-    $dbExported = $true
-    $dbSource = "docker-volume"
-  } else {
-    $exportAttempted = $false
-    try {
-      Invoke-Docker -DockerArgs @(
-        "run",
-        "--rm",
-        "-v",
-        "${ProdVolumeName}:/from",
-        "-v",
-        "${snapshotDbRoot}:/out",
-        "alpine:3.20",
-        "sh",
-        "-lc",
-        "if [ -f /from/agent.db ]; then cp /from/agent.db /out/agent.db.prod; fi; if [ -f /from/agent.db-wal ]; then cp /from/agent.db-wal /out/agent.db.prod-wal; fi; if [ -f /from/agent.db-shm ]; then cp /from/agent.db-shm /out/agent.db.prod-shm; fi"
-      ) | Out-Null
-      $exportAttempted = $true
-    } catch {
-      if ($allowMissingDb) {
-        Write-Step "WARNING: Docker DB export command failed; continuing due to allow-missing flag."
-        Write-Step ("WARNING detail: " + $_.Exception.Message)
-      } else {
-        throw
-      }
-    }
-
-    if ($exportAttempted -and (Test-Path $snapshotDbFile)) {
-      $dbExported = $true
-      $dbSource = "docker-volume"
-      Write-Step "Exported prod agent DB from Docker volume."
-      Warn-IfSuspiciousSqliteSnapshot -mainPath $snapshotDbFile
-    } elseif ($allowMissingDb) {
-      $dbSource = "docker-volume-missing"
-      Write-Step "WARNING: Prod DB snapshot not present; continuing due to allow-missing flag."
+    $exportAttempted = $true
+  } catch {
+    if ($allowMissingDb) {
+      Write-Step "WARNING: Docker DB export command failed; continuing due to allow-missing flag."
+      Write-Step ("WARNING detail: " + $_.Exception.Message)
     } else {
-      throw "Prod DB export failed. Use -AllowMissingDbSource to continue without DB snapshot."
+      throw
     }
+  }
+
+  if ($exportAttempted -and (Test-Path $snapshotDbFile)) {
+    $dbExported = $true
+    $dbSource = "docker-volume-online-backup"
+    Write-Step "Exported prod agent DB from Docker volume via SQLite online backup."
+    Warn-IfSuspiciousSqliteSnapshot -mainPath $snapshotDbFile
+  } elseif ($allowMissingDb) {
+    $dbSource = "docker-volume-missing"
+    Write-Step "WARNING: Prod DB snapshot not present; continuing due to allow-missing flag."
+  } else {
+    throw "Prod DB export failed. Use -AllowMissingDbSource to continue without DB snapshot."
   }
 }
 

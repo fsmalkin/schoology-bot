@@ -123,7 +123,7 @@ In scope:
 - Worklog, test coverage, and GitHub issue handoff updates for the active migration slice.
 Out of scope:
 - Promoting Managed Agents to prod.
-- Adding new OpenClaw UAT, cron hardening, or upstream sync work.
+- Adding new retired-runtime UAT, cron hardening, or upstream sync work.
 - Replacing the local scheduler/reminder authority with Managed Agents.
 - Broad dashboard redesign beyond validating existing flows.
 
@@ -225,7 +225,7 @@ Manual checks (if any):
 
 Rollback plan:
 - Revert to the last committed stable state and rebuild: `git checkout .` then `docker compose -p schoology-prod up -d --build`.
-- Keep OpenClaw compose files rollback-only and do not add new OpenClaw work.
+- Use the current committed Docker prod runtime as rollback; do not add retired-runtime work.
 - Managed Agents can be disabled by removing `MANAGED_AGENTS_ENABLED=1` and `RUNTIME_STACK=managed-agents`.
 
 Open questions:
@@ -366,7 +366,7 @@ Manual checks (if any):
   - `/beta` loads on desktop and a mobile-width viewport without console errors.
   - Closing the beta drawer returns focus to the opener and does not lose in-progress edits during normal interaction.
   - Reminder and follow-up edits still behave correctly on `/beta`.
-  - If reminder/task write behavior changed, run `npm run beta:reset-memory`, `npm run stories:run`, and `npm run stories:judge` before human UAT.
+  - If reminder/task write behavior changed, prepare isolated dev data, run `npm run stories:run`, and run `npm run stories:judge` before human UAT.
 
 Rollback plan:
 - Revert to last stable commit/image and rebuild containers.

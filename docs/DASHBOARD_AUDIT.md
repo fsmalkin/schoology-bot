@@ -238,7 +238,7 @@ Folded from the standalone onboarding subagent pass.
 7. **🟡 No `validateTelegramConfig()` / `validateOpenAIConfig()` at scheduler boot.** Failures appear 12 hours later at 7am cron.
 8. **🟡 Beta vs prod compose-file selection is undocumented + contradicted between docs.** `AGENTS.md` says beta is rollback-only; `ARCHITECTURE.md` says systemd is primary runtime.
 9. **🟡 No Telegram bot bootstrap docs.** BotFather flow + chat ID discovery + `npm run telegram:updates` is mentioned only in `package.json:11`.
-10. **🟡 No documented reset/recovery path for prod** — only beta has `npm run beta:reset-memory`.
+10. **🟡 No documented reset/recovery path for prod** — recovery exists in scripts, but the parent-facing runbook still needs a shorter "restore tonight" path.
 11. **🟢 Dashboard has no version footer.** Parent can't tell which build is running.
 
 **What the recovery flow should look like.** Detection: degrade status dot to red on login failure. Surfacing: System Health row "Schoology session — Expired 4 min ago — [Reauthorize]." Recovery: in-dashboard form for password rotation (90% case) + cookie paste (SSO/MFA case) + headed Playwright as last resort. Confirmation: Telegram ping "Schoology login restored. Resuming scrapes."

@@ -49,16 +49,14 @@ $resolvedArchivePath = Resolve-ArchivePath
 $requiredPaths = @(
   "data\state.json",
   "data\storage.json",
-  "data\agent.db",
   "data\beta\state.json",
   "data\beta\storage.json",
-  "data\beta\agent.runtime.db",
-  "db\agent.db.prod",
-  "db\agent.db.prod-wal",
-  "db\agent.db.prod-shm"
+  "db\agent.db.prod"
 )
 $requiredDbArtifacts = @(
-  "db\agent.db.prod",
+  "db\agent.db.prod"
+)
+$optionalDbArtifacts = @(
   "db\agent.db.prod-wal",
   "db\agent.db.prod-shm"
 )
@@ -117,7 +115,7 @@ try {
     }
   }
   if ($dbArtifactsMissing.Count -gt 0) {
-    $failureReasons += ("Incomplete prod DB bundle; missing artifacts: " + ($dbArtifactsMissing -join ", "))
+    $failureReasons += ("Incomplete prod DB snapshot; missing artifacts: " + ($dbArtifactsMissing -join ", "))
   }
   if ($dbArtifactsZeroBytes.Count -gt 0) {
     $failureReasons += ("Prod DB artifacts with zero bytes: " + ($dbArtifactsZeroBytes -join ", "))
@@ -190,6 +188,7 @@ try {
     requiredPathsChecked = $requiredPaths
     missingRequiredPaths = $missingRequiredPaths
     requiredDbArtifacts = $requiredDbArtifacts
+    optionalDbArtifacts = $optionalDbArtifacts
     dbArtifactsPresent = $dbArtifactsPresent
     dbArtifactsMissing = $dbArtifactsMissing
     dbArtifactsZeroBytes = $dbArtifactsZeroBytes

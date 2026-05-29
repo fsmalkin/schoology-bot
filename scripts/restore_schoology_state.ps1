@@ -264,6 +264,33 @@ done
   ) | Out-Null
 }
 
+function Assert-RestoreArchiveReady($extractRoot) {
+  if ($DryRun) {
+    Write-Step "DRY RUN: preflight restore archive contents before stopping services."
+    return
+  }
+
+  $manifestPath = Join-Path $extractRoot "manifest.json"
+  if (-not (Test-Path $manifestPath)) {
+    throw "Archive missing manifest.json; refusing to stop running services."
+  }
+
+  $dbSnapshot = Join-Path (Join-Path $extractRoot "db") "agent.db.prod"
+  if (-not (Test-Path $dbSnapshot)) {
+    if ($AllowMissingDbSnapshot) {
+      Write-Step "WARNING: archive has no db/agent.db.prod; prod DB restore will be skipped due to -AllowMissingDbSnapshot."
+      return
+    }
+    throw "Archive missing db/agent.db.prod; refusing to stop running services."
+  }
+
+  $dbBytes = [int64](Get-Item $dbSnapshot).Length
+  if ($dbBytes -le 0) {
+    throw "Archive db/agent.db.prod is empty; refusing to stop running services."
+  }
+  Write-Step "Restore preflight passed."
+}
+
 if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
   $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 }
@@ -282,6 +309,7 @@ if ($DryRun) {
   Write-Step ("Extracted archive to " + $extractRoot)
 }
 
+Assert-RestoreArchiveReady -extractRoot $extractRoot
 Invoke-Docker -DockerArgs @("compose", "-f", "docker-compose.yml", "-p", $ProdProject, "down") | Out-Null
 
 $restoreFiles = @(
@@ -291,10 +319,7 @@ $restoreFiles = @(
   "data\agent.db-wal",
   "data\agent.db-shm",
   "data\beta\state.json",
-  "data\beta\storage.json",
-  "data\beta\agent.runtime.db",
-  "data\beta\agent.runtime.db-wal",
-  "data\beta\agent.runtime.db-shm"
+  "data\beta\storage.json"
 )
 foreach ($relative in $restoreFiles) {
   Restore-FileIfExists -extractRoot $extractRoot -repoRoot $RepoRoot -relativePath $relative
@@ -310,25 +335,19 @@ if ($DryRun) {
   Write-Step ("DRY RUN: restore prod DB from " + $dbSnapshot)
 } else {
   if (Test-Path $dbSnapshot) {
-    if ($RuntimeMode -eq "native") {
-      $nativeDbTarget = Join-Path $RepoRoot "data\agent.db"
-      [void](Restore-SqliteBundleIfExists -sourceMainPath $dbSnapshot -targetMainPath $nativeDbTarget)
-      Write-Step "Restored prod DB bundle into native files under data\agent.db."
-    } else {
-      Invoke-Docker -DockerArgs @(
-        "run",
-        "--rm",
-        "-v",
-        "${ProdVolumeName}:/to",
-        "-v",
-        "$(Split-Path -Parent $dbSnapshot):/from",
-        "alpine:3.20",
-        "sh",
-        "-lc",
-        "cp /from/agent.db.prod /to/agent.db && if [ -f /from/agent.db.prod-wal ]; then cp /from/agent.db.prod-wal /to/agent.db-wal; else rm -f /to/agent.db-wal; fi && if [ -f /from/agent.db.prod-shm ]; then cp /from/agent.db.prod-shm /to/agent.db-shm; else rm -f /to/agent.db-shm; fi"
-      ) | Out-Null
-      Write-Step "Restored prod DB bundle into Docker volume."
-    }
+    Invoke-Docker -DockerArgs @(
+      "run",
+      "--rm",
+      "-v",
+      "${ProdVolumeName}:/to",
+      "-v",
+      "$(Split-Path -Parent $dbSnapshot):/from",
+      "alpine:3.20",
+      "sh",
+      "-lc",
+      "cp /from/agent.db.prod /to/agent.db && if [ -f /from/agent.db.prod-wal ]; then cp /from/agent.db.prod-wal /to/agent.db-wal; else rm -f /to/agent.db-wal; fi && if [ -f /from/agent.db.prod-shm ]; then cp /from/agent.db.prod-shm /to/agent.db-shm; else rm -f /to/agent.db-shm; fi"
+    ) | Out-Null
+    Write-Step "Restored prod DB bundle into Docker volume."
   } elseif ($AllowMissingDbSnapshot) {
     Write-Step "WARNING: archive has no db/agent.db.prod; skipping DB restore due to -AllowMissingDbSnapshot."
   } else {
