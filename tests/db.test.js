@@ -197,6 +197,44 @@ test("listAssignments hides ignored by default", () => {
   assert.equal(list[0].key, "a2");
 });
 
+test("listAssignments bucketed output honors ignored and pending filters", () => {
+  const db = createDb();
+  seedDb(db);
+  updateAssignmentStatus(db, { key: "a1", status: "No action needed" });
+  updateAssignmentStatus(db, { key: "a2", status: "Waiting on teacher" });
+
+  const defaultBuckets = listAssignments(db, {
+    status: "missing",
+    includeIgnored: false,
+    includePending: true,
+    bucketed: true,
+  });
+  assert.deepEqual(defaultBuckets.buckets.actionable.map((row) => row.key), []);
+  assert.deepEqual(defaultBuckets.buckets.pending.map((row) => row.key), ["a2"]);
+  assert.deepEqual(defaultBuckets.buckets.ignored.map((row) => row.key), []);
+  assert.equal(defaultBuckets.total, 1);
+  assert.equal(defaultBuckets.unfilteredTotal, 2);
+
+  const hiddenPending = listAssignments(db, {
+    status: "missing",
+    includeIgnored: false,
+    includePending: false,
+    bucketed: true,
+  });
+  assert.deepEqual(hiddenPending.buckets.pending, []);
+  assert.equal(hiddenPending.total, 0);
+
+  const withIgnored = listAssignments(db, {
+    status: "missing",
+    includeIgnored: true,
+    includePending: true,
+    bucketed: true,
+  });
+  assert.deepEqual(withIgnored.buckets.ignored.map((row) => row.key), ["a1"]);
+  assert.deepEqual(withIgnored.buckets.pending.map((row) => row.key), ["a2"]);
+  assert.equal(withIgnored.total, 2);
+});
+
 test("listAssignments auto-ignores submitted items awaiting grade", () => {
   const db = createDb();
   seedDb(db);

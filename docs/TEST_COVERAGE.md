@@ -21,6 +21,7 @@ Unit tests
 - Schoology scraper title fallback for rows that have visible text but no assignment link (`Note: This material is not available within Schoology` shape).
 - Schoology scraper conflict handling for MUA/external-tool-link rows (score beats Missing badge, detail-page fallback for ambiguous rows, capped fallback volume).
 - Submitted-but-ungraded assignment handling: scraper coverage for Schoology grade-pending/dropbox icon hidden text, DB auto-file behavior, and direct `submitted_awaiting_grade` assignment queries.
+- Assignment list filtering verifies both flat and bucketed missing-list outputs honor ignored/pending visibility flags so already-handled rows do not leak into default agent-visible buckets.
 - Dashboard health/data builders (heartbeat + snapshot shaping).
 - Dashboard parent-home and schoolwork data builders (home section classification, parent-facing labels, assignment notes preview, reminder summary, task-only filtering, and raw-text title fallback when stored titles are blank).
 - Dashboard read models for `Will complete in class` and MUA display-title expansion.

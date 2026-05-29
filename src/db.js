@@ -1394,7 +1394,7 @@ export function listAssignments(db, options = {}) {
   }
 
   const buckets = { actionable: [], pending: [], ignored: [] };
-  for (const row of mapped) {
+  for (const row of filtered) {
     if (row.statusCategory === "ignored") {
       buckets.ignored.push(row);
     } else if (row.statusCategory === "pending") {
@@ -1404,7 +1404,7 @@ export function listAssignments(db, options = {}) {
     }
   }
 
-  return { buckets, total: mapped.length, filteredTotal: filtered.length };
+  return { buckets, total: filtered.length, filteredTotal: filtered.length, unfilteredTotal: mapped.length };
 }
 
 export function applyAutoIgnoreRules(db, { now, oldDays = 120, keywords = [] } = {}) {
