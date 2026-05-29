@@ -37,28 +37,46 @@ This file tracks active and proposed work items with GitHub issue linkage.
 4. Login/session resilience follow-up
    - Status: Open (#18 parked unless strategy changes)
    - Outcome target: Keep Schoology login/session recovery reliable across the Managed Agents cutover.
+5. Secrets hygiene (P0 from audit §1)
+   - Status: Not yet filed
+   - Outcome target: Remove cleartext-credential exposure. Secrets in `.env.systemd`/`.env.beta.systemd` are gitignored and not in history, but sit on disk in cleartext (Schoology password, OpenAI key, Telegram token, GitHub PAT).
+   - Acceptance gate:
+      - All four credentials rotated.
+      - Secrets read from Docker secrets / keychain rather than on-disk `.env.*`.
+      - `gitleaks` or `git-secrets` pre-commit hook in place.
+      - `CHOLOGY_USERNAME` typo in `.env.systemd:1` fixed.
+      - `.env.managed-dev` / `.env.managed-prod` checked for the same exposure before prod cutover.
+   - Note: Small and independent of the Managed Agents ordering; high blast radius, low effort.
 
 ## P2 (Planned)
-1. Dashboard Phase 1 - foundation polish
+Dashboard work is driven by `docs/DASHBOARD_AUDIT.md` (UAT-verified findings + tiers), which supersedes the `DASHBOARD_DESIGN.md` phase numbering. Verified-only mocks: `docs/design/mocks/dashboard-improvements-v1.html`. All deferred behind the Managed Agents migration.
+
+1. Dashboard Tier 1 - data integrity + trust
    - Status: Deferred behind Managed Agents
-   - Design reference: `docs/DASHBOARD_DESIGN.md` Phase 1
+   - Reference: `docs/DASHBOARD_AUDIT.md` §0 punch list, §4.1-4.4, §7
+   - Items (each ≤30 LOC except where noted):
+      - Suspicious-scrape guard: refuse to mass-resolve when a scrape returns <50% of prior count; degrade status dot to amber (§0.1 / §7 E5). Highest-impact fix.
+      - Past-date reminder validation + echo-back confirmation (§0.3 / §4.4 DR1).
+      - Bulk apply confirmation modal + atomic note option (§0.4 / §4.3 SW1).
+      - Topbar sync pill + wire the fake ⌘K search; status dot opens a panel (§0.5 / §4.1).
+      - Empty/stale state distinguishes "all done" from "silently broken" (§4.2).
+2. Dashboard Tier 2 - scan + mobile foundation
+   - Status: Deferred behind Managed Agents
+   - Reference: `docs/DASHBOARD_AUDIT.md` §4.2, §4.6, §4.8, §4.4
    - Items:
-      - Confirm sidebar nav selections work after Docker rebuild (2026-03-15).
-      - Course color stripes on assignment rows (left border, hashed from course name).
-      - Mobile bottom tab bar (replaces hidden sidebar on narrow screens).
-      - System status dot in Tonight right column (green/amber/red, links to system panel).
-2. Dashboard Phase 2 - This Week view
+      - Mobile bottom tab bar (sidebar vanishes on narrow screens with no replacement, §4.6 MB1).
+      - Course color stripe on rows + WCAG-AA contrast bump (label is 4.18:1, fails by 0.32; §4.2 TV3).
+      - Sidebar density: short labels, Monitor footer with system status, brighter active state (§4.8 SB1-4).
+      - Drawer header compression to 3 lines + per-assignment "synced" time + scoped save label (§4.4 DR3/5/7).
+   - Note: Coming Up/Waiting already collapse by default (UAT-verified) — do not rebuild.
+3. Dashboard This Week view
    - Status: Not yet filed
-   - Design reference: `docs/DASHBOARD_DESIGN.md` Phase 2
-   - Outcome target: 7-day calendar strip + day-lane assignment grouping. Prev/next week navigation. Uses existing `dueDateYmd` from `/api/home`.
-3. Dashboard Phase 3 - System panel demotion
+   - Reference: `docs/DASHBOARD_AUDIT.md` §3
+   - Outcome target: Today right-rail 7-day mini-strip first; full route only if forward data exceeds 7 days. (Downgraded from a standalone view: the Sunday-planning JTBD scores 8/25.)
+4. Dashboard System panel + command palette
    - Status: Not yet filed
-   - Design reference: `docs/DASHBOARD_DESIGN.md` Phase 3
-   - Outcome target: System Health becomes a slide-in panel (like the drawer) rather than a full nav view. Triggered by status dot click or sidebar "System" item.
-4. Dashboard Phase 4 - Command palette
-   - Status: Not yet filed
-   - Design reference: `docs/DASHBOARD_DESIGN.md` Phase 4
-   - Outcome target: Floating command launcher with fuzzy assignment search and shortcut commands (refresh, add task, go to week).
+   - Reference: `docs/DASHBOARD_AUDIT.md` §3 IA + §10 Phase 4
+   - Outcome target: Demote System Health to a slide-in panel triggered by the topbar status dot. Command palette only after the basic ⌘K search ships in Tier 1.
 5. Scheduled auto-update task decision
    - Status: Not yet filed
    - Outcome target: Decide manual-only vs scheduled update path.
@@ -91,6 +109,7 @@ This file tracks active and proposed work items with GitHub issue linkage.
 7. Dashboard redesign (2026-03-15): sidebar nav, metric row, 2-column home layout shipped to prod.
 8. Schoology title derivation (2026-03-15): clean display names for no-link Schoology rows shipped to prod.
 9. Agent shell/runtime choice elevated to P1 (2026-05-17): decision gate completed with Claude Managed Agents selected.
+10. Dashboard backlog reframed (2026-05-28): old Phase 1-5 numbering (`DASHBOARD_DESIGN.md`) replaced by UAT-verified tiers in `docs/DASHBOARD_AUDIT.md`; secrets-hygiene P0 surfaced and filed under P1.
 
 ## Planning Governance
 - Canonical backlog lives on `main`.

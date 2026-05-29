@@ -48,8 +48,10 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
   - Confirm rollback command plus cost/idle monitoring.
   - Then execute user UAT.
 
-## Status Snapshot (2026-05-27)
+## Status Snapshot (2026-05-28)
 - Delivered:
+  - Dashboard audit completed and consolidated into `docs/DASHBOARD_AUDIT.md` (supersedes the `DASHBOARD_DESIGN.md` phase framing as the dashboard source of truth). Findings are UAT-verified against an isolated prod-snapshot stack; severity recalibrated after ~30% of pre-test "critical" predictions were downgraded or falsified. Verified-only mocks live at `docs/design/mocks/dashboard-improvements-v1.html`.
+  - Audit surfaced a P0 security item (cleartext secrets on disk in `.env.systemd`/`.env.beta.systemd`) and a #1 data-integrity fix (suspicious-scrape guard) — both folded into the queues below.
   - Runtime migrated from laptop to local server and is running in Docker Compose with health checks.
   - The abandoned runtime experiment is no longer a rollback/reference target and has been removed under [#34](https://github.com/fsmalkin/schoology-bot/issues/34).
   - Agent shell/runtime decision gate completed: Claude Managed Agents is the selected replacement path while deterministic Schoology tool execution and local/server state ownership remain intact.
@@ -88,18 +90,26 @@ Decision requirements that remain active:
 4. [#31 Managed Agents observability/cost controls](https://github.com/fsmalkin/schoology-bot/issues/31): session mapping, idle/termination policy, event logs, health dashboard signal, and rollback switch to current prod Docker.
 5. [#32 Managed Agents prod canary, rollback, and stabilization](https://github.com/fsmalkin/schoology-bot/issues/32).
 6. Login/session resilience follow-up while keeping secrets-based unattended login (#18) parked unless strategy changes.
+7. Secrets hygiene (P0 from audit §1, small/independent): rotate Schoology password, OpenAI key, Telegram token, GitHub PAT; move secrets out of on-disk `.env.*` into Docker secrets/keychain; add a `gitleaks`/`git-secrets` pre-commit hook; fix the `CHOLOGY_USERNAME` typo in `.env.systemd`. Do regardless of dashboard/migration ordering — blast radius is high, effort is low.
 
 ## Ready Next (P2)
-1. Dashboard Phase 1: sidebar nav fix, course color stripes, mobile bottom tab bar, system status dot in right column.
-2. Dashboard Phase 2: This Week view (calendar strip + day-lane layout).
-3. Dashboard Phase 3: System panel demotion - slide-in panel instead of full nav view.
-4. Dashboard Phase 4: Command palette.
+Dashboard work is now driven by `docs/DASHBOARD_AUDIT.md` (verified findings + tiers), not the older `DASHBOARD_DESIGN.md` phase numbering. Mocks: `docs/design/mocks/dashboard-improvements-v1.html`. Still sequenced behind the Managed Agents migration.
+
+1. Dashboard Tier 1 — data integrity + trust (audit §0 punch list):
+   - Suspicious-scrape guard: refuse to mass-resolve when a scrape returns <50% of prior count; degrade status dot to amber (audit §0.1 / §7 E5). Highest-impact fix in the audit.
+   - Past-date reminder validation + echo-back confirmation (audit §0.3 / §4.4 DR1).
+   - Bulk apply confirmation modal + atomic note option (audit §0.4 / §4.3 SW1).
+   - Topbar sync pill replaces breadcrumb + powers refresh-on-stale; wire the (currently fake) ⌘K search (audit §0.5 / §4.1).
+   - Empty/stale state distinguishes "all done" from "silently broken" (audit §4.2; surfaces the scrape guard).
+2. Dashboard Tier 2 — scan + mobile foundation: mobile bottom tab bar (sidebar currently vanishes with no replacement, audit §4.6 MB1), course color stripe + WCAG-AA contrast bump (§4.2 TV3), sidebar density (§4.8), drawer header compression (§4.4). Note: Coming Up/Waiting collapse already ships (UAT-verified); do not re-build it.
+3. This Week view (calendar strip + day-lane). Deferred per audit §3 unless forward-looking data exceeds 7 days; the Today right-rail mini-strip is the cheaper first step.
+4. System panel demotion + command palette (audit §3 IA + §10 Phase 4). Command palette only after the basic ⌘K search from Tier 1 exists.
 5. Scheduled auto-update task decision (Windows Task Scheduler).
 6. Claude Agent SDK fallback evaluation only if Managed Agents blocks or self-hosted execution becomes a better fit.
 7. Extend the agentic release pattern to other projects and templates.
 
 ## Later (P3)
-1. Dashboard Phase 5: polish - course color hashing, micro-animations, keyboard nav (G-codes), mobile drawer slide-up.
+1. Dashboard polish (audit §10 Phase 4): micro-animations, keyboard nav (G-codes), mobile drawer slide-up, course color hashing. Plus accepted-gap edge cases (snow-day shift, trip mode, course archive, status-flap detection) from audit §7.
 2. Convert action-oriented notes into reminders with user confirmation.
 3. Unified single Task model (Option B).
 4. Daily cost summary.

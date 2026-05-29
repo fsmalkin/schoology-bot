@@ -1,5 +1,7 @@
 # Dashboard Design Plan
 
+> **Superseded for prioritization by [`docs/DASHBOARD_AUDIT.md`](DASHBOARD_AUDIT.md) (2026-05-28).** This document remains useful as the original product-design rationale (personas, journeys, view sketches), but the Phase 1-5 numbering here is no longer the work plan. Current dashboard direction, verified findings, and priority tiers live in the audit; mocks live at `docs/design/mocks/dashboard-improvements-v1.html`.
+
 A product-design-first document. Start here before writing implementation tickets.
 
 ---
