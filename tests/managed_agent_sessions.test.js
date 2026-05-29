@@ -4,7 +4,9 @@ import {
   createDb,
   getManagedAgentSession,
   getOrCreateManagedAgentSession,
+  listManagedAgentEvents,
   markManagedAgentSessionEvent,
+  recordManagedAgentEvent,
   resetManagedAgentSession,
   upsertManagedAgentSession,
 } from "../src/db.js";
@@ -189,4 +191,39 @@ test("managed agent session event updates last event and metadata", () => {
   const stored = getManagedAgentSession(db, "chat-1", "prod");
   assert.equal(stored.sessionId, "sess_prod");
   assert.equal(stored.metadata.lastEventType, "assistant_response");
+});
+
+test("managed agent event log records and lists recent events", () => {
+  const db = createDb();
+
+  const first = recordManagedAgentEvent(db, {
+    chatId: "chat-1",
+    environment: "prod",
+    sessionId: "sess_prod",
+    eventType: "turn_completed",
+    status: "ok",
+    summary: "Managed turn completed.",
+    metadata: { streamPasses: 1, executedToolCount: 0 },
+    createdAt: "2026-05-26T00:10:00.000Z",
+  });
+  const second = recordManagedAgentEvent(db, {
+    chatId: "chat-1",
+    environment: "prod",
+    sessionId: "sess_prod",
+    eventType: "custom_tool_result",
+    status: "error",
+    summary: "Custom tool returned an error.",
+    metadata: { toolName: "list_assignments", error: "bad args" },
+    createdAt: "2026-05-26T00:11:00.000Z",
+  });
+
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+
+  const events = listManagedAgentEvents(db, { environment: "prod", limit: 5 });
+  assert.equal(events.length, 2);
+  assert.equal(events[0].eventType, "custom_tool_result");
+  assert.equal(events[0].status, "error");
+  assert.equal(events[0].metadata.toolName, "list_assignments");
+  assert.equal(events[1].eventType, "turn_completed");
 });

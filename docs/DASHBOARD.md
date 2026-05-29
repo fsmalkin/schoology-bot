@@ -20,7 +20,9 @@ Purpose: local-first parent dashboard for managing one child's schoolwork after 
   - Bulk status updates are available only after turning on `Bulk select`.
   - Shared review drawer for status saves, note history, reminder edit/delete, and follow-up edits.
 - `System Health` (Admin)
-  - Service health for the current prod runtime, with Managed Agents bridge status to be added during migration.
+  - Service health for the current prod runtime, plus Managed Agents bridge status when the managed runtime is active.
+  - Managed Agents session count, recent session status, recent bridge events, and idle/cost-risk alerts.
+  - If the prod dashboard is not itself running with Managed Agents enabled, it can still surface the existing managed-dev beta runtime from `data/beta/agent.runtime.db` and `data/beta/health/managed-agent-bridge.heartbeat.json`.
   - Last scrape and summary freshness.
   - Assignment/follow-up snapshot counts.
   - Common Docker commands, docs pointers, and runtime explanation.
@@ -60,7 +62,7 @@ Purpose: local-first parent dashboard for managing one child's schoolwork after 
 Heartbeat writers:
 - Scheduler writes `scheduler.heartbeat.json`.
 - Telegram agent writes `telegram-agent.heartbeat.json`.
-- Managed Agents bridge heartbeat is tracked in [#31](https://github.com/fsmalkin/schoology-bot/issues/31).
+- Managed Agents bridge writes `managed-agent-bridge.heartbeat.json` through the Telegram poller when `RUNTIME_STACK=managed-agents` / `MANAGED_AGENTS_ENABLED=1`; turn handling also updates it with recent bridge status.
 - Dashboard writes `dashboard.heartbeat.json`.
 
 ## Run
@@ -96,10 +98,11 @@ If `Admin` shows stale/down services:
 1. Check service logs for the current prod runtime:
    - `docker compose -f docker-compose.yml -p schoology-prod logs --tail 200 schoology`
    - `docker compose -f docker-compose.yml -p schoology-prod logs --tail 200 telegram-agent`
-   - Managed Agents bridge logs/health will be added during [#31](https://github.com/fsmalkin/schoology-bot/issues/31).
+   - For managed-dev: `docker logs --tail 200 schoology-managed-dev-telegram-agent`
 2. Confirm heartbeat files are updating:
    - `data/health/scheduler.heartbeat.json` and `data/health/telegram-agent.heartbeat.json`
-   - Managed Agents bridge heartbeat path is tracked in [#31](https://github.com/fsmalkin/schoology-bot/issues/31).
+   - Managed-dev bridge heartbeat: `data/beta/health/managed-agent-bridge.heartbeat.json`
+   - Recent managed-dev session/event rows: `data/beta/agent.runtime.db`
 3. Rebuild/restart services:
    - `docker compose -f docker-compose.yml -p schoology-prod up -d --build`
 

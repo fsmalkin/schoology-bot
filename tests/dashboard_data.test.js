@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createDb } from "../src/db.js";
+import { createDb, recordManagedAgentEvent, upsertManagedAgentSession } from "../src/db.js";
 import { buildDashboardSnapshot } from "../src/dashboard_data.js";
+import { writeServiceHeartbeat } from "../src/health.js";
 
 function makeConfig(tempDir) {
   return {
@@ -90,6 +91,131 @@ test("buildDashboardSnapshot reports core health and counts", () => {
     assert.equal(snapshot.activity.scrapeStale, false);
     assert.equal(snapshot.activity.summaryStale, false);
     assert.equal(Array.isArray(snapshot.quickCommands), true);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("buildDashboardSnapshot includes managed agents health when runtime is enabled", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "schoology-dashboard-managed-"));
+  try {
+    const config = makeConfig(tempDir);
+    config.runtime = { stack: "managed-agents" };
+    config.managedAgents = {
+      enabled: true,
+      environment: "dev",
+      sessionNamespace: "schoology-dev",
+      sessionTtlMinutes: 60,
+      idleTimeoutMinutes: 10,
+    };
+    const db = createDb(":memory:");
+    upsertManagedAgentSession(db, {
+      chatId: "chat-1",
+      environment: "schoology-dev",
+      sessionId: "sesn_dashboard",
+      createdAt: "2026-02-16T16:30:00Z",
+      updatedAt: "2026-02-16T16:58:00Z",
+      lastEventAt: "2026-02-16T16:58:00Z",
+      expiresAt: "2026-02-16T17:30:00Z",
+      metadata: { lastEventType: "telegram_message" },
+    });
+    recordManagedAgentEvent(db, {
+      chatId: "chat-1",
+      environment: "schoology-dev",
+      sessionId: "sesn_dashboard",
+      eventType: "turn_completed",
+      status: "ok",
+      summary: "Managed turn completed.",
+      createdAt: "2026-02-16T16:58:00Z",
+    });
+
+    const snapshot = buildDashboardSnapshot({
+      config,
+      now: new Date("2026-02-16T17:00:00Z"),
+      dbOverride: db,
+      stateOverride: {},
+      heartbeatsOverride: {
+        scheduler: { timestamp: "2026-02-16T16:59:40Z", status: "running" },
+        "telegram-agent": { timestamp: "2026-02-16T16:59:45Z", status: "running" },
+        "managed-agent-bridge": { timestamp: "2026-02-16T16:59:50Z", status: "running" },
+      },
+    });
+
+    assert.equal(snapshot.managedAgents.enabled, true);
+    assert.equal(snapshot.managedAgents.environment, "schoology-dev");
+    assert.equal(snapshot.managedAgents.activeSessionCount, 1);
+    assert.equal(snapshot.managedAgents.recentEvents[0].eventType, "turn_completed");
+    assert.ok(snapshot.services.some((service) => service.key === "managed-agent-bridge"));
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("buildDashboardSnapshot can surface managed-dev runtime from beta data", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "schoology-dashboard-managed-beta-"));
+  try {
+    const config = makeConfig(tempDir);
+    const betaDir = path.join(tempDir, "beta");
+    fs.mkdirSync(betaDir, { recursive: true });
+    const betaConfig = {
+      ...config,
+      runtime: { stack: "managed-agents" },
+      managedAgents: {
+        enabled: true,
+        environment: "dev",
+        sessionNamespace: "schoology-dev",
+        sessionTtlMinutes: 60,
+        idleTimeoutMinutes: 10,
+      },
+      paths: {
+        ...config.paths,
+        dataDir: betaDir,
+        statePath: path.join(betaDir, "state.json"),
+        agentDbPath: path.join(betaDir, "agent.runtime.db"),
+      },
+    };
+    const betaDb = createDb(betaConfig.paths.agentDbPath);
+    upsertManagedAgentSession(betaDb, {
+      chatId: "chat-beta",
+      environment: "schoology-dev",
+      sessionId: "sesn_beta",
+      createdAt: "2026-02-16T16:30:00Z",
+      updatedAt: "2026-02-16T16:58:00Z",
+      lastEventAt: "2026-02-16T16:58:00Z",
+      expiresAt: "2026-02-16T17:30:00Z",
+      metadata: { lastEventType: "telegram_message" },
+    });
+    recordManagedAgentEvent(betaDb, {
+      chatId: "chat-beta",
+      environment: "schoology-dev",
+      sessionId: "sesn_beta",
+      eventType: "turn_completed",
+      status: "ok",
+      summary: "Managed-dev turn completed.",
+      createdAt: "2026-02-16T16:58:00Z",
+    });
+    betaDb.close();
+    writeServiceHeartbeat(betaConfig, "managed-agent-bridge", {
+      status: "running",
+      environment: "schoology-dev",
+    });
+
+    const db = createDb(":memory:");
+    const snapshot = buildDashboardSnapshot({
+      config,
+      now: new Date("2026-02-16T17:00:00Z"),
+      dbOverride: db,
+      stateOverride: {},
+      heartbeatsOverride: {
+        scheduler: { timestamp: "2026-02-16T16:59:40Z", status: "running" },
+        "telegram-agent": { timestamp: "2026-02-16T16:59:45Z", status: "running" },
+      },
+    });
+
+    assert.equal(snapshot.managedAgents.enabled, true);
+    assert.equal(snapshot.managedAgents.runtimeLabel, "managed-dev");
+    assert.equal(snapshot.managedAgents.recentEvents[0].summary, "Managed-dev turn completed.");
+    assert.equal(snapshot.services.find((service) => service.key === "managed-agent-bridge")?.state, "ok");
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

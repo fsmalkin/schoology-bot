@@ -1,11 +1,22 @@
 import fs from "fs";
 import path from "path";
 import TelegramBot from "node-telegram-bot-api";
-import { getConfig, validateAgentRuntimeConfig, validateTelegramConfig } from "./config.js";
+import {
+  getConfig,
+  isManagedAgentsRuntime,
+  validateAgentRuntimeConfig,
+  validateTelegramConfig,
+} from "./config.js";
 import { runChatMessage } from "./agent_runtime.js";
 import { renderTelegramHtml, renderTelegramPlain } from "./telegram_format.js";
 import { batchMessages } from "./telegram_queue.js";
+import { getDb } from "./db.js";
 import { writeServiceHeartbeat } from "./health.js";
+import {
+  MANAGED_AGENT_BRIDGE_SERVICE,
+  resetIdleManagedAgentSessions,
+} from "./managed_agent_status.js";
+import { redactSensitiveString } from "./sensitive_redaction.js";
 import {
   buildTelegramTargetKey,
   buildTelegramThreadOptions,
@@ -35,6 +46,8 @@ const BATCH_DELAY_MS = 1200;
 const MAX_BATCH_CHARS = 3500;
 const TYPING_INTERVAL_MS = 4000;
 const WORKING_MESSAGE_DELAY_MS = 10000;
+const MANAGED_IDLE_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+let lastManagedIdleSweepAt = 0;
 const runtime = {
   startedAt: new Date().toISOString(),
   lastMessageAt: null,
@@ -42,21 +55,65 @@ const runtime = {
   lastErrorAt: null,
   lastError: null,
   restartAttempts: 0,
+  managedIdleSweep: null,
 };
+
+function maybeSweepManagedIdleSessions() {
+  if (!isManagedAgentsRuntime(config)) return null;
+  const now = Date.now();
+  if (lastManagedIdleSweepAt && now - lastManagedIdleSweepAt < MANAGED_IDLE_SWEEP_INTERVAL_MS) {
+    return runtime.managedIdleSweep;
+  }
+  lastManagedIdleSweepAt = now;
+  try {
+    const result = resetIdleManagedAgentSessions({
+      db: getDb(config),
+      config,
+      now: new Date(now),
+    });
+    runtime.managedIdleSweep = {
+      checked: result.checked || 0,
+      reset: result.reset || 0,
+      ranAt: new Date(now).toISOString(),
+    };
+  } catch (err) {
+    runtime.managedIdleSweep = {
+      error: redactSensitiveString(err?.message || String(err)),
+      ranAt: new Date(now).toISOString(),
+    };
+  }
+  return runtime.managedIdleSweep;
+}
 
 function updateHeartbeat(extra = {}) {
   try {
     const queuedMessages = Array.from(queueByChat.values()).reduce((sum, items) => {
       return sum + (Array.isArray(items) ? items.length : 0);
     }, 0);
-    writeServiceHeartbeat(config, "telegram-agent", {
+    const managedIdleSweep = maybeSweepManagedIdleSessions();
+    const payload = {
       status: "running",
       allowedChats: allowedChats.size,
       queuedMessages,
       processingChats: processingByChat.size,
       ...runtime,
       ...extra,
-    });
+    };
+    writeServiceHeartbeat(config, "telegram-agent", payload);
+    if (isManagedAgentsRuntime(config)) {
+      writeServiceHeartbeat(config, MANAGED_AGENT_BRIDGE_SERVICE, {
+        status: payload.status,
+        environment: config.managedAgents.sessionNamespace || config.managedAgents.environment,
+        router: "telegram-agent",
+        queuedMessages,
+        processingChats: processingByChat.size,
+        lastMessageAt: runtime.lastMessageAt,
+        lastReplyAt: runtime.lastReplyAt,
+        lastErrorAt: runtime.lastErrorAt,
+        lastError: runtime.lastError ? redactSensitiveString(runtime.lastError) : null,
+        idleSweep: managedIdleSweep,
+      });
+    }
   } catch (err) {
     // heartbeat failures should not stop the agent
   }
@@ -182,7 +239,7 @@ const STABLE_RESET_MS = 60000;
 
 function formatError(err) {
   if (!err) return "Unknown error";
-  return err.response?.body || err.message || String(err);
+  return redactSensitiveString(err.response?.body || err.message || String(err));
 }
 
 function schedulePollingRestart(err) {
@@ -378,7 +435,7 @@ async function processQueue(targetKey) {
     runtime.lastErrorAt = null;
     updateHeartbeat();
   } catch (err) {
-    console.error("Agent error:", err?.message || err);
+    console.error("Agent error:", redactSensitiveString(err?.message || String(err)));
     try {
       await bot.sendMessage(
         chatId,
@@ -388,9 +445,9 @@ async function processQueue(targetKey) {
     } catch (sendErr) {
       // ignore
     }
-    appendLog(`Error replying to ${targetLabel}: ${err?.stack || err?.message || err}`);
+    appendLog(`Error replying to ${targetLabel}: ${redactSensitiveString(err?.stack || err?.message || String(err))}`);
     runtime.lastErrorAt = new Date().toISOString();
-    runtime.lastError = err?.message || String(err);
+    runtime.lastError = redactSensitiveString(err?.message || String(err));
     updateHeartbeat();
   } finally {
     stopTyping();

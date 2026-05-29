@@ -2,7 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { chromium } from "playwright";
-import { closeDb, getDb } from "../src/db.js";
+import {
+  closeDb,
+  getDb,
+  recordManagedAgentEvent,
+  upsertManagedAgentSession,
+} from "../src/db.js";
+import { writeServiceHeartbeat } from "../src/health.js";
 import { runToolByName } from "../src/tool_runner.js";
 import {
   makeDashboardConfig,
@@ -152,6 +158,80 @@ test("dashboard card interactions open the review drawer and keep writes explici
       (await page.locator('#bulkStatusSelect option').filter({ hasText: "Will complete in class" }).count()) > 0
     );
 
+    await page.close();
+  } finally {
+    if (browser) await browser.close();
+    await stop().catch(() => {});
+    closeDb();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("dashboard admin renders managed agent status and alerts", async (t) => {
+  const tempDir = makeDashboardTempDir("schoology-dashboard-managed-ui-");
+  const config = makeDashboardConfig(tempDir);
+  config.runtime = { stack: "managed-agents" };
+  config.managedAgents = {
+    enabled: true,
+    environment: "dev",
+    sessionNamespace: "schoology-dev",
+    sessionTtlMinutes: 60,
+    idleTimeoutMinutes: 10,
+  };
+  seedDashboardStateFile(config);
+  const db = getDb(config);
+  seedDashboardAssignments(db);
+  upsertManagedAgentSession(db, {
+    chatId: "chat-1",
+    environment: "schoology-dev",
+    sessionId: "sesn_managed_ui",
+    status: "active",
+    createdAt: "2026-02-16T16:30:00Z",
+    updatedAt: "2026-02-16T16:58:00Z",
+    lastEventAt: "2026-02-16T16:58:00Z",
+    expiresAt: "2026-02-16T17:30:00Z",
+    metadata: { lastEventType: "telegram_message" },
+  });
+  recordManagedAgentEvent(db, {
+    chatId: "chat-1",
+    environment: "schoology-dev",
+    sessionId: "sesn_managed_ui",
+    eventType: "turn_error",
+    status: "error",
+    summary: "Managed turn failed.",
+    createdAt: "2026-02-16T16:58:00Z",
+  });
+  writeServiceHeartbeat(config, "scheduler", { status: "running" });
+  writeServiceHeartbeat(config, "telegram-agent", { status: "running" });
+  writeServiceHeartbeat(config, "managed-agent-bridge", { status: "running" });
+
+  let browser;
+  let stop = async () => {};
+  try {
+    browser = await launchChromiumOrSkip(t);
+    if (!browser) return;
+
+    const serverRuntime = await startDashboardServer({ config, logger: { log: () => {} } });
+    const { port } = serverRuntime;
+    stop = serverRuntime.stop;
+
+    const page = await browser.newPage();
+    await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle" });
+    await page.locator('.nav-item[data-view="admin"]').click();
+    await page.waitForFunction(() => {
+      return Array.from(document.querySelectorAll(".panel")).some((panel) => {
+        const text = panel.textContent || "";
+        return (
+          text.includes("Managed Agents") &&
+          text.includes("Needs review") &&
+          text.includes("turn_error") &&
+          text.includes("Managed turn failed.")
+        );
+      });
+    });
+
+    const dotTitle = await page.locator("#systemStatusDot").getAttribute("title");
+    assert.match(dotTitle || "", /managed agent need review/i);
     await page.close();
   } finally {
     if (browser) await browser.close();

@@ -16,7 +16,9 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
   - Claude managed memory is for durable preferences and operating lessons only. Schoology data still comes from deterministic local tools/SQLite and should not be copied into memory as raw grades, full assignment lists, or private student records.
   - Kid-safe input/output filtering blocks unsafe Telegram requests before model calls and suppresses unsafe final replies.
   - Session metadata stores the managed-agent definition revision; chats with stale revisions are forced onto a fresh Claude session.
+  - Idle sessions are locally reset before reuse and swept by the managed Telegram poller when `MANAGED_AGENT_IDLE_TIMEOUT_MINUTES` is exceeded, preventing stale managed sessions from accumulating as active chat state.
   - Managed session metadata is not a transcript store. It carries only bounded local retry context for the last failed user request so `try again` can survive stream failures and forced session resets.
+  - The bridge writes `managed-agent-bridge.heartbeat.json` plus sanitized `managed_agent_events` rows for session lifecycle, tool results, kid-safety blocks, turn completion, and turn errors. Secret-like keys and values are redacted before local event/heartbeat persistence.
   - Implemented entrypoints: `src/agent_runtime.js`, `src/managed_agent_bridge.js`, `src/managed_agent_client.js`.
   - Tracking: [#25](https://github.com/fsmalkin/schoology-bot/issues/25), [Managed Agents migration doc](managed-agents/README.md), [FSM Engineering Board](https://github.com/users/fsmalkin/projects/3).
 
@@ -59,9 +61,12 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
   - Last scrape timestamps and raw assignment cache.
 - data/agent.db
   - SQLite for assignments, unified task/reminder records, notes, chat_state,
-    chat_memory, and `managed_agent_sessions`.
+    chat_memory, `managed_agent_sessions`, and `managed_agent_events`.
   - `managed_agent_sessions` includes Claude session mapping plus bounded local
     retry metadata for the last failed Telegram request.
+  - `managed_agent_events` stores sanitized bridge events for operations
+    debugging without raw prompts or secret-bearing metadata fields. Secret-like
+    values in summaries, errors, and metadata are redacted before persistence.
 - data/beta/agent.runtime.db
   - Current managed-dev beta runtime DB for beta UAT.
 - Claude managed memory store
@@ -77,7 +82,8 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
 - data/agent.log
   - Telegram agent log (chat activity).
 - data/health/*.heartbeat.json
-  - Service heartbeat files for scheduler/agent/dashboard.
+  - Service heartbeat files for scheduler/agent/dashboard and the Managed
+    Agents bridge when that runtime handles turns.
 
 ## Configuration (env)
 Key settings:

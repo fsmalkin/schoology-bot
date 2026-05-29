@@ -1,7 +1,8 @@
 import fs from "fs";
 import path from "path";
-import { ensureDbSeeded, getDb, listAssignments, listTasks } from "./db.js";
+import { createDb, ensureDbSeeded, getDb, listAssignments, listTasks } from "./db.js";
 import { readServiceHeartbeat, summarizeHeartbeat, formatDurationMinutes } from "./health.js";
+import { buildManagedAgentStatus, MANAGED_AGENT_BRIDGE_SERVICE } from "./managed_agent_status.js";
 import { buildDbSummary } from "./summary.js";
 import { loadState } from "./storage.js";
 import { formatDateYmd } from "./time.js";
@@ -41,12 +42,14 @@ function formatRelativeAge(ageMs) {
   return formatDurationMinutes(ageMs);
 }
 
-function serviceSnapshot(config, serviceName, nowDate, staleMs, heartbeatOverride = null) {
-  const heartbeat = heartbeatOverride || readServiceHeartbeat(config, serviceName);
+function serviceSnapshot(config, serviceName, nowDate, staleMs, heartbeatOverride = undefined) {
+  const heartbeat =
+    heartbeatOverride === undefined ? readServiceHeartbeat(config, serviceName) : heartbeatOverride;
   const summary = summarizeHeartbeat(heartbeat, nowDate, staleMs);
   const labels = {
     scheduler: "Scheduler",
     "telegram-agent": "Telegram Agent",
+    [MANAGED_AGENT_BRIDGE_SERVICE]: "Managed Agent Bridge",
   };
   const label = labels[serviceName] || serviceName;
   return {
@@ -61,8 +64,84 @@ function serviceSnapshot(config, serviceName, nowDate, staleMs, heartbeatOverrid
   };
 }
 
-function getServiceNames(config) {
-  return ["scheduler", "telegram-agent"];
+function getServiceNames(config, managedAgents = null) {
+  const names = ["scheduler", "telegram-agent"];
+  if (managedAgents?.enabled) {
+    names.push(MANAGED_AGENT_BRIDGE_SERVICE);
+  }
+  return names;
+}
+
+function betaManagedConfig(config) {
+  const betaDataDir = path.join(config.paths.dataDir, "beta");
+  const betaDbPath = path.join(betaDataDir, "agent.runtime.db");
+  if (!fs.existsSync(betaDbPath)) return null;
+  return {
+    ...config,
+    runtime: { ...(config.runtime || {}), stack: "managed-agents" },
+    managedAgents: {
+      ...(config.managedAgents || {}),
+      enabled: true,
+      environment: "dev",
+      sessionNamespace: "schoology-dev",
+    },
+    paths: {
+      ...config.paths,
+      dataDir: betaDataDir,
+      statePath: path.join(betaDataDir, "state.json"),
+      storagePath: path.join(betaDataDir, "storage.json"),
+      agentDbPath: betaDbPath,
+    },
+  };
+}
+
+function buildManagedAgentsDashboardContext({ db, config, nowDate }) {
+  const current = buildManagedAgentStatus({ db, config, now: nowDate });
+  if (current.enabled) {
+    return { status: { ...current, runtimeLabel: "current" }, heartbeatConfig: config };
+  }
+
+  const betaConfig = betaManagedConfig(config);
+  if (!betaConfig) {
+    return { status: current, heartbeatConfig: config };
+  }
+
+  let betaDb = null;
+  try {
+    betaDb = createDb(betaConfig.paths.agentDbPath);
+    const status = buildManagedAgentStatus({ db: betaDb, config: betaConfig, now: nowDate });
+    return {
+      status: {
+        ...status,
+        enabled: status.enabled,
+        runtimeLabel: "managed-dev",
+        dataDir: betaConfig.paths.dataDir,
+      },
+      heartbeatConfig: betaConfig,
+    };
+  } catch {
+    return {
+      status: {
+        ...current,
+        enabled: true,
+        runtimeLabel: "managed-dev",
+        environment: "schoology-dev",
+        alerts: [
+          {
+            severity: "error",
+            message: "Managed-dev runtime DB could not be read.",
+          },
+        ],
+      },
+      heartbeatConfig: betaConfig,
+    };
+  } finally {
+    try {
+      betaDb?.close();
+    } catch {
+      // ignore close errors
+    }
+  }
 }
 
 function buildTaskStats(tasks, timeZone, nowDate) {
@@ -161,19 +240,29 @@ export function buildDashboardSnapshot({
   const pendingTasks = listTasks(db, { status: "pending" });
   const tasks = buildTaskStats(pendingTasks, config.schedule.timezone, nowDate);
   const assignments = buildAssignmentStats(db);
+  const managedContext = buildManagedAgentsDashboardContext({ db, config, nowDate });
+  const managedAgents = managedContext.status;
+  const managedBridgeHeartbeat =
+    managedAgents.enabled || heartbeatsOverride?.[MANAGED_AGENT_BRIDGE_SERVICE] !== undefined
+      ? heartbeatsOverride?.[MANAGED_AGENT_BRIDGE_SERVICE] ??
+        readServiceHeartbeat(managedContext.heartbeatConfig, MANAGED_AGENT_BRIDGE_SERVICE)
+      : undefined;
 
   return {
     generatedAt: nowDate.toISOString(),
     timezone: config.schedule.timezone,
-    services: getServiceNames(config).map((serviceName) =>
+    services: getServiceNames(config, managedAgents).map((serviceName) =>
       serviceSnapshot(
         config,
         serviceName,
         nowDate,
-        120000,
-        heartbeatsOverride?.[serviceName] || null
+        serviceName === MANAGED_AGENT_BRIDGE_SERVICE ? 10 * 60 * 1000 : 120000,
+        serviceName === MANAGED_AGENT_BRIDGE_SERVICE
+          ? managedBridgeHeartbeat
+          : heartbeatsOverride?.[serviceName]
       )
     ),
+    managedAgents,
     schedule: {
       scrapeCron: config.schedule.scrapeCron,
       sendCron: config.schedule.sendCron,

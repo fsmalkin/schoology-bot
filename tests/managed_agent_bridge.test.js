@@ -1,12 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   createDb,
   getManagedAgentSession,
+  listManagedAgentEvents,
   resetManagedAgentSession,
   syncAssignmentsFromState,
   upsertManagedAgentSession,
 } from "../src/db.js";
+import { readServiceHeartbeat } from "../src/health.js";
 import { MANAGED_AGENT_DEFINITION_REVISION } from "../src/managed_agent_definitions.js";
 import { runManagedAgentMessage } from "../src/managed_agent_bridge.js";
 
@@ -104,15 +109,113 @@ test("managed agent bridge creates a session, sends Telegram text, and returns a
   db.close();
 });
 
+test("managed agent bridge writes safe event log entries and heartbeat status", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "schoology-managed-bridge-"));
+  try {
+    const db = createDb();
+    const config = makeConfig();
+    config.paths = {
+      dataDir: tempDir,
+      statePath: path.join(tempDir, "missing-state.json"),
+    };
+    const client = makeMockClient({
+      sessionId: "sesn_observe",
+      streams: [
+        [
+          {
+            id: "evt_msg_1",
+            type: "agent.message",
+            content: [{ type: "text", text: "Observed." }],
+          },
+          {
+            id: "evt_idle_1",
+            type: "session.status_idle",
+            stop_reason: { type: "end_turn" },
+          },
+        ],
+      ],
+    });
+
+    const result = await runManagedAgentMessage({
+      chatId: "chat-observe",
+      text: "ping with password is much10600 and token=abc12345",
+      clientOverride: client,
+      configOverride: config,
+      dbOverride: db,
+      debug: true,
+    });
+
+    assert.equal(result.reply, "Observed.");
+    const events = listManagedAgentEvents(db, { environment: "schoology-dev", limit: 5 });
+    assert.deepEqual(
+      events.map((event) => event.eventType).slice(0, 2),
+      ["turn_completed", "session_created"]
+    );
+    assert.equal(events[0].metadata.replyLength, "Observed.".length);
+    assert.equal(events[1].metadata.userTextLength, "ping with password is much10600 and token=abc12345".length);
+    assert.equal(events[1].metadata.lastUserText, undefined);
+
+    const heartbeat = readServiceHeartbeat(config, "managed-agent-bridge");
+    assert.ok(heartbeat);
+    assert.equal(heartbeat.status, "running");
+    assert.equal(heartbeat.lastEventType, "turn_completed");
+    assert.equal(heartbeat.executedToolCount, 0);
+    const persisted = JSON.stringify({ events, heartbeat });
+    assert.doesNotMatch(persisted, /much10600|abc12345/);
+    db.close();
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("managed agent bridge redacts secret-looking values from errors and heartbeat", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "schoology-managed-error-"));
+  try {
+    const db = createDb();
+    const config = makeConfig();
+    config.paths = {
+      dataDir: tempDir,
+      statePath: path.join(tempDir, "missing-state.json"),
+    };
+    const client = makeMockClient({
+      sessionId: "sesn_error_redact",
+      streamErrors: [new Error("provider failed with password is much10600 and token=abc12345")],
+    });
+
+    await assert.rejects(
+      () =>
+        runManagedAgentMessage({
+          chatId: "chat-error-redact",
+          text: "refresh",
+          clientOverride: client,
+          configOverride: config,
+          dbOverride: db,
+        }),
+      /provider failed/
+    );
+
+    const events = listManagedAgentEvents(db, { environment: "schoology-dev", limit: 5 });
+    const heartbeat = readServiceHeartbeat(config, "managed-agent-bridge");
+    const persisted = JSON.stringify({ events, heartbeat });
+    assert.match(persisted, /password \[redacted\]/);
+    assert.match(persisted, /token=\[redacted\]/);
+    assert.doesNotMatch(persisted, /much10600|abc12345/);
+    db.close();
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("managed agent bridge starts a new session when the agent definition revision changes", async () => {
   const db = createDb();
   upsertManagedAgentSession(db, {
     chatId: "chat-stale-definition",
     environment: "schoology-dev",
     sessionId: "sesn_old_definition",
-    createdAt: "2026-05-28T04:00:00.000Z",
-    updatedAt: "2026-05-28T04:00:00.000Z",
-    expiresAt: "2026-05-29T04:00:00.000Z",
+    createdAt: "2099-05-28T04:00:00.000Z",
+    updatedAt: "2099-05-28T04:00:00.000Z",
+    lastEventAt: "2099-05-28T04:00:00.000Z",
+    expiresAt: "2099-05-29T04:00:00.000Z",
     metadata: { agentDefinitionRevision: "old-definition" },
   });
   const client = makeMockClient({
@@ -141,6 +244,46 @@ test("managed agent bridge starts a new session when the agent definition revisi
   assert.equal(stored.sessionId, "sesn_new_definition");
   assert.equal(stored.metadata.previousSessionId, "sesn_old_definition");
   assert.equal(stored.metadata.agentDefinitionRevision, MANAGED_AGENT_DEFINITION_REVISION);
+  db.close();
+});
+
+test("managed agent bridge resets idle sessions before reuse", async () => {
+  const db = createDb();
+  upsertManagedAgentSession(db, {
+    chatId: "chat-idle",
+    environment: "schoology-dev",
+    sessionId: "sesn_idle_old",
+    createdAt: "2026-05-28T04:00:00.000Z",
+    updatedAt: "2026-05-28T04:00:00.000Z",
+    lastEventAt: "2026-05-28T04:00:00.000Z",
+    expiresAt: "2099-05-29T04:00:00.000Z",
+    metadata: { agentDefinitionRevision: MANAGED_AGENT_DEFINITION_REVISION },
+  });
+  const config = makeConfig();
+  config.managedAgents.idleTimeoutMinutes = 1;
+  const client = makeMockClient({
+    sessionId: "sesn_idle_new",
+    streams: [[{ id: "idle", type: "session.status_idle", stop_reason: { type: "end_turn" } }]],
+  });
+
+  const result = await runManagedAgentMessage({
+    chatId: "chat-idle",
+    text: "hello",
+    clientOverride: client,
+    configOverride: config,
+    dbOverride: db,
+    debug: true,
+  });
+
+  assert.equal(result.sessionCreated, true);
+  assert.equal(result.sessionId, "sesn_idle_new");
+  assert.equal(client.calls.createSession[0].metadata.create_reason, "idle_timeout");
+  const stored = getManagedAgentSession(db, "chat-idle", "schoology-dev");
+  assert.equal(stored.sessionId, "sesn_idle_new");
+  assert.equal(stored.metadata.previousSessionId, "sesn_idle_old");
+  assert.equal(stored.metadata.idleReset, true);
+  const events = listManagedAgentEvents(db, { environment: "schoology-dev", limit: 10 });
+  assert.ok(events.some((event) => event.eventType === "session_idle_reset"));
   db.close();
 });
 
@@ -750,6 +893,10 @@ test("managed agent bridge blocks kid-unsafe input before creating a session", a
   assert.ok(result.safety.categories.includes("dangerous_or_illegal"));
   assert.equal(client.calls.createSession.length, 0);
   assert.equal(client.calls.sendEvents.length, 0);
+  const events = listManagedAgentEvents(db, { environment: "schoology-dev", limit: 5 });
+  assert.equal(events[0].eventType, "kid_safety_block");
+  assert.equal(events[0].status, "blocked");
+  assert.equal(events[0].metadata.stage, "input");
   db.close();
 });
 

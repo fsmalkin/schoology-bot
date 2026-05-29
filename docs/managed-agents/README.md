@@ -6,7 +6,7 @@ Decision date: 2026-05-25
 - Project board: [FSM Engineering Board](https://github.com/users/fsmalkin/projects/3)
 - Parent issue: [#25 Migrate Schoology runtime to Claude Managed Agents](https://github.com/fsmalkin/schoology-bot/issues/25)
 - Completed foundation slice: [#27 Managed Agents session mapping and dev config](https://github.com/fsmalkin/schoology-bot/issues/27)
-- Current active slice: [#30 Managed Agents parity story suite and judge gate](https://github.com/fsmalkin/schoology-bot/issues/30)
+- Current active slice: [#31 Managed Agents health, event log, and idle cost controls](https://github.com/fsmalkin/schoology-bot/issues/31)
 - Related repo docs: [Roadmap](../ROADMAP.md), [Backlog](../BACKLOG.md), [System](../SYSTEM.md), [Test Coverage](../TEST_COVERAGE.md)
 
 Implementation slices:
@@ -123,6 +123,12 @@ Implemented dev bridge foundation:
   stores only bounded last-failed-request retry context in `managed_agent_sessions`
   and expands retry shorthand such as `try again` across stream failures and
   forced session resets.
+- Idle sessions are locally reset before reuse and swept by the managed Telegram
+  poller when `MANAGED_AGENT_IDLE_TIMEOUT_MINUTES` is exceeded. The bridge
+  records sanitized `managed_agent_events` rows plus
+  `managed-agent-bridge.heartbeat.json` so the dashboard/admin view can show
+  recent session status, tool errors, kid-safety blocks, and cost-risk alerts
+  without exposing secrets or raw prompts.
 - A kid-safe content guard blocks unsafe Telegram input before any model/API
   call and replaces unsafe final assistant output before Telegram delivery.
 - The custom tool loop rejects unsupported custom tools with explicit tool
@@ -138,9 +144,13 @@ Local/mock UAT coverage:
 - `tests/managed_agent_bridge.test.js` also verifies unsupported tool errors,
   web and memory file built-in confirmation allow-listing, memory store resource
   attachment, unsupported built-in denial, kid-safe input/output blocking, stale
-  definition revision replacement, local retry context after session reset,
-  deterministic invalid-arg errors, bounded large result payloads, and tool-round
-  limits.
+  definition revision replacement, idle-session reset, heartbeat/event-log
+  writes with secret-like values redacted, local retry context after session
+  reset, deterministic invalid-arg errors, bounded large result payloads, and
+  tool-round limits.
+- `tests/managed_agent_status.test.js` verifies idle-policy decisions, event
+  metadata/value redaction, repeated tool-error alerting, idle-sweep status, and
+  dashboard status/alert shaping.
 - `tests/managed_agent_tools.test.js` verifies exported custom tool definitions
   cover the full Schoology tool surface.
 - `tests/kid_safe_content_filter.test.js` verifies ordinary schoolwork and safe

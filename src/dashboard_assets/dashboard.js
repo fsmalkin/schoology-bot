@@ -429,11 +429,14 @@ function updateSystemStatusDot() {
   const dot = document.getElementById("systemStatusDot");
   if (!dot) return;
   const services = state.health?.services || [];
+  const managedAlerts = state.health?.managedAgents?.alerts || [];
   const allOk = services.length > 0 && services.every((s) => s.ok);
   const anyDown = services.some((s) => !s.ok && s.state !== "stale");
-  const cls = !state.health ? "gray" : anyDown ? "red" : allOk ? "green" : "amber";
+  const anyManagedError = managedAlerts.some((alert) => alert.severity === "error");
+  const cls = !state.health ? "gray" : anyDown || anyManagedError ? "red" : allOk && managedAlerts.length === 0 ? "green" : "amber";
   dot.className = `status-dot ${cls}`;
   dot.title = !state.health ? "Health unknown" : anyDown ? "Services down — click for details" : allOk ? "All services healthy" : "Some services stale";
+  dot.title = !state.health ? "Health unknown" : anyDown || anyManagedError ? "Services or managed agent need review - click for details" : allOk && managedAlerts.length === 0 ? "All services healthy" : "Some services stale or managed agent alerts present";
 }
 
 function renderMetricRow() {
@@ -1063,7 +1066,8 @@ function renderAdminPane() {
   const activity = state.health.activity || {};
   const assignments = state.health.assignments || {};
   const tasks = state.health.tasks || {};
-  const allOk = services.length > 0 && services.every((s) => s.ok);
+  const managedAgents = state.health.managedAgents || {};
+  const allOk = services.length > 0 && services.every((s) => s.ok) && (managedAgents.alerts || []).length === 0;
 
   const serviceRows = services.map((s) => {
     const indCls = s.ok ? "green" : s.state === "stale" ? "amber" : "red";
@@ -1077,6 +1081,65 @@ function renderAdminPane() {
       </div>
     `;
   }).join("");
+
+  const managedAlertRows = (managedAgents.alerts || []).map((alert) => {
+    const cls = alert.severity === "error" ? "red" : "amber";
+    return `<div class="managed-alert ${cls}">${esc(alert.message || "")}</div>`;
+  }).join("");
+  const managedSessionRows = (managedAgents.recentSessions || []).slice(0, 4).map((session) => {
+    const failed = session.status && session.status !== "active";
+    const risk = failed || session.idleExpired || session.costRisk || session.isExpired;
+    const flag = session.idleExpired
+      ? "Idle expired"
+      : session.isExpired
+        ? "TTL expired"
+        : failed
+          ? String(session.status || "Error").toUpperCase()
+          : session.costRisk
+            ? "Cost risk"
+            : "OK";
+    return `
+      <div class="managed-row">
+        <div>
+          <div class="managed-row-title">${esc(session.sessionId || "No session")}</div>
+          <div class="managed-row-sub">${esc(session.lastEventType || session.createReason || "No events yet")}</div>
+        </div>
+        <span class="pill ${risk ? "amber" : "green"}">${esc(flag)}</span>
+      </div>
+    `;
+  }).join("");
+  const managedEventRows = (managedAgents.recentEvents || []).slice(0, 5).map((event) => {
+    const cls = event.status === "error" ? "red" : event.status === "blocked" || event.status === "warning" ? "amber" : "green";
+    const created = String(event.createdAt || "").replace("T", " ").replace(".000Z", "Z");
+    return `
+      <div class="managed-row">
+        <div>
+          <div class="managed-row-title">${esc(event.eventType || "event")}</div>
+          <div class="managed-row-sub">${esc(event.summary || created)}</div>
+        </div>
+        <span class="pill ${cls}">${esc(String(event.status || "ok").toUpperCase())}</span>
+      </div>
+    `;
+  }).join("");
+  const managedPanel = managedAgents.enabled ? `
+        <div class="panel">
+          <div class="panel-header">
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="var(--ink-3)" stroke-width="1.8" stroke-linecap="round"><path d="M3 12V3h9v9"/><path d="M5 5h5M5 8h3"/></svg>
+            <span class="panel-title">Managed Agents</span>
+            <span class="pill ${managedAgents.alerts?.length ? "amber" : "green"}" style="font-size:11px;padding:2px 8px;">${managedAgents.alerts?.length ? "Needs review" : "Nominal"}</span>
+          </div>
+          <div class="managed-agent-summary">
+            <div class="mini-stat"><div class="mini-stat-label">Environment</div><div class="mini-stat-value small">${esc(managedAgents.environment || "dev")}</div></div>
+            <div class="mini-stat"><div class="mini-stat-label">Active</div><div class="mini-stat-value small">${esc(String(managedAgents.activeSessionCount || 0))}</div></div>
+            <div class="mini-stat"><div class="mini-stat-label">Idle policy</div><div class="mini-stat-value small">${managedAgents.idleTimeoutMinutes ? `${esc(String(managedAgents.idleTimeoutMinutes))}m` : "n/a"}</div></div>
+          </div>
+          ${managedAlertRows ? `<div class="managed-alert-list">${managedAlertRows}</div>` : ""}
+          <div class="managed-section-title">Recent Sessions</div>
+          <div class="managed-list">${managedSessionRows || `<p class="empty-state">No managed sessions recorded.</p>`}</div>
+          <div class="managed-section-title">Recent Events</div>
+          <div class="managed-list">${managedEventRows || `<p class="empty-state">No managed events recorded.</p>`}</div>
+        </div>
+  ` : "";
 
   root.innerHTML = `
     <div class="admin-header">
@@ -1107,6 +1170,8 @@ function renderAdminPane() {
             <span class="sync-bar-time">Last scrape: ${esc(activity.lastScrapeAgeLabel || "—")} ago</span>
           </div>
         </div>
+
+        ${managedPanel}
 
         <!-- How it works -->
         <div class="panel">

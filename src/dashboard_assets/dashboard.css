@@ -918,6 +918,68 @@ a { color: var(--brand); }
 .service-status-pill.down  { background: var(--red-bg);   color: var(--red); }
 .service-status-pill.stale { background: var(--amber-bg); color: var(--amber); }
 
+.managed-agent-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px 18px 8px;
+}
+
+.mini-stat-value.small {
+  font-size: 18px;
+  word-break: break-word;
+}
+
+.managed-alert-list {
+  display: grid;
+  gap: 8px;
+  padding: 0 18px 8px;
+}
+
+.managed-alert {
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 9px;
+}
+
+.managed-alert.amber { background: var(--amber-bg); color: var(--amber); }
+.managed-alert.red { background: var(--red-bg); color: var(--red); }
+
+.managed-section-title {
+  color: var(--ink-3);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 10px 18px 2px;
+  text-transform: uppercase;
+}
+
+.managed-list { padding: 2px 0 6px; }
+
+.managed-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 18px;
+}
+
+.managed-row:hover { background: var(--canvas); }
+
+.managed-row-title {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.managed-row-sub {
+  color: var(--ink-3);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 /* ─── ACTIVITY FEED ────────────────────────────────── */
 .activity-list { padding: 4px 0; }
 

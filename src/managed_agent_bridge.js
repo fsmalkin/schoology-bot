@@ -4,13 +4,22 @@ import {
   getDb,
   getManagedAgentSession,
   markManagedAgentSessionEvent,
+  recordManagedAgentEvent,
+  resetManagedAgentSession,
   upsertManagedAgentSession,
 } from "./db.js";
+import { writeServiceHeartbeat } from "./health.js";
 import { createManagedAgentClient } from "./managed_agent_client.js";
 import {
   MANAGED_AGENT_ALLOWED_BUILTIN_TOOLS,
   MANAGED_AGENT_DEFINITION_REVISION,
 } from "./managed_agent_definitions.js";
+import {
+  MANAGED_AGENT_BRIDGE_SERVICE,
+  normalizeManagedAgentEnvironment,
+  sanitizeManagedAgentEventMetadata,
+  shouldResetManagedSessionForIdle,
+} from "./managed_agent_status.js";
 import { runToolByName, TOOL_NAMES } from "./tool_runner.js";
 import { normalizeAscii, sanitizeRepeatedText } from "./text_utils.js";
 import {
@@ -19,6 +28,7 @@ import {
   KID_SAFE_OUTPUT_FALLBACK,
   safetyDebugPayload,
 } from "./kid_safe_content_filter.js";
+import { redactSensitiveString } from "./sensitive_redaction.js";
 
 const ALLOWED_BUILTIN_TOOL_SET = new Set(MANAGED_AGENT_ALLOWED_BUILTIN_TOOLS);
 const DEFAULT_MEMORY_STORE_INSTRUCTIONS = [
@@ -31,10 +41,41 @@ const RETRY_SHORTHAND_RE =
 const MAX_RETRY_CONTEXT_CHARS = 2500;
 const MAX_RETRY_ERROR_CHARS = 500;
 
+function safeRecordManagedEvent(
+  db,
+  { chatId, config, sessionId = null, eventType, status = "ok", summary = "", metadata = {}, createdAt }
+) {
+  try {
+    recordManagedAgentEvent(db, {
+      chatId,
+      environment: normalizeEnvironment(config),
+      sessionId,
+      eventType,
+      status,
+      summary,
+      metadata: sanitizeManagedAgentEventMetadata(metadata || {}),
+      createdAt,
+    });
+  } catch {
+    // Event logging must never mask the original agent operation.
+  }
+}
+
+function safeWriteBridgeHeartbeat(config, details = {}) {
+  try {
+    if (!config?.paths?.dataDir) return null;
+    return writeServiceHeartbeat(config, MANAGED_AGENT_BRIDGE_SERVICE, {
+      status: "running",
+      environment: normalizeEnvironment(config),
+      ...sanitizeManagedAgentEventMetadata(details || {}),
+    });
+  } catch {
+    return null;
+  }
+}
+
 function normalizeEnvironment(config) {
-  const managed = config.managedAgents || {};
-  const namespace = String(managed.sessionNamespace || managed.environment || "dev").trim().toLowerCase();
-  return namespace || "dev";
+  return normalizeManagedAgentEnvironment(config);
 }
 
 function parseIsoMs(value) {
@@ -70,7 +111,7 @@ function buildMemoryStoreResources(config) {
 
 function compactMetadataText(value, maxChars = MAX_RETRY_CONTEXT_CHARS) {
   if (value === undefined || value === null) return "";
-  const text = String(value).trim();
+  const text = redactSensitiveString(String(value).trim(), maxChars);
   if (!text) return "";
   const limit = Number(maxChars);
   if (!Number.isFinite(limit) || limit <= 0 || text.length <= limit) return text;
@@ -230,25 +271,71 @@ function extractToolConfirmation(event) {
 
 async function getOrStartSession({ db, config, client, chatId, now }) {
   const environment = normalizeEnvironment(config);
-  const current = getManagedAgentSession(db, chatId, environment, { now });
-  const currentRevision = String(current?.metadata?.agentDefinitionRevision || "").trim();
+  let current = getManagedAgentSession(db, chatId, environment, { now });
   const expectedRevision = MANAGED_AGENT_DEFINITION_REVISION;
-  const isStaleAgentDefinition = Boolean(
+  let currentRevision = String(current?.metadata?.agentDefinitionRevision || "").trim();
+  let isStaleAgentDefinition = Boolean(
     current &&
       current.status === "active" &&
       !current.isExpired &&
       currentRevision !== expectedRevision
   );
+  let idleDecision = isStaleAgentDefinition
+    ? { reset: false, reason: "agent_definition_revision_changed" }
+    : shouldResetManagedSessionForIdle(current, config.managedAgents, now);
+  let idleReset = false;
+  if (idleDecision.reset) {
+    resetManagedAgentSession(db, {
+      chatId,
+      environment,
+      resetAt: now,
+      reason: "idle_timeout",
+    });
+    safeRecordManagedEvent(db, {
+      chatId,
+      config,
+      sessionId: current?.sessionId || null,
+      eventType: "session_idle_reset",
+      status: "warning",
+      summary: "Managed session reset after exceeding idle policy.",
+      metadata: {
+        idleMs: idleDecision.idleMs,
+        idleMinutes: idleDecision.idleMinutes,
+        timeoutMinutes: idleDecision.timeoutMinutes,
+        lastActivityAt: idleDecision.lastActivityAt,
+      },
+      createdAt: now,
+    });
+    current = getManagedAgentSession(db, chatId, environment, { now });
+    idleDecision = shouldResetManagedSessionForIdle(current, config.managedAgents, now);
+    idleReset = true;
+    currentRevision = String(current?.metadata?.agentDefinitionRevision || "").trim();
+    isStaleAgentDefinition = Boolean(
+      current &&
+        current.status === "active" &&
+        !current.isExpired &&
+        currentRevision !== expectedRevision
+    );
+  }
   if (current && current.status === "active" && !current.isExpired && !isStaleAgentDefinition) {
-    return { sessionId: current.sessionId, created: false, reason: "existing", session: current };
+    return {
+      sessionId: current.sessionId,
+      created: false,
+      reason: "existing",
+      session: current,
+      idleReset,
+      idleDecision,
+    };
   }
 
   const reason = current
     ? isStaleAgentDefinition
       ? "agent_definition_revision_changed"
-      : current.isExpired
-        ? "expired"
-        : current.status
+      : idleReset
+        ? "idle_timeout"
+        : current.isExpired
+          ? "expired"
+          : current.status
     : "missing";
   const resources = buildMemoryStoreResources(config);
   const carryover = retryCarryoverMetadata(current);
@@ -283,10 +370,11 @@ async function getOrStartSession({ db, config, client, chatId, now }) {
       environmentId: config.managedAgents.environmentId,
       agentDefinitionRevision: expectedRevision,
       memoryStoreIds: resources.map((resource) => resource.memory_store_id),
+      idleReset,
       ...carryover,
     },
   });
-  return { sessionId, created: true, reason, session: stored.session };
+  return { sessionId, created: true, reason, session: stored.session, idleReset, idleDecision };
 }
 
 async function executeCustomToolUse({ db, call, userText, now }) {
@@ -358,9 +446,30 @@ export async function runManagedAgentMessage({
 } = {}) {
   const config = configOverride || getConfig();
   validateManagedAgentsConfig(config);
-  const inputSafety = detectKidUnsafeContent(text);
+  const db = dbOverride || getDb(config);
+  ensureDbSeeded(db, config.paths.statePath);
+  const originalText = String(text || "");
+  const inputSafety = detectKidUnsafeContent(originalText);
   if (!inputSafety.safe) {
     const reply = buildKidSafeBlockedReply(inputSafety);
+    safeRecordManagedEvent(db, {
+      chatId,
+      config,
+      eventType: "kid_safety_block",
+      status: "blocked",
+      summary: "Blocked kid-unsafe Managed Agents input before session creation.",
+      metadata: {
+        stage: "input",
+        categories: inputSafety.categories || [],
+        userTextLength: originalText.length,
+      },
+    });
+    safeWriteBridgeHeartbeat(config, {
+      status: "blocked",
+      lastEventType: "kid_safety_block",
+      safetyStage: "input",
+      blockedCategories: inputSafety.categories || [],
+    });
     if (debug) {
       return {
         reply,
@@ -374,16 +483,8 @@ export async function runManagedAgentMessage({
     }
     return reply;
   }
-  const db = dbOverride || getDb(config);
-  ensureDbSeeded(db, config.paths.statePath);
   const client = clientOverride || createManagedAgentClient(config.managedAgents);
   const now = new Date().toISOString();
-  const sessionInfo = await getOrStartSession({ db, config, client, chatId, now });
-  const sessionId = sessionInfo.sessionId;
-  const originalText = String(text || "");
-  const retryRequest = buildRetryRequest(originalText, sessionInfo.session?.metadata || {});
-  const outboundUserText = retryRequest.text;
-  const attemptedUserText = retryRequest.previousText || originalText;
   const eventsById = new Map();
   const replyParts = [];
   const seenTextEvents = new Set();
@@ -391,7 +492,47 @@ export async function runManagedAgentMessage({
   const completedActionIds = new Set();
 
   let streamPasses = 0;
+  let sessionInfo = null;
+  let sessionId = null;
+  let retryRequest = { text: originalText, previousText: null, isRetry: false };
+  let outboundUserText = originalText;
+  let attemptedUserText = originalText;
+  const startedMs = Date.now();
   try {
+    sessionInfo = await getOrStartSession({ db, config, client, chatId, now });
+    sessionId = sessionInfo.sessionId;
+    retryRequest = buildRetryRequest(originalText, sessionInfo.session?.metadata || {});
+    outboundUserText = retryRequest.text;
+    attemptedUserText = retryRequest.previousText || originalText;
+
+    safeRecordManagedEvent(db, {
+      chatId,
+      config,
+      sessionId,
+      eventType: sessionInfo.created ? "session_created" : "session_reused",
+      status: sessionInfo.idleReset ? "warning" : "ok",
+      summary: sessionInfo.created
+        ? `Managed session created (${sessionInfo.reason}).`
+        : "Managed session reused.",
+      metadata: {
+        reason: sessionInfo.reason,
+        idleReset: Boolean(sessionInfo.idleReset),
+        idleMs: sessionInfo.idleDecision?.idleMs ?? null,
+        userTextLength: originalText.length,
+        retry: retryRequest.isRetry,
+      },
+      createdAt: now,
+    });
+    safeWriteBridgeHeartbeat(config, {
+      status: "running",
+      sessionId,
+      lastEventType: "turn_started",
+      sessionCreated: Boolean(sessionInfo.created),
+      createReason: sessionInfo.reason,
+      userTextLength: originalText.length,
+      retry: retryRequest.isRetry,
+    });
+
     await client.sendEvents(sessionId, [
       {
         type: "user.message",
@@ -450,13 +591,48 @@ export async function runManagedAgentMessage({
                   });
                   completedActionIds.add(actionId);
                   executedTools.push({ call, output });
+                  const toolName = normalizeManagedToolName(call.name) || call.name || "unknown";
+                  const outputOk = output?.ok !== false;
+                  safeRecordManagedEvent(db, {
+                    chatId,
+                    config,
+                    sessionId,
+                    eventType: "custom_tool_result",
+                    status: outputOk ? "ok" : "error",
+                    summary: `Custom tool ${toolName} ${outputOk ? "completed" : "returned an error"}.`,
+                    metadata: {
+                      actionId,
+                      toolName,
+                      ok: outputOk,
+                      error: outputOk ? null : output?.error || "Tool returned ok=false.",
+                      outputKeys:
+                        output && typeof output === "object" && !Array.isArray(output)
+                          ? Object.keys(output).slice(0, 12)
+                          : [],
+                    },
+                  });
                   actionEvents.push(customToolResultEvent(call, output, { maxChars: toolResultMaxChars }));
                   continue;
                 }
                 const confirmation = extractToolConfirmation(blockedEvent);
                 if (confirmation) {
                   completedActionIds.add(actionId);
-                  actionEvents.push(toolConfirmationEvent(confirmation));
+                  const confirmationEvent = toolConfirmationEvent(confirmation);
+                  actionEvents.push(confirmationEvent);
+                  safeRecordManagedEvent(db, {
+                    chatId,
+                    config,
+                    sessionId,
+                    eventType: "builtin_tool_confirmation",
+                    status: confirmationEvent.result === "allow" ? "ok" : "warning",
+                    summary: `${confirmationEvent.result === "allow" ? "Allowed" : "Denied"} built-in tool ${confirmation.name || "unknown"}.`,
+                    metadata: {
+                      actionId,
+                      toolName: confirmation.name || "",
+                      toolEventType: confirmation.type,
+                      result: confirmationEvent.result,
+                    },
+                  });
                 }
               }
               if (actionEvents.length > 0) {
@@ -496,22 +672,60 @@ export async function runManagedAgentMessage({
     if (!outputSafety.safe) {
       reply = KID_SAFE_OUTPUT_FALLBACK;
       safety = safetyDebugPayload("output", outputSafety);
+      safeRecordManagedEvent(db, {
+        chatId,
+        config,
+        sessionId,
+        eventType: "kid_safety_block",
+        status: "blocked",
+        summary: "Blocked kid-unsafe Managed Agents output.",
+        metadata: {
+          stage: "output",
+          categories: outputSafety.categories || [],
+        },
+      });
     }
+    const completedAt = new Date().toISOString();
     markManagedAgentSessionEvent(db, {
       chatId,
       environment: normalizeEnvironment(config),
-      lastEventAt: new Date().toISOString(),
+      lastEventAt: completedAt,
       metadata: {
         lastEventType: "telegram_message",
         lastStreamPasses: streamPasses,
         lastToolCount: executedTools.length,
-        lastUserText: compactMetadataText(originalText),
+        lastUserTextLength: originalText.length,
         lastRetryUserText: retryRequest.previousText || null,
         lastFailedUserText: null,
         lastFailedAt: null,
         lastFailedError: null,
         lastFailedSessionId: null,
       },
+    });
+    safeRecordManagedEvent(db, {
+      chatId,
+      config,
+      sessionId,
+      eventType: "turn_completed",
+      status: safety ? "blocked" : "ok",
+      summary: safety ? "Managed turn completed with kid-safe output replacement." : "Managed turn completed.",
+      metadata: {
+        streamPasses,
+        executedToolCount: executedTools.length,
+        replyLength: reply.length,
+        durationMs: Date.now() - startedMs,
+        safetyStage: safety?.stage || null,
+      },
+      createdAt: completedAt,
+    });
+    safeWriteBridgeHeartbeat(config, {
+      status: safety ? "blocked" : "running",
+      sessionId,
+      lastEventType: "turn_completed",
+      streamPasses,
+      executedToolCount: executedTools.length,
+      durationMs: Date.now() - startedMs,
+      safetyStage: safety?.stage || null,
     });
 
     if (debug) {
@@ -535,6 +749,30 @@ export async function runManagedAgentMessage({
     return reply;
   } catch (err) {
     recordManagedAgentFailure(db, { chatId, config, attemptedUserText, error: err });
+    safeRecordManagedEvent(db, {
+      chatId,
+      config,
+      sessionId,
+      eventType: "turn_error",
+      status: "error",
+      summary: compactMetadataText(err?.message || String(err || ""), 300),
+      metadata: {
+        errorName: err?.name || "Error",
+        errorMessage: compactMetadataText(err?.message || String(err || ""), 300),
+        streamPasses,
+        executedToolCount: executedTools.length,
+        durationMs: Date.now() - startedMs,
+      },
+    });
+    safeWriteBridgeHeartbeat(config, {
+      status: "error",
+      sessionId,
+      lastEventType: "turn_error",
+      lastError: compactMetadataText(err?.message || String(err || ""), 300),
+      streamPasses,
+      executedToolCount: executedTools.length,
+      durationMs: Date.now() - startedMs,
+    });
     throw err;
   }
 }
