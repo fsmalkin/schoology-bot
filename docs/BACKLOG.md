@@ -21,7 +21,7 @@ This file tracks active and proposed work items with GitHub issue linkage.
       - [#29 Custom tool loop](https://github.com/fsmalkin/schoology-bot/issues/29) - hardening started
       - [#30 Parity story suite and judge gate](https://github.com/fsmalkin/schoology-bot/issues/30) - final beta Telegram container proof remains
       - [#31 Health, event log, and idle cost controls](https://github.com/fsmalkin/schoology-bot/issues/31)
-      - [#32 Prod canary, rollback, and stabilization](https://github.com/fsmalkin/schoology-bot/issues/32)
+      - [#32 Prod canary, rollback, and stabilization](https://github.com/fsmalkin/schoology-bot/issues/32) - canary started; 24h stabilization in progress
       - [#34 Retired runtime code/repo removal](https://github.com/fsmalkin/schoology-bot/issues/34)
 2. [#34 Remove retired runtime code and repo artifacts](https://github.com/fsmalkin/schoology-bot/issues/34)
    - Status: Open
@@ -32,21 +32,21 @@ This file tracks active and proposed work items with GitHub issue linkage.
       - Historical notes are either deleted or clearly archived with no operational instructions.
       - Docker rebuild, managed-dev poller, dashboard health, and relevant agent smokes pass after removal.
 3. Managed Agents release gate modernization
-   - Status: Not yet filed
+   - Status: Implemented for Managed Agents cutover; monitor during #32 stabilization
    - Outcome target: Replace legacy beta reset/release gate assumptions with Managed Agents dev artifacts and judge evidence.
 4. Login/session resilience follow-up
    - Status: Open (#18 parked unless strategy changes)
    - Outcome target: Keep Schoology login/session recovery reliable across the Managed Agents cutover.
-5. Secrets hygiene (P0 from audit §1)
+5. Secrets hygiene (audit §1)
    - Status: Not yet filed
-   - Outcome target: Remove cleartext-credential exposure. Secrets in `.env.systemd`/`.env.beta.systemd` are gitignored and not in history, but sit on disk in cleartext (Schoology password, OpenAI key, Telegram token, GitHub PAT).
+   - Outcome target: Remove routine cleartext-credential exposure from local runtime files. Secrets in `.env.systemd`/`.env.beta.systemd` are gitignored and not in history, but sit on disk in cleartext (Schoology password, OpenAI key, Telegram token, GitHub PAT).
    - Acceptance gate:
-      - All four credentials rotated.
+      - Current live secret values imported into Windows Credential Manager without mandatory provider-side rotation.
       - Secrets read from Docker secrets / keychain rather than on-disk `.env.*`.
-      - `gitleaks` or `git-secrets` pre-commit hook in place.
+      - Tracked-file secret scanner in place.
       - `CHOLOGY_USERNAME` typo in `.env.systemd:1` fixed.
       - `.env.managed-dev` / `.env.managed-prod` checked for the same exposure before prod cutover.
-   - Note: Small and independent of the Managed Agents ordering; high blast radius, low effort.
+   - Note: Current live values were imported without provider-side rotation; rotate individual credentials only when a concrete exposure is identified.
 
 ## P2 (Planned)
 Dashboard work is driven by `docs/DASHBOARD_AUDIT.md` (UAT-verified findings + tiers), which supersedes the `DASHBOARD_DESIGN.md` phase numbering. Verified-only mocks: `docs/design/mocks/dashboard-improvements-v1.html`. All deferred behind the Managed Agents migration.

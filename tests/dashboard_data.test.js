@@ -146,6 +146,8 @@ test("buildDashboardSnapshot includes managed agents health when runtime is enab
     assert.equal(snapshot.managedAgents.activeSessionCount, 1);
     assert.equal(snapshot.managedAgents.recentEvents[0].eventType, "turn_completed");
     assert.ok(snapshot.services.some((service) => service.key === "managed-agent-bridge"));
+    assert.ok(snapshot.quickCommands[0].includes("docker-compose.managed-prod.yml"));
+    assert.ok(snapshot.quickCommands.at(-1).includes("-f docker-compose.yml -p schoology-prod up"));
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

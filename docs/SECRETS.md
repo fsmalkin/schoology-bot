@@ -4,6 +4,11 @@ Windows Credential Manager is the source of truth for live secrets. Ignored
 `.env*` files may keep non-secret runtime configuration, but live token/password
 values should be blank after migration.
 
+Credential rotation is not required for this cutover unless a specific secret is
+known to have leaked outside trusted local/operator context. The default cutover
+path imports the current live values into Windows Credential Manager, exports
+Docker secret files, then sanitizes local env files.
+
 ## Credential Names
 Required prod secrets:
 
@@ -13,7 +18,7 @@ Required prod secrets:
 - `schoology-bot/prod/ANTHROPIC_API_KEY`
 - `schoology-bot/prod/GITHUB_TOKEN`
 
-Optional rotated secrets, when used:
+Optional secrets, when used:
 
 - `schoology-bot/prod/TAILSCALE_AUTH_KEY`
 - `schoology-bot/prod/SMTP_PASS`
@@ -22,20 +27,22 @@ Optional rotated secrets, when used:
 - `schoology-bot/prod/CLAUDE_API_KEY`
 
 ## Workflow
-1. Rotate provider-side credentials first.
-2. Store rotated values:
+1. Import current live values into Windows Credential Manager:
    `powershell -ExecutionPolicy Bypass -File scripts/manage_schoology_secrets.ps1 -Action import -Environment prod`
-3. Verify without printing values:
+2. Verify without printing values:
    `powershell -ExecutionPolicy Bypass -File scripts/manage_schoology_secrets.ps1 -Action verify -Environment prod`
-4. Export Docker secret files and generated runtime env:
+3. Export Docker secret files and generated runtime env:
    `powershell -ExecutionPolicy Bypass -File scripts/manage_schoology_secrets.ps1 -Action export -Environment prod`
-5. Sanitize ignored local env files:
+4. Sanitize ignored local env files:
    `powershell -ExecutionPolicy Bypass -File scripts/manage_schoology_secrets.ps1 -Action sanitize-env -Environment prod`
-6. Run the tracked secret scan:
+5. Run the tracked secret scan:
    `npm run secrets:scan`
 
 The export writes ignored files under `data/secrets/prod/` and
 `data/runtime/prod.env`. These are local deployment artifacts, not repo state.
+The sanitize step writes ignored rollback copies under
+`data/runtime/env-backups/<timestamp>/` before blanking local env-file secret
+values.
 
 ## Managed Prod Start And Rollback
 Start Managed Agents prod:

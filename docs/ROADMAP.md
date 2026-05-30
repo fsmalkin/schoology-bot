@@ -7,7 +7,9 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 - Login uses Mayari username and password directly.
 - MFA is not expected.
 - Headless browser only for unattended scrape/runtime work; interactive browser login is used to refresh storage when needed.
-- Credentials and config live in `.env`.
+- Non-secret config lives in `.env`/generated runtime env; live production
+  secrets are migrating to Windows Credential Manager and Docker secret files
+  without required rotation unless a specific exposure is identified.
 - Scrape runs at 6:00 AM ET, summary sent at 7:00 AM ET.
 - Reminder scheduler runs every minute to deliver task reminders.
 - Daily summary delivery via Telegram.
@@ -51,7 +53,7 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 ## Status Snapshot (2026-05-28)
 - Delivered:
   - Dashboard audit completed and consolidated into `docs/DASHBOARD_AUDIT.md` (supersedes the `DASHBOARD_DESIGN.md` phase framing as the dashboard source of truth). Findings are UAT-verified against an isolated prod-snapshot stack; severity recalibrated after ~30% of pre-test "critical" predictions were downgraded or falsified. Verified-only mocks live at `docs/design/mocks/dashboard-improvements-v1.html`.
-  - Audit surfaced a P0 security item (cleartext secrets on disk in `.env.systemd`/`.env.beta.systemd`) and a #1 data-integrity fix (suspicious-scrape guard) — both folded into the queues below.
+  - Audit surfaced a P0 hygiene item (cleartext secrets on disk in `.env.systemd`/`.env.beta.systemd`) and a #1 data-integrity fix (suspicious-scrape guard) — both folded into the queues below.
   - Runtime migrated from laptop to local server and is running in Docker Compose with health checks.
   - The abandoned runtime experiment is no longer a rollback/reference target and has been removed under [#34](https://github.com/fsmalkin/schoology-bot/issues/34).
   - Agent shell/runtime decision gate completed: Claude Managed Agents is the selected replacement path while deterministic Schoology tool execution and local/server state ownership remain intact.
@@ -67,10 +69,10 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
   - Managed Agents Telegram dev bridge foundation delivered in [#28](https://github.com/fsmalkin/schoology-bot/issues/28): runtime router, Claude session event client, assistant text streaming, and mock custom Schoology tool result flow.
   - Managed Agents custom tool loop hardening started in [#29](https://github.com/fsmalkin/schoology-bot/issues/29): exported tool definitions, unsupported-tool errors, built-in tool denial, invalid-arg errors, bounded result payloads, loop guardrails, and duplicate action-id dedupe.
   - Managed Agents parity runner prep and live dev evidence delivered in [#30](https://github.com/fsmalkin/schoology-bot/issues/30): story suite routing through `runChatMessage`, live story judge artifacts, scoped JTBD UAT, beta Schoology auth refresh, and live `refresh_schoology` repro against real Schoology data.
+  - Managed-prod cutover started in [#32](https://github.com/fsmalkin/schoology-bot/issues/32): current live secrets imported to Windows Credential Manager without provider-side rotation, Docker secret-file runtime enabled, prod Claude agent updated, prod memory store created, scheduler/Telegram/dashboard started with the managed-prod override, and prod smoke UAT passed.
 - In progress:
-  - Capture one fresh inbound beta-thread Telegram message against the current Dockerized `schoology-managed-dev-telegram-agent`.
-  - Complete retired runtime code/repo removal in [#34](https://github.com/fsmalkin/schoology-bot/issues/34) before prod canary.
-  - Continue [#31](https://github.com/fsmalkin/schoology-bot/issues/31) health, event log, and idle cost controls before any prod canary.
+  - Capture a human-sent prod Telegram inbound message against the managed-prod poller.
+  - Monitor [#32](https://github.com/fsmalkin/schoology-bot/issues/32) for 24 hours for duplicate replies, missed reminders, failed tools, stale scrape/login, idle reset/cost anomalies, and unexpected writes.
   - Dashboard Phase 1 polish remains useful but is behind the Managed Agents migration.
 
 ## Agent Shell/Runtime Decision Gate (Completed)
@@ -88,9 +90,13 @@ Decision requirements that remain active:
 2. [#30 Managed Agents parity gate](https://github.com/fsmalkin/schoology-bot/issues/30): refresh, list missing, update status, notes, reminders, daily summary, Telegram UX, failure handling, and no duplicate responses.
 3. [#34 Remove retired runtime code and repo artifacts](https://github.com/fsmalkin/schoology-bot/issues/34): delete retired source, compose, scripts, tests, and active docs; keep current prod Docker as rollback.
 4. [#31 Managed Agents observability/cost controls](https://github.com/fsmalkin/schoology-bot/issues/31): session mapping, idle/termination policy, event logs, health dashboard signal, and rollback switch to current prod Docker.
-5. [#32 Managed Agents prod canary, rollback, and stabilization](https://github.com/fsmalkin/schoology-bot/issues/32).
+5. [#32 Managed Agents prod canary, rollback, and stabilization](https://github.com/fsmalkin/schoology-bot/issues/32): canary started; 24h stabilization in progress.
 6. Login/session resilience follow-up while keeping secrets-based unattended login (#18) parked unless strategy changes.
-7. Secrets hygiene (P0 from audit §1, small/independent): rotate Schoology password, OpenAI key, Telegram token, GitHub PAT; move secrets out of on-disk `.env.*` into Docker secrets/keychain; add a `gitleaks`/`git-secrets` pre-commit hook; fix the `CHOLOGY_USERNAME` typo in `.env.systemd`. Do regardless of dashboard/migration ordering — blast radius is high, effort is low.
+7. Secrets hygiene (audit §1, small/independent): import current live values
+   into Windows Credential Manager, move runtime reads to Docker secret files,
+   add tracked-file secret scanning, and fix the `CHOLOGY_USERNAME` typo in
+   `.env.systemd`. Rotate individual credentials only if a concrete exposure is
+   identified.
 
 ## Ready Next (P2)
 Dashboard work is now driven by `docs/DASHBOARD_AUDIT.md` (verified findings + tiers), not the older `DASHBOARD_DESIGN.md` phase numbering. Mocks: `docs/design/mocks/dashboard-improvements-v1.html`. Still sequenced behind the Managed Agents migration.

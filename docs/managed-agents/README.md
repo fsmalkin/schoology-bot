@@ -337,6 +337,12 @@ Current status:
   assignment listing. Live scrape/refresh and login-failure alerting remain
   deterministic-test covered only in this slice; they should be included in a
   later live smoke before prod canary.
+- Managed-prod cutover started on 2026-05-30. Scheduler, Telegram agent, and
+  dashboard run with `MANAGED_AGENTS_ENV=prod` and
+  `MANAGED_AGENT_SESSION_NAMESPACE=schoology-prod`; dashboard health reports
+  the Managed Agent Bridge as current with no active test sessions after smoke
+  cleanup. Prod outbound Telegram smoke succeeded; true inbound prod proof still
+  needs a human-sent message.
 
 ## Rollout Gates
 1. Dev bridge implemented behind explicit env/config switches.
@@ -344,8 +350,9 @@ Current status:
 3. Unit and integration coverage added for session mapping and tool-loop routing.
 4. Agentic story suite and judge artifacts produced for Managed Agents.
 5. User UAT completed on dev.
-6. Prod secrets are rotated, stored in Windows Credential Manager, exported to
+6. Current prod secrets are stored in Windows Credential Manager, exported to
    ignored Docker secret files, and local `.env*` secret values are blanked.
+   Provider-side rotation is optional and only required for a known exposure.
 7. Prod canary starts with the managed-prod compose override and rollback
    command ready.
 8. 24h stabilization confirms no duplicate replies, missed reminders, runaway

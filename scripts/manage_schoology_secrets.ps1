@@ -277,6 +277,12 @@ function Quote-EnvValue([string]$Value) {
 
 function Write-TextNoBom([string]$Path, [string]$Text) {
   $encoding = New-Object System.Text.UTF8Encoding($false)
+  if (Test-Path $Path) {
+    $item = Get-Item -LiteralPath $Path
+    if ($item.IsReadOnly) {
+      $item.IsReadOnly = $false
+    }
+  }
   [System.IO.File]::WriteAllText($Path, $Text, $encoding)
 }
 
@@ -284,18 +290,22 @@ function Protect-LocalPath([string]$Path) {
   if (-not (Test-Path $Path)) {
     return
   }
-  $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-  $acl = Get-Acl -LiteralPath $Path
-  $acl.SetAccessRuleProtection($true, $false)
-  foreach ($account in @($identity, "BUILTIN\Administrators", "NT AUTHORITY\SYSTEM")) {
-    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-      $account,
-      "FullControl",
-      "Allow"
-    )
-    $acl.AddAccessRule($rule)
+  try {
+    $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $acl = Get-Acl -LiteralPath $Path
+    $acl.SetAccessRuleProtection($true, $false)
+    foreach ($account in @($identity, "BUILTIN\Administrators", "NT AUTHORITY\SYSTEM")) {
+      $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+        $account,
+        "FullControl",
+        "Allow"
+      )
+      $acl.AddAccessRule($rule)
+    }
+    Set-Acl -LiteralPath $Path -AclObject $acl
+  } catch {
+    Write-Step "Warning: could not tighten ACL on $Path"
   }
-  Set-Acl -LiteralPath $Path -AclObject $acl
 }
 
 function Import-Secrets() {
@@ -304,6 +314,8 @@ function Import-Secrets() {
   $sourceValues = @{}
   if (-not [string]::IsNullOrWhiteSpace($FromEnvFile)) {
     $sourceValues = Read-EnvFile (Join-Path $RepoRoot $FromEnvFile)
+  } else {
+    $sourceValues = Read-MergedEnv (Get-DefaultSourceFiles $Environment)
   }
 
   foreach ($key in $keys) {
@@ -317,7 +329,7 @@ function Import-Secrets() {
     if ($sourceValues.Contains($key)) {
       $secret = [string]$sourceValues[$key]
     } else {
-      $secure = Read-Host -AsSecureString "Enter rotated value for $target"
+      $secure = Read-Host -AsSecureString "Enter value for $target"
       $secret = ConvertFrom-SecureStringPlain $secure
     }
     if ([string]::IsNullOrWhiteSpace($secret)) {
@@ -423,6 +435,7 @@ function Sanitize-EnvFiles() {
     $requiredByEnvironment.beta +
     $optionalSecretKeys
   ) | Select-Object -Unique
+  $backupRoot = Join-Path $RepoRoot ("data\runtime\env-backups\" + (Get-Date -Format "yyyyMMdd-HHmmss"))
   $files = @(
     ".env",
     ".env.beta",
@@ -462,6 +475,12 @@ function Sanitize-EnvFiles() {
       if ($DryRun) {
         Write-Step "DRY RUN: would sanitize $file"
       } else {
+        New-Item -ItemType Directory -Force -Path $backupRoot | Out-Null
+        Protect-LocalPath $backupRoot
+        $backupPath = Join-Path $backupRoot $file
+        Copy-Item -LiteralPath $path -Destination $backupPath -Force
+        Protect-LocalPath $backupPath
+        Write-Step "Backed up $file to $backupPath"
         Write-TextNoBom $path (($next -join "`n") + "`n")
         Write-Step "Sanitized $file"
       }

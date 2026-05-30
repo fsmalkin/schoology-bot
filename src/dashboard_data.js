@@ -72,6 +72,24 @@ function getServiceNames(config, managedAgents = null) {
   return names;
 }
 
+function quickCommands(managedAgents = null) {
+  const isManagedCurrent = managedAgents?.enabled === true && managedAgents?.runtimeLabel === "current";
+  const startCommand = isManagedCurrent
+    ? "docker compose -f docker-compose.yml -f docker-compose.managed-prod.yml -p schoology-prod up -d --build"
+    : "docker compose -f docker-compose.yml -p schoology-prod up -d --build";
+  const commands = [
+    startCommand,
+    "docker compose -p schoology-prod logs --tail 200 telegram-agent",
+    "docker compose -p schoology-prod logs --tail 200 schoology",
+  ];
+  if (isManagedCurrent) {
+    commands.push("docker compose -f docker-compose.yml -p schoology-prod up -d --build");
+  } else {
+    commands.push("docker compose -p schoology-prod down");
+  }
+  return commands;
+}
+
 function betaManagedConfig(config) {
   const betaDataDir = path.join(config.paths.dataDir, "beta");
   const betaDbPath = path.join(betaDataDir, "agent.runtime.db");
@@ -289,12 +307,7 @@ export function buildDashboardSnapshot({
       coverage: "docs/TEST_COVERAGE.md",
       dashboard: "docs/DASHBOARD.md",
     },
-    quickCommands: [
-      "docker compose -f docker-compose.yml -p schoology-prod up -d --build",
-      "docker compose -f docker-compose.yml -p schoology-prod logs --tail 200 telegram-agent",
-      "docker compose -f docker-compose.yml -p schoology-prod logs --tail 200 schoology",
-      "docker compose -f docker-compose.yml -p schoology-prod down",
-    ],
+    quickCommands: quickCommands(managedAgents),
     howItWorks: [
       "Scheduler scrapes Schoology and updates local state + DB.",
       "Agent chat updates local statuses, notes, reminders, and tasks.",
