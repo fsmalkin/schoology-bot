@@ -189,6 +189,24 @@ function normalizeReminderArgs(args, timeZone, options = {}) {
   const recurrenceKind = recurrenceCheck.ok ? recurrenceCheck.value || "none" : "none";
 
   if (
+    options?.allowCreateDefaults !== true &&
+    userText.trim() &&
+    !hasExplicitTimeInUserText &&
+    mergedArgs?.remindAt !== undefined &&
+    mergedArgs?.remindAt !== null &&
+    String(mergedArgs.remindAt).trim() !== ""
+  ) {
+    delete mergedArgs.remindAt;
+    assumptions.push({
+      field: "remindAt",
+      kind: "ignored_model_time",
+      reason:
+        "The user did not provide an explicit time, so a model-supplied reminder time update was ignored.",
+    });
+    warnings.push("Ignored model-supplied reminder time because the user did not provide an explicit time.");
+  }
+
+  if (
     options?.allowCreateDefaults === true &&
     recurrenceKind !== "none" &&
     !hasExplicitTimeInUserText &&

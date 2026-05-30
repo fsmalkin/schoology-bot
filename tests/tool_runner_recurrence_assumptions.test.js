@@ -145,6 +145,44 @@ test("create_task ignores model-supplied time when user gave no explicit time", 
   assert.equal(local, "21:00");
 });
 
+test("update_task ignores model-supplied time when user gave no explicit time", async () => {
+  const db = createDb(":memory:");
+  const created = await runToolByName(
+    db,
+    "create_task",
+    {
+      title: "Check Schoology",
+      remindAt: null,
+      recurrence: "weekdays",
+    },
+    {
+      userText: "Set a recurring reminder to check Schoology.",
+      now: "2026-05-27T12:00:00-04:00",
+    }
+  );
+
+  const updated = await runToolByName(
+    db,
+    "update_task",
+    {
+      id: created.id,
+      remindAt: "2026-06-01T16:30:00-04:00",
+      recurrence: "weekdays",
+    },
+    {
+      userText: "Set a recurring reminder to check Schoology.",
+      now: "2026-05-27T12:00:00-04:00",
+    }
+  );
+
+  assert.equal(updated.ok, true);
+  assert.match(updated.task.remindAt, /^2026-05-27T21:00:00-04:00$/);
+  assert.equal(
+    updated.warnings.some((warning) => String(warning).includes("model-supplied reminder time")),
+    true
+  );
+});
+
 test("non-frequency follow-up remains one-time", async () => {
   const db = createDb(":memory:");
   const result = await runToolByName(

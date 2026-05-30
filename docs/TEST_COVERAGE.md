@@ -98,6 +98,7 @@ Bug filing to GitHub
 Managed Agents stack
 - Tracking: [#25 parent](https://github.com/fsmalkin/schoology-bot/issues/25), [#30 parity gate](https://github.com/fsmalkin/schoology-bot/issues/30), [Managed Agents migration doc](managed-agents/README.md).
 - Config parsing/validation, chat-to-session mapping, and managed event persistence are covered by `tests/managed_agent_sessions.test.js`.
+- Secret-file config loading is covered by `tests/config_secret_files.test.js`, including direct env precedence, empty direct env fallback to `*_FILE`, missing-file fallback, and file-backed Managed Agents API keys.
 - Migration coverage verifies `managed_agent_sessions` and `managed_agent_events` creation in `tests/migrations.test.js`.
 - Mock Managed Agents bridge coverage in `tests/managed_agent_bridge.test.js` verifies session creation/reuse, memory store resource attachment, stale definition revision replacement, idle-session reset before reuse, heartbeat/event-log writes with secret-looking values redacted, bounded local retry context for `try again` after stream failure and session reset, Telegram text event send, assistant text collection, local custom Schoology tool result handling, deterministic date-filtered bulk status updates, speculative pre-tool assistant text clearing after tool execution, repeated action-id dedupe before local tool execution, unsupported custom tool errors, web and memory file built-in confirmation allow-listing, unsupported built-in denial, kid-safe input/output blocking, deterministic invalid-arg errors, bounded large result payloads, and tool-round limits.
 - `tests/managed_agent_status.test.js` verifies idle-policy decisions, proactive idle-sweep alert data, event metadata/value redaction, repeated tool-error alerting, and Managed Agents dashboard status/alert shaping.
@@ -117,6 +118,7 @@ Managed Agents stack
 - Dev cloud agent version `8` adds deterministic date-filtered bulk status routing for requests like "mark everything before 4/4 as no action needed." Unit coverage verifies no-action wording normalization, missing-assignment date filters, school-year shorthand-date correction, safety-cap no-write behavior, Managed Agents custom-tool schema exposure, and one-call Managed Agents bridge execution. Live copied-DB repro `sesn_01Bj1VcoqpqDHWerrf8iTs88` used the new tool and updated the 7 intended beta rows in one pass.
 - Live Telegram outbound to the beta thread was smoke-tested through `.env.managed-dev`; one inbound beta-thread message was handled by the Managed Agents path before the poller was moved into the current Docker container.
 - Managed-session event-history, idle reset policy, idle-sweep reset, metadata/value sanitization, and dashboard bridge/session status now have automated coverage. True remote Claude session termination remains local-reset-only until the Managed Agents API exposes or documents an explicit terminate/delete operation for sessions.
+- Tracked-file secret leak scanning is covered by `npm run secrets:scan`, a local high-confidence scanner for OpenAI, Anthropic, GitHub, Telegram, and private-key block patterns.
 
 Performance and reliability
 - No load or soak tests.

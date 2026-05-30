@@ -103,6 +103,11 @@ Key settings:
 - AUTO_IGNORE_* and AUTO_UPCOMING_*
 - LIVE_CHECK_* (disabled by default)
 
+Secrets can be supplied by direct env values or by `<NAME>_FILE` paths. Direct
+env values win. Production deployment should use Windows Credential Manager as
+the source of truth, export Docker secret files under `data/secrets/prod/`, and
+load `data/runtime/prod.env`; see `docs/SECRETS.md`.
+
 ## Commands
 - Run scheduler: `npm start`
 - One-off scrape: `npm run scrape`
@@ -119,7 +124,10 @@ Primary runtime (unattended):
 - Docker Compose only.
 - Start command: `powershell -ExecutionPolicy Bypass -File scripts/start_schoology_stacks.ps1 -RuntimeMode docker`.
 - Startup waits for Docker engine readiness before compose actions and retries until timeout with diagnostics.
-- Managed Agents dev runtime is the active implementation target and should preserve the current committed prod Docker runtime as fallback.
+- Managed Agents prod cutover uses `docker-compose.managed-prod.yml` with
+  Docker secret files generated from Windows Credential Manager.
+- The current committed Docker prod runtime remains rollback by starting without
+  the managed-prod override.
 
 Scheduled startup mode:
 - Register tasks with stored-password logon mode (`/RU` + `/RP`) so jobs run while logged off.
@@ -128,6 +136,7 @@ Scheduled startup mode:
 
 Recovery and DR:
 - `powershell -ExecutionPolicy Bypass -File scripts/start_schoology_stacks.ps1 -RuntimeMode docker`
+- `docker compose -f docker-compose.yml -f docker-compose.managed-prod.yml -p schoology-prod up -d --build`
 - `powershell -ExecutionPolicy Bypass -File scripts/backup_schoology_state.ps1 -RuntimeMode docker`
 - `powershell -ExecutionPolicy Bypass -File scripts/backup_schoology_catalog_github.ps1`
 - `powershell -ExecutionPolicy Bypass -File scripts/run_schoology_restore_drill.ps1 -Source local`

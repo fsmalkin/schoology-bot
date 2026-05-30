@@ -1,0 +1,73 @@
+services:
+  schoology:
+    env_file:
+      - .env
+      - ./data/runtime/prod.env
+    environment:
+      RUNTIME_STACK: managed-agents
+      MANAGED_AGENTS_ENABLED: "1"
+      MANAGED_AGENTS_ENV: prod
+      MANAGED_AGENT_SESSION_NAMESPACE: schoology-prod
+      AGENT_DB_PATH: /app/db/agent.db
+      NODE_OPTIONS: --max-old-space-size=160
+      SCHOLOGY_PASSWORD_FILE: /run/secrets/SCHOLOGY_PASSWORD
+      TELEGRAM_BOT_TOKEN_FILE: /run/secrets/TELEGRAM_BOT_TOKEN
+      OPENAI_API_KEY_FILE: /run/secrets/OPENAI_API_KEY
+      ANTHROPIC_API_KEY_FILE: /run/secrets/ANTHROPIC_API_KEY
+      GITHUB_TOKEN_FILE: /run/secrets/GITHUB_TOKEN
+    secrets: &managed_prod_secrets
+      - SCHOLOGY_PASSWORD
+      - TELEGRAM_BOT_TOKEN
+      - OPENAI_API_KEY
+      - ANTHROPIC_API_KEY
+      - GITHUB_TOKEN
+
+  telegram-agent:
+    env_file:
+      - .env
+      - ./data/runtime/prod.env
+    environment:
+      RUNTIME_STACK: managed-agents
+      MANAGED_AGENTS_ENABLED: "1"
+      MANAGED_AGENTS_ENV: prod
+      MANAGED_AGENT_SESSION_NAMESPACE: schoology-prod
+      AGENT_DB_PATH: /app/db/agent.db
+      NODE_OPTIONS: --max-old-space-size=160
+      SCHOLOGY_PASSWORD_FILE: /run/secrets/SCHOLOGY_PASSWORD
+      TELEGRAM_BOT_TOKEN_FILE: /run/secrets/TELEGRAM_BOT_TOKEN
+      OPENAI_API_KEY_FILE: /run/secrets/OPENAI_API_KEY
+      ANTHROPIC_API_KEY_FILE: /run/secrets/ANTHROPIC_API_KEY
+      GITHUB_TOKEN_FILE: /run/secrets/GITHUB_TOKEN
+    secrets: *managed_prod_secrets
+
+  dashboard:
+    env_file:
+      - .env
+      - ./data/runtime/prod.env
+    environment:
+      RUNTIME_STACK: managed-agents
+      MANAGED_AGENTS_ENABLED: "1"
+      MANAGED_AGENTS_ENV: prod
+      MANAGED_AGENT_SESSION_NAMESPACE: schoology-prod
+      AGENT_DB_PATH: /app/db/agent.db
+      DASHBOARD_PORT: "8787"
+      DASHBOARD_HOST: 0.0.0.0
+      NODE_OPTIONS: --max-old-space-size=128
+      SCHOLOGY_PASSWORD_FILE: /run/secrets/SCHOLOGY_PASSWORD
+      TELEGRAM_BOT_TOKEN_FILE: /run/secrets/TELEGRAM_BOT_TOKEN
+      OPENAI_API_KEY_FILE: /run/secrets/OPENAI_API_KEY
+      ANTHROPIC_API_KEY_FILE: /run/secrets/ANTHROPIC_API_KEY
+      GITHUB_TOKEN_FILE: /run/secrets/GITHUB_TOKEN
+    secrets: *managed_prod_secrets
+
+secrets:
+  SCHOLOGY_PASSWORD:
+    file: ./data/secrets/prod/SCHOLOGY_PASSWORD
+  TELEGRAM_BOT_TOKEN:
+    file: ./data/secrets/prod/TELEGRAM_BOT_TOKEN
+  OPENAI_API_KEY:
+    file: ./data/secrets/prod/OPENAI_API_KEY
+  ANTHROPIC_API_KEY:
+    file: ./data/secrets/prod/ANTHROPIC_API_KEY
+  GITHUB_TOKEN:
+    file: ./data/secrets/prod/GITHUB_TOKEN

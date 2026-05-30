@@ -1,10 +1,26 @@
 import "dotenv/config";
+import fs from "node:fs";
 import { buildManagedAgentDefinition, buildManagedEnvironmentDefinition } from "../src/managed_agent_definitions.js";
 
 const BASE_URL = String(process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com").replace(/\/+$/, "");
-const API_KEY = String(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || "").trim();
 const BETA_HEADER = process.env.CLAUDE_MANAGED_AGENTS_BETA || "managed-agents-2026-04-01";
 const ANTHROPIC_VERSION = "2023-06-01";
+
+function envOrFile(name) {
+  const value = process.env[name];
+  if (value !== undefined && value !== null && String(value).trim() !== "") {
+    return String(value).trim();
+  }
+  const filePath = process.env[`${name}_FILE`];
+  if (!filePath || String(filePath).trim() === "") return "";
+  try {
+    return fs.readFileSync(String(filePath).trim(), "utf8").replace(/\r?\n$/, "").trim();
+  } catch {
+    return "";
+  }
+}
+
+const API_KEY = envOrFile("ANTHROPIC_API_KEY") || envOrFile("CLAUDE_API_KEY");
 
 function usage() {
   console.error(

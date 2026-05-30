@@ -147,6 +147,15 @@ function flattenOutputs(turns) {
   return list;
 }
 
+function assignmentRowsFromOutput(output) {
+  const assignments = output?.assignments;
+  if (Array.isArray(assignments)) return assignments;
+  if (assignments?.buckets && typeof assignments.buckets === "object") {
+    return Object.values(assignments.buckets).flatMap((rows) => (Array.isArray(rows) ? rows : []));
+  }
+  return [];
+}
+
 function isManagedAgentsRequested() {
   const runtimeStack = String(process.env.RUNTIME_STACK || "").trim().toLowerCase();
   const enabled = String(process.env.MANAGED_AGENTS_ENABLED || "").trim().toLowerCase();
@@ -492,8 +501,7 @@ async function main() {
         "Agent should answer submitted-but-ungraded questions by using the Schoology submitted/awaiting-grade icon filter, not by inferring from the active missing list.",
       prompts: ["What work has been submitted but not graded yet?"],
       check: ({ outputs, turns }) => {
-        const listOutput = outputs.find((output) => Array.isArray(output?.assignments));
-        const assignments = Array.isArray(listOutput?.assignments) ? listOutput.assignments : [];
+        const assignments = outputs.flatMap(assignmentRowsFromOutput);
         const submittedRows = assignments.filter((assignment) =>
           /submitted, awaiting grade|submission that has not been graded|assignment submitted/i.test(
             `${assignment.effectiveStatus || ""} ${assignment.status || ""} ${assignment.rawText || ""}`

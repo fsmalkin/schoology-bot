@@ -344,9 +344,24 @@ Current status:
 3. Unit and integration coverage added for session mapping and tool-loop routing.
 4. Agentic story suite and judge artifacts produced for Managed Agents.
 5. User UAT completed on dev.
-6. Prod canary starts with a small prompt set and rollback command ready.
-7. 24h stabilization confirms no duplicate replies, missed reminders, runaway
+6. Prod secrets are rotated, stored in Windows Credential Manager, exported to
+   ignored Docker secret files, and local `.env*` secret values are blanked.
+7. Prod canary starts with the managed-prod compose override and rollback
+   command ready.
+8. 24h stabilization confirms no duplicate replies, missed reminders, runaway
    session hours, or unexpected tool writes.
+
+Managed prod start command:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.managed-prod.yml -p schoology-prod up -d --build
+```
+
+Rollback command:
+
+```powershell
+docker compose -f docker-compose.yml -p schoology-prod up -d --build
+```
 
 ## Retired Runtime Disposition
 Retired runtime files, compose definitions, scripts, tests, and active docs are

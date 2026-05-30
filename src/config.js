@@ -1,9 +1,8 @@
 import "dotenv/config";
+import fs from "fs";
 import path from "path";
 
-function env(name, fallback = "", source = process.env) {
-  const value = source[name];
-  if (value === undefined || value === null || value === "") return fallback;
+function cleanEnvValue(value) {
   const trimmed = String(value).trim();
   if (
     (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
@@ -12,6 +11,28 @@ function env(name, fallback = "", source = process.env) {
     return trimmed.slice(1, -1);
   }
   return trimmed;
+}
+
+export function readEnvValue(name, fallback = "", source = process.env) {
+  const value = source[name];
+  if (value !== undefined && value !== null && value !== "") {
+    return cleanEnvValue(value);
+  }
+
+  const fileValue = source[`${name}_FILE`];
+  if (fileValue !== undefined && fileValue !== null && fileValue !== "") {
+    const filePath = cleanEnvValue(fileValue);
+    try {
+      return fs.readFileSync(filePath, "utf8").replace(/\r?\n$/, "");
+    } catch {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
+function env(name, fallback = "", source = process.env) {
+  return readEnvValue(name, fallback, source);
 }
 
 function boolEnv(name, fallback = false, source = process.env) {

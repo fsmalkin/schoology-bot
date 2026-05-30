@@ -172,6 +172,16 @@ Tips:
 - The agent shows a typing indicator and sends a "Working on it..." message after 10 seconds if needed.
 - Bootstrap context files are loaded if present: `AGENTS.md`, `TOOLS.md`, `SOUL.md`, and any markdown files in `skills/`.
 
+## Secrets
+Live production secrets should live in Windows Credential Manager, not inline in
+`.env*` files. See `docs/SECRETS.md` for rotation, vault import/export, and
+managed-prod cutover commands.
+
+Quick checks:
+- `powershell -ExecutionPolicy Bypass -File scripts/manage_schoology_secrets.ps1 -Action verify -Environment prod`
+- `powershell -ExecutionPolicy Bypass -File scripts/manage_schoology_secrets.ps1 -Action export -Environment prod`
+- `npm run secrets:scan`
+
 ## Skills (Local)
 Place short, ASCII-only markdown files in `skills/` to extend the agent with local skills.
 These are loaded into the agent context on each run.
@@ -180,6 +190,9 @@ These are loaded into the agent context on each run.
 Claude Managed Agents is the active dev-to-prod replacement path for agent chat.
 Use the managed-dev bot/thread for beta UAT and the current committed prod Docker
 runtime for rollback planning until the managed path passes canary.
+
+Managed prod uses:
+`docker compose -f docker-compose.yml -f docker-compose.managed-prod.yml -p schoology-prod up -d --build`
 
 ## Tasks and Reminders
 You can create personal tasks (not tied to Schoology) and get Telegram reminders.
