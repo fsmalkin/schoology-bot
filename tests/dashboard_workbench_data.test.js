@@ -121,6 +121,47 @@ test("buildHomeWorkspace classifies items into tonight, coming up, waiting, and 
   }
 });
 
+test("dashboard workspaces keep future assignments out of overdue lanes", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "schoology-dashboard-future-due-"));
+  try {
+    const config = makeConfig(tempDir);
+    const db = createDb(":memory:");
+    db.prepare(
+      `
+      INSERT INTO assignments (
+        key, course, title, due_date, status, score, url, raw_text,
+        first_seen_at, last_seen_at, last_missing_at, resolved_at, is_missing, manual_status, auto_ignored
+      )
+      VALUES
+        ('past', 'Science: Sec 1', 'Past Lab', '5/31/26 11:59pm', 'Missing', '', '', '', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z', NULL, 1, NULL, 0),
+        ('future', 'Language Arts: Sec 1', 'Future Essay', '6/02/26 11:59pm', 'Missing', '', '', '', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z', NULL, 1, NULL, 0)
+    `
+    ).run();
+
+    const now = new Date("2026-06-01T12:00:00-04:00");
+    const home = buildHomeWorkspace({ config, dbOverride: db, now });
+    const assignments = buildAssignmentsWorkspace({
+      config,
+      query: { status: "missing", includePending: "true", includeIgnored: "true" },
+      dbOverride: db,
+      now,
+    });
+
+    assert.ok(home.sections.tonight.rows.some((row) => row.key === "past"));
+    assert.ok(home.sections.comingUp.rows.some((row) => row.key === "future"));
+    assert.equal(assignments.summary.overdue, 1);
+    assert.equal(assignments.summary.upcoming, 1);
+
+    const future = assignments.rows.find((row) => row.key === "future");
+    assert.ok(future);
+    assert.equal(future.dueCategory, "upcoming");
+    assert.equal(future.homeBucketLabel, "Coming Up");
+    assert.match(future.reasonText, /Jun 0?2, 2026/);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("buildAssignmentsWorkspace includes parent-friendly status labels and reminder previews", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "schoology-schoolwork-assignments-"));
   try {

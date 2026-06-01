@@ -168,6 +168,36 @@ export function parseSchoologyDate(value, timeZone) {
   return makeDateInZone({ year, month, day, hour, minute }, timeZone);
 }
 
+function asValidDate(value) {
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value : null;
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+export function classifySchoologyDueDate(value, timeZone, now = new Date()) {
+  const parsed = parseSchoologyDate(value, timeZone);
+  const nowDate = asValidDate(now) || new Date();
+  if (!parsed || !Number.isFinite(parsed.getTime())) {
+    return {
+      dueCategory: "undated",
+      dueDateYmd: null,
+      dueDateIso: null,
+    };
+  }
+
+  const dueDateYmd = formatDateYmd(parsed, timeZone);
+  const todayYmd = formatDateYmd(nowDate, timeZone);
+  const dueCategory =
+    dueDateYmd < todayYmd ? "overdue" : dueDateYmd === todayYmd ? "today" : "upcoming";
+
+  return {
+    dueCategory,
+    dueDateYmd,
+    dueDateIso: parsed.toISOString(),
+  };
+}
+
 function parseShorthandTime(raw) {
   const cleaned = String(raw || "")
     .trim()

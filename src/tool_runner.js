@@ -376,7 +376,14 @@ export async function runToolByName(db, toolName, args, context = {}) {
   const timeZone = config?.schedule?.timezone || "America/New_York";
   switch (toolName) {
     case "list_assignments":
-      return { ok: true, assignments: listAssignments(db, args) };
+      return {
+        ok: true,
+        assignments: listAssignments(db, {
+          ...(args || {}),
+          timeZone,
+          now: context?.now,
+        }),
+      };
     case "update_assignment_status":
       return updateAssignmentStatus(db, args);
     case "bulk_update_assignment_statuses":

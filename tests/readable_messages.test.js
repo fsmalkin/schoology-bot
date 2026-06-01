@@ -67,6 +67,44 @@ test("buildReadableDailySummary routes items to Do Now, Soon, and Waiting", () =
   assert.doesNotMatch(output, /Link: https:\/\/example.com\/p1/);
 });
 
+test("buildReadableDailySummary routes future assignments to Soon", () => {
+  const output = buildReadableDailySummary({
+    summary: {
+      actionable: [
+        {
+          course: "Science: Sec 1",
+          title: "Past Lab",
+          dueDate: "5/31/26 11:59pm",
+          status: "Missing",
+        },
+        {
+          course: "Language Arts: Sec 1",
+          title: "Future Essay",
+          dueDate: "6/02/26 11:59pm",
+          status: "Missing",
+        },
+      ],
+      pending: [],
+    },
+    reminders: { today: [], overdue: [], upcoming: [] },
+    state: {},
+    timeZone: "America/New_York",
+    now: "2026-06-01T12:00:00-04:00",
+  });
+
+  const doNowIndex = output.indexOf("Do Now");
+  const soonIndex = output.indexOf("\nSoon\n");
+  const pastIndex = output.indexOf("Past Lab");
+  const futureIndex = output.indexOf("Future Essay");
+
+  assert.ok(doNowIndex >= 0);
+  assert.ok(soonIndex > doNowIndex);
+  assert.ok(pastIndex > doNowIndex && pastIndex < soonIndex);
+  assert.ok(futureIndex > soonIndex);
+  assert.match(output, /Future Essay \| Due Tue, Jun 2, 2026, 11:59 PM/);
+  assert.doesNotMatch(output, /Future Essay \| Overdue/);
+});
+
 test("buildReadableDailySummary caps each section at five items", () => {
   const actionable = [];
   for (let i = 1; i <= 7; i += 1) {

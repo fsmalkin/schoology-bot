@@ -8,8 +8,8 @@ Unit tests
 - DB schema migrations and CRUD for tasks/reminders/notes.
 - Legacy reminder -> task migration and recurrence column migration.
 - Status normalization and auto-ignore rules.
-- Summary builder (actionable vs pending).
-- Readable message formatter (Do Now/Soon/Waiting routing, status wording, links, caps).
+- Summary builder (actionable vs pending, plus local due-category fields for overdue/today/upcoming/undated assignments).
+- Readable message formatter (Do Now/Soon/Waiting routing, future-due assignment placement, status wording, links, caps).
 - Reminder assumption inference (cadence/time defaults and unsupported cadence fallback).
 - Reminder normalization edge-cases (model-supplied time override, unsupported-cadence warning when recurrence is pre-normalized, and date-cue preservation while defaulting time).
 - Refresh login-failure messaging when `SCHOLOGY_IDP` is already configured (avoids redundant provider prompts).
@@ -18,16 +18,16 @@ Unit tests
 - Assignment identity canonicalization (`assignment:<id>`) and legacy-key merge behavior.
 - Assignment identity migration v6 (backfill `assignment_id`, dedupe by ID, and reference relink for notes/tasks).
 - Chat-memory persistence, message-style persistence, and resolved-assignment reminder cleanup helpers.
-- Schoology scraper title fallback for rows that have visible text but no assignment link (`Note: This material is not available within Schoology` shape).
+- Schoology scraper title fallback for rows that have visible text but no assignment link (`Note: This material is not available within Schoology` pattern).
 - Schoology scraper conflict handling for MUA/external-tool-link rows (score beats Missing badge, detail-page fallback for ambiguous rows, capped fallback volume).
 - Submitted-but-ungraded assignment handling: scraper coverage for Schoology grade-pending/dropbox icon hidden text, DB auto-file behavior, and direct `submitted_awaiting_grade` assignment queries.
-- Assignment list filtering verifies both flat and bucketed missing-list outputs honor ignored/pending visibility flags so already-handled rows do not leak into default agent-visible buckets.
-- Dashboard health/data builders (heartbeat + snapshot shaping).
-- Dashboard parent-home and schoolwork data builders (home section classification, parent-facing labels, assignment notes preview, reminder summary, task-only filtering, and raw-text title fallback when stored titles are blank).
+- Assignment list filtering verifies both flat and bucketed missing-list outputs honor ignored/pending visibility flags, keeping already-handled rows out of default agent-visible buckets.
+- Dashboard health/data builders (heartbeat + snapshot assembly).
+- Dashboard parent-home and schoolwork data builders (home section classification, local due-category routing, parent-facing labels, assignment notes preview, reminder summary, task-only filtering, and raw-text title fallback when stored titles are blank).
 - Dashboard read models for `Will complete in class` and MUA display-title expansion.
 - Dashboard browser smoke coverage for click-to-open cards, the minimal card surface, collapsed drawer sections, explicit assignment status saves, long-running Schoology refresh busy/success feedback, backdrop/escape close behavior, and bulk-mode reveal.
 - Beta dashboard client-state safeguards in `beta_dashboard.js` (draft-preserving rerenders, focus-return fallback when cards move buckets, and safer `Submitted` partial-failure handling) are covered through dedicated browser smoke and regression scenarios.
-- Time parsing and timezone formatting (local labels, shorthand).
+- Time parsing and timezone formatting (local labels, shorthand, and local-date due classification).
 - Reminder rollovers (one-time + recurring cadence next-run math, DST wall-clock checks).
 - Bug filing guardrails (no empty body).
 - Telegram formatting sanitization, including Markdown table conversion to Telegram-readable lists.
@@ -45,10 +45,10 @@ Integration tests
 - Dashboard browser smoke (`tests/dashboard_ui_smoke.test.js`) for the card-first interaction model.
 - Dashboard beta HTTP integration (`tests/dashboard_server.test.js`) for `/beta`, `/beta/assets/beta.css`, and `/beta/assets/beta.js`.
 - Dashboard beta browser smoke (`tests/dashboard_beta_ui_smoke.test.js`) for beta boot, view switching, assignment/task drawer flows, reminder CRUD, task CRUD, mobile drawer sizing, focus return, `Submitted` partial-failure feedback, draft preservation across rerendered view switches, stale assignment-detail response races, close-before-response behavior, and timer-driven health-poll rerenders.
-- Agentic story suite runner (`scripts/run_agentic_story_suite.mjs`) for chat-only release stories.
+- Story suite runner (`scripts/run_agentic_story_suite.mjs`) executes scripted parent requests through `runChatMessage`.
 - Story suite runner now routes through `runChatMessage`, so it can exercise the Managed Agents bridge when that runtime is selected by env.
 - Story suite runner uses deterministic `AGENTIC_STORY_NOW` for reminder/date parsing in both legacy and Managed Agents runtime paths.
-- Story suite includes a required submitted-but-ungraded icon-query story (`S9`) that must call `list_assignments` with `status=submitted_awaiting_grade`, include ignored rows, and avoid false empty/all-scored claims.
+- Story suite includes a required submitted-but-ungraded icon-query story (`S9`) that must call `list_assignments` with `status=submitted_awaiting_grade`, include ignored rows, and prevent false empty/all-scored claims.
 - Single-pass acceptance judge (`scripts/judge_agentic_story_suite.mjs`) producing strict JSON evidence.
 
 Smoke tests
@@ -101,7 +101,7 @@ Managed Agents stack
 - Secret-file config loading is covered by `tests/config_secret_files.test.js`, including direct env precedence, empty direct env fallback to `*_FILE`, missing-file fallback, and file-backed Managed Agents API keys.
 - Migration coverage verifies `managed_agent_sessions` and `managed_agent_events` creation in `tests/migrations.test.js`.
 - Mock Managed Agents bridge coverage in `tests/managed_agent_bridge.test.js` verifies session creation/reuse, memory store resource attachment, stale definition revision replacement, idle-session reset before reuse, heartbeat/event-log writes with secret-looking values redacted, bounded local retry context for `try again` after stream failure and session reset, Telegram text event send, assistant text collection, local custom Schoology tool result handling, deterministic date-filtered bulk status updates, speculative pre-tool assistant text clearing after tool execution, repeated action-id dedupe before local tool execution, unsupported custom tool errors, web and memory file built-in confirmation allow-listing, unsupported built-in denial, kid-safe input/output blocking, deterministic invalid-arg errors, bounded large result payloads, and tool-round limits.
-- `tests/managed_agent_status.test.js` verifies idle-policy decisions, proactive idle-sweep alert data, event metadata/value redaction, repeated tool-error alerting, and Managed Agents dashboard status/alert shaping.
+- `tests/managed_agent_status.test.js` verifies idle-policy decisions, proactive idle-sweep alert data, event metadata/value redaction, repeated tool-error alerting, and Managed Agents dashboard status/alert presentation.
 - `tests/dashboard_data.test.js` verifies dashboard health snapshots include Managed Agents bridge service/session/event status when the managed runtime is active and can surface the existing managed-dev beta runtime from `data/beta/agent.runtime.db`.
 - `tests/dashboard_ui_smoke.test.js` verifies the Admin panel renders Managed Agents session/event/alert details and folds Managed Agents alerts into the global status dot.
 - `tests/managed_agent_tools.test.js` verifies exported Managed Agents custom tool definitions cover the current Schoology tool surface.
@@ -124,7 +124,7 @@ Performance and reliability
 - No load or soak tests.
 - Network failure handling not stress tested.
 - Restore drill validates snapshot integrity and SQLite bundle completeness, but not full in-place runtime rollback.
-- Scheduled-task execution health is monitored via freshness status, not integration tests.
+- Scheduled-task execution health relies on freshness status; integration coverage remains open.
 
 ## Near-term additions (recommended)
 - Add a Telegram E2E test harness that runs against a test bot and test chat.

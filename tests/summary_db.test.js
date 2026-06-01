@@ -72,6 +72,55 @@ test("buildDbSummary respects ignored and pending statuses", () => {
   assert.equal(lab.notes[0].note, "Meet teacher tomorrow");
 });
 
+test("buildDbSummary includes local due categories", () => {
+  const db = createDb(":memory:");
+  const state = {
+    assignments: {
+      past: {
+        key: "past",
+        course: "Science",
+        title: "Past Lab",
+        dueDate: "5/31/26 11:59pm",
+        status: "Missing",
+        score: "",
+        url: "",
+        rawText: "",
+        firstSeenAt: "2026-06-01T00:00:00Z",
+        lastSeenAt: "2026-06-01T00:00:00Z",
+        lastMissingAt: "2026-06-01T00:00:00Z",
+        resolvedAt: null,
+        isMissing: true,
+      },
+      future: {
+        key: "future",
+        course: "Language Arts",
+        title: "Future Essay",
+        dueDate: "6/02/26 11:59pm",
+        status: "Missing",
+        score: "",
+        url: "",
+        rawText: "",
+        firstSeenAt: "2026-06-01T00:00:00Z",
+        lastSeenAt: "2026-06-01T00:00:00Z",
+        lastMissingAt: "2026-06-01T00:00:00Z",
+        resolvedAt: null,
+        isMissing: true,
+      },
+    },
+  };
+  syncAssignmentsFromState(db, state);
+
+  const summary = buildDbSummary(db, {
+    includePending: true,
+    includeIgnored: false,
+    timeZone: "America/New_York",
+    now: new Date("2026-06-01T12:00:00-04:00"),
+  });
+
+  assert.equal(summary.actionable.find((row) => row.key === "past")?.dueCategory, "overdue");
+  assert.equal(summary.actionable.find((row) => row.key === "future")?.dueCategory, "upcoming");
+});
+
 test("addAssignmentNote rejects unknown assignment key", () => {
   const db = createDb(":memory:");
   const result = addAssignmentNote(db, { key: "missing", note: "Test note" });

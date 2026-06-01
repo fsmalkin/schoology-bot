@@ -1,4 +1,4 @@
-import { parseSchoologyDate } from "./time.js";
+import { classifySchoologyDueDate, parseSchoologyDate } from "./time.js";
 import { expandDisplayTitle, normalizeAscii } from "./text_utils.js";
 
 const MAX_SECTION_ITEMS = 5;
@@ -138,6 +138,12 @@ function buildAssignmentItem(item, { timeZone, nowDate, includeLink, messageStyl
     : `[${course}] ${title} | ${due} | ${status}`;
   const link = includeLink && item?.url ? String(item.url).trim() : "";
   return link ? { line, link } : { line };
+}
+
+function assignmentDueCategory(item, timeZone, nowDate) {
+  const category = String(item?.dueCategory || "").trim().toLowerCase();
+  if (["overdue", "today", "upcoming", "undated"].includes(category)) return category;
+  return classifySchoologyDueDate(item?.dueDate, timeZone, nowDate).dueCategory;
 }
 
 function buildReminderActionText(task) {
@@ -396,9 +402,21 @@ export function buildReadableDailySummaryWithStyle({
     knownAssignments.add(assignmentIdentity(item?.course, item?.title));
   }
 
-  const doNowItems = actionable.map((item) =>
-    buildAssignmentItem(item, { timeZone: tz, nowDate, includeLink: true, messageStyle: style })
-  );
+  const doNowItems = [];
+  const soonItems = [];
+  for (const item of actionable) {
+    const rendered = buildAssignmentItem(item, {
+      timeZone: tz,
+      nowDate,
+      includeLink: true,
+      messageStyle: style,
+    });
+    if (assignmentDueCategory(item, tz, nowDate) === "upcoming") {
+      soonItems.push(rendered);
+    } else {
+      doNowItems.push(rendered);
+    }
+  }
 
   for (const task of [...reminderOverdue, ...reminderToday]) {
     const identity = assignmentIdentityFromTask(task);
@@ -406,7 +424,6 @@ export function buildReadableDailySummaryWithStyle({
     doNowItems.push(buildReminderItem(task, tz, style));
   }
 
-  const soonItems = [];
   for (const task of reminderUpcoming) {
     const identity = assignmentIdentityFromTask(task);
     if (identity && knownAssignments.has(identity)) continue;

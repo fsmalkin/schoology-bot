@@ -10,6 +10,9 @@ function toSummaryItem(row, notes = []) {
     manualStatus: row.manualStatus || "",
     url: row.url || "",
     statusCategory: row.statusCategory || "",
+    dueCategory: row.dueCategory || "undated",
+    dueDateYmd: row.dueDateYmd || null,
+    dueDateIso: row.dueDateIso || null,
     notesCount: Number(row.notesCount || 0),
     notes,
   };
@@ -17,13 +20,23 @@ function toSummaryItem(row, notes = []) {
 
 export function buildDbSummary(
   db,
-  { includePending = true, includeIgnored = false, limit = 200, includeNotes = true, notesLimit = 3 } = {}
+  {
+    includePending = true,
+    includeIgnored = false,
+    limit = 200,
+    includeNotes = true,
+    notesLimit = 3,
+    timeZone = "America/New_York",
+    now = new Date(),
+  } = {}
 ) {
   const rows = listAssignments(db, {
     status: "missing",
     includeIgnored,
     includePending,
     limit,
+    timeZone,
+    now,
   });
   const keys = rows.map((row) => row.key);
   const notesByKey = includeNotes ? listAssignmentNotes(db, { keys, limitPerAssignment: notesLimit }) : new Map();

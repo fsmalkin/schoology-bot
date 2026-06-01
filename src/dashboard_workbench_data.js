@@ -8,7 +8,12 @@ import {
 } from "./db.js";
 import { STATUS_CODE_MAP, getManualStatusCategory } from "./statuses.js";
 import { addLocalReminderFields, addLocalReminderFieldsToList, recurrenceOptionList } from "./reminder_view.js";
-import { formatDateTimeLabel, formatDateYmd, parseSchoologyDate } from "./time.js";
+import {
+  classifySchoologyDueDate,
+  formatDateTimeLabel,
+  formatDateYmd,
+  parseSchoologyDate,
+} from "./time.js";
 import { deriveSchoologyAssignmentTitle, expandDisplayTitle } from "./text_utils.js";
 
 const WORKBENCH_LIMIT = 1000;
@@ -126,14 +131,16 @@ function mapNotesPreview(notes) {
   }));
 }
 
-function mapDueDate(rawDueDate, timeZone) {
+function mapDueDate(rawDueDate, timeZone, nowDate) {
   const parsed = parseSchoologyDate(rawDueDate, timeZone);
+  const dueInfo = classifySchoologyDueDate(rawDueDate, timeZone, nowDate);
   return {
     dueDate: rawDueDate || "",
     dueDateLabel: parsed ? formatDateTimeLabel(parsed, timeZone) : rawDueDate || "No due date",
-    dueDateSort: parsed ? parsed.toISOString() : rawDueDate || "",
-    dueDateYmd: parsed ? formatDateYmd(parsed, timeZone) : null,
-    dueDateIso: parsed ? parsed.toISOString() : null,
+    dueDateSort: dueInfo.dueDateIso || rawDueDate || "",
+    dueDateYmd: dueInfo.dueDateYmd,
+    dueDateIso: dueInfo.dueDateIso,
+    dueCategory: dueInfo.dueCategory,
   };
 }
 
@@ -159,7 +166,7 @@ function displayStatusLabel(row, inferredSubmittedUngraded) {
   return row.effectiveStatus || row.status || "Needs review";
 }
 
-function bucketReasonText(row, inferredSubmittedUngraded, todayYmd) {
+function bucketReasonText(row, inferredSubmittedUngraded) {
   if (inferredSubmittedUngraded) {
     return "Schoology shows this as submitted and still awaiting a grade.";
   }
@@ -176,10 +183,10 @@ function bucketReasonText(row, inferredSubmittedUngraded, todayYmd) {
     if (row.autoIgnored) return "This was filed away automatically so it does not clutter tonight.";
     return "Handled for now.";
   }
-  if (!row.dueDateYmd) return "This still needs attention.";
-  if (row.dueDateYmd < todayYmd) return "The due date has already passed.";
-  if (row.dueDateYmd === todayYmd) return "This is due today.";
-  return `Due ${row.dueDateLabel}.`;
+  if (row.dueCategory === "overdue") return "The due date has already passed.";
+  if (row.dueCategory === "today") return "This is due today.";
+  if (row.dueCategory === "upcoming") return `Due ${row.dueDateLabel}.`;
+  return "This still needs attention.";
 }
 
 function groupRemindersByAssignment(reminders, timeZone) {
@@ -210,10 +217,11 @@ function mapAssignmentRow(row, notesByKey, reminderGroups, timeZone, nowDate) {
   const notesPreview = mapNotesPreview(notesByKey.get(row.key) || []);
   const reminders = reminderGroups.get(row.key) || [];
   const nextReminder = reminders[0] || null;
-  const dueFields = mapDueDate(row.dueDate, timeZone);
+  const dueFields = mapDueDate(row.dueDate, timeZone, nowDate);
   const inferredSubmittedUngraded = row.isMissing === true && isSubmittedUngraded(row);
   const bucket = displayBucket(row.statusCategory, { inferredSubmittedUngraded });
-  const todayYmd = formatDateYmd(nowDate, timeZone);
+  const homeBucketLabel =
+    bucket.id === "actionable" && dueFields.dueCategory === "upcoming" ? "Coming Up" : bucket.homeLabel;
   const title = expandDisplayTitle(
     deriveSchoologyAssignmentTitle({ title: row.title || "", rawText: row.rawText || "" })
   );
@@ -229,7 +237,7 @@ function mapAssignmentRow(row, notesByKey, reminderGroups, timeZone, nowDate) {
     statusCategory: row.statusCategory || "actionable",
     displayCategory: bucket.id,
     bucketLabel: bucket.label,
-    homeBucketLabel: bucket.homeLabel,
+    homeBucketLabel,
     displayStatusLabel: displayStatusLabel(row, inferredSubmittedUngraded),
     score: row.score || "",
     url: row.url || "",
@@ -247,7 +255,7 @@ function mapAssignmentRow(row, notesByKey, reminderGroups, timeZone, nowDate) {
     autoIgnored: row.autoIgnored === true,
     autoIgnoreReason: row.autoIgnoreReason || "",
     inferredSubmittedUngraded,
-    reasonText: bucketReasonText({ ...row, ...dueFields }, inferredSubmittedUngraded, todayYmd),
+    reasonText: bucketReasonText({ ...row, ...dueFields }, inferredSubmittedUngraded),
     previewNote: notesPreview[0]?.note || "",
     quickActions: assignmentQuickActions(),
     ...dueFields,
@@ -268,13 +276,23 @@ function buildAssignmentSummary(rows) {
     actionable: 0,
     waiting: 0,
     handled: 0,
+    overdue: 0,
+    today: 0,
+    upcoming: 0,
+    undated: 0,
     withReminders: 0,
     withNotes: 0,
   };
   for (const row of rows) {
     if (row.displayCategory === "pending") summary.waiting += 1;
     else if (row.displayCategory === "ignored") summary.handled += 1;
-    else summary.actionable += 1;
+    else {
+      summary.actionable += 1;
+      if (row.dueCategory === "overdue") summary.overdue += 1;
+      else if (row.dueCategory === "today") summary.today += 1;
+      else if (row.dueCategory === "upcoming") summary.upcoming += 1;
+      else summary.undated += 1;
+    }
     if (row.hasReminder) summary.withReminders += 1;
     if (row.hasNotes) summary.withNotes += 1;
   }
@@ -406,6 +424,10 @@ function toHomeSectionKey(item, todayYmd) {
   }
   if (item.displayCategory === "pending") return "waiting";
   if (item.displayCategory === "ignored") return "handled";
+  if (item.dueCategory === "upcoming") return "comingUp";
+  if (item.dueCategory === "overdue" || item.dueCategory === "today" || item.dueCategory === "undated") {
+    return "tonight";
+  }
   if (!item.dueDateYmd || item.dueDateYmd <= todayYmd) return "tonight";
   return "comingUp";
 }

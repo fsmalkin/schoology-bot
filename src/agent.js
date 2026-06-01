@@ -358,7 +358,7 @@ export function toolDefinitions() {
       type: "function",
       name: "list_assignments",
       description:
-        "List assignments with optional filters. Use status=submitted_awaiting_grade for Schoology rows marked by the submitted/ungraded icon or hidden grade-pending text.",
+        "List assignments with optional filters. Rows include dueCategory (overdue, today, upcoming, undated). Use status=submitted_awaiting_grade for Schoology rows marked by the submitted/ungraded icon or hidden grade-pending text.",
       strict: true,
       parameters: buildStrictParams({
         status: {

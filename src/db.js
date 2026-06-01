@@ -2,7 +2,13 @@ import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
 import { getManualStatusCategory, normalizeManualStatus } from "./statuses.js";
-import { formatDateYmd, getLocalDateParts, nowIso, parseSchoologyDate } from "./time.js";
+import {
+  classifySchoologyDueDate,
+  formatDateYmd,
+  getLocalDateParts,
+  nowIso,
+  parseSchoologyDate,
+} from "./time.js";
 import { extractAssignmentId, loadState } from "./storage.js";
 import { deriveSchoologyAssignmentTitle } from "./text_utils.js";
 import { redactSensitiveString, sanitizeForLocalLog } from "./sensitive_redaction.js";
@@ -1499,6 +1505,8 @@ export function listAssignments(db, options = {}) {
   const includeIgnored = options.includeIgnored === true || status === "submitted_awaiting_grade";
   const includePending = options.includePending !== false;
   const bucketed = options.bucketed === true;
+  const timeZone = options.timeZone || "America/New_York";
+  const nowDate = options.now ? new Date(options.now) : new Date();
 
   const filters = [];
   const params = { limit };
@@ -1573,6 +1581,7 @@ export function listAssignments(db, options = {}) {
       ...row,
       isMissing: row.isMissing === 1,
       autoIgnored,
+      ...classifySchoologyDueDate(row.dueDate, timeZone, nowDate),
       effectiveStatus:
         manualStatus || (inferredSubmittedUngraded ? "Submitted, awaiting grade" : row.status || ""),
       statusCategory,

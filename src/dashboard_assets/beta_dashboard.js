@@ -396,11 +396,18 @@ function currentHomeSection(key) {
 function groupAssignmentRows(rows) {
   return rows.reduce(
     (groups, row) => {
-      const bucket = row.displayCategory === "pending" ? "pending" : row.displayCategory === "ignored" ? "ignored" : "actionable";
+      const bucket =
+        row.displayCategory === "pending"
+          ? "pending"
+          : row.displayCategory === "ignored"
+            ? "ignored"
+            : row.dueCategory === "upcoming"
+              ? "upcoming"
+              : "actionable";
       groups[bucket].push(row);
       return groups;
     },
-    { actionable: [], pending: [], ignored: [] }
+    { actionable: [], upcoming: [], pending: [], ignored: [] }
   );
 }
 
@@ -695,6 +702,10 @@ function renderTaskCard(task, surface, options = {}) {
 
 
 function dueCls(row) {
+  const dueCategory = String(row.dueCategory || "").toLowerCase();
+  if (dueCategory === "overdue") return "overdue";
+  if (dueCategory === "today") return "today";
+  if (dueCategory === "upcoming" || dueCategory === "undated") return "";
   if (!row.dueDateYmd) return "";
   const today = new Date().toISOString().slice(0, 10);
   if (row.dueDateYmd < today) return "overdue";
@@ -1169,6 +1180,7 @@ function renderSchoolworkPane() {
         ? `<p class="empty-state">No assignments match the current filter.</p>`
         : `<div class="schoolwork-list">
             ${renderSchoolworkGroup("Needs attention", "The assignments that still need a decision from you.", groups.actionable, "Nothing urgent matches this view.", "actionable")}
+            ${renderSchoolworkGroup("Coming up", "Future-due assignments to keep on the radar.", groups.upcoming, "No future-due assignments match this view.", "upcoming")}
             ${renderSchoolworkGroup("Waiting on school", "Already submitted or waiting on a teacher, grade, or Schoology change.", groups.pending, "Nothing is waiting on school in this view.", "pending")}
             ${renderHandledLane(groups.ignored)}
           </div>`

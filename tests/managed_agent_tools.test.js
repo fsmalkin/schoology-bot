@@ -20,6 +20,7 @@ test("managed agent custom tool definitions mirror the Schoology tool surface", 
   assert.ok(listAssignments.input_schema.properties.status.enum.includes("submitted_awaiting_grade"));
   assert.match(listAssignments.description, /List assignments/i);
   assert.match(listAssignments.description, /submitted_awaiting_grade/i);
+  assert.match(listAssignments.description, /dueCategory/i);
 
   const filteredBulk = tools.find(
     (tool) => tool.name === "schoology_bulk_update_assignments_by_filter"

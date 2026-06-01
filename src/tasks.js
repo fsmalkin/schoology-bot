@@ -166,7 +166,13 @@ export async function buildDailySummaryText(options = {}) {
     state = loadState(config.paths.statePath);
   }
 
-  const dbSummary = buildDbSummary(db, { includePending: true, includeIgnored: false, includeNotes: true });
+  const dbSummary = buildDbSummary(db, {
+    includePending: true,
+    includeIgnored: false,
+    includeNotes: true,
+    timeZone: config.schedule.timezone,
+    now,
+  });
   const today = formatDateYmd(now, config.schedule.timezone);
   const allPendingTasks = listTasks(db, { status: "pending" });
   const reminders = groupReminders(allPendingTasks, config.schedule.timezone, today);
