@@ -20,7 +20,7 @@ import {
   scheduleReminder,
 } from "./db.js";
 import { openBugReport, openFeatureRequest } from "./bugs.js";
-import { isIgnoredStatus, isPendingStatus } from "./statuses.js";
+import { isIgnoredStatus, isPendingStatus, isSubmittedSchoologyStatus } from "./statuses.js";
 import { buildDailySummaryText, runReminders, runScrape } from "./tasks.js";
 import {
   formatDateTime,
@@ -532,14 +532,9 @@ export async function runToolByName(db, toolName, args, context = {}) {
         const pendingCount = bucketed?.buckets?.pending?.length || 0;
         const ignoredRows = bucketed?.buckets?.ignored || [];
         const ignoredCount = ignoredRows.length;
-        const submittedArchivedCount = ignoredRows.filter((row) => {
-          const text = `${row.effectiveStatus || ""} ${row.status || ""} ${row.rawText || ""}`.toLowerCase();
-          return (
-            text.includes("submitted, awaiting grade") ||
-            text.includes("submission that has not been graded") ||
-            text.includes("assignment submitted")
-          );
-        }).length;
+        const submittedArchivedCount = ignoredRows.filter((row) =>
+          isSubmittedSchoologyStatus(row)
+        ).length;
         const reasons = Array.from(
           new Set(
             ignoredRows

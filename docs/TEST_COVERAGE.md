@@ -20,10 +20,10 @@ Unit tests
 - Chat-memory persistence, message-style persistence, and resolved-assignment reminder cleanup helpers.
 - Schoology scraper title fallback for rows that have visible text but no assignment link (`Note: This material is not available within Schoology` pattern).
 - Schoology scraper conflict handling for MUA/external-tool-link rows (score beats Missing badge, detail-page fallback for ambiguous rows, capped fallback volume).
-- Submitted-but-ungraded assignment handling: scraper coverage for Schoology grade-pending/dropbox icon hidden text, DB auto-file behavior, and direct `submitted_awaiting_grade` assignment queries.
+- Submitted assignment handling: scraper coverage for Schoology grade-pending/dropbox icon hidden text, exact `Submitted` missing-feed rows, DB auto-file behavior, and direct `submitted_awaiting_grade` assignment queries.
 - Assignment list filtering verifies both flat and bucketed missing-list outputs honor ignored/pending visibility flags, keeping already-handled rows out of default agent-visible buckets.
 - Dashboard health/data builders (heartbeat + snapshot assembly).
-- Dashboard parent-home and schoolwork data builders (home section classification, local due-category routing, parent-facing labels, assignment notes preview, reminder summary, task-only filtering, and raw-text title fallback when stored titles are blank).
+- Dashboard parent-home and schoolwork data builders (home section classification, local due-category routing, exact `Submitted` missing-feed rows in Waiting, parent-facing labels, assignment notes preview, reminder summary, task-only filtering, and raw-text title fallback when stored titles are blank).
 - Dashboard read models for `Will complete in class` and MUA display-title expansion.
 - Dashboard browser smoke coverage for click-to-open cards, the minimal card surface, collapsed drawer sections, explicit assignment status saves, long-running Schoology refresh busy/success feedback, backdrop/escape close behavior, and bulk-mode reveal.
 - Beta dashboard client-state safeguards in `beta_dashboard.js` (draft-preserving rerenders, focus-return fallback when cards move buckets, and safer `Submitted` partial-failure handling) are covered through dedicated browser smoke and regression scenarios.
@@ -75,6 +75,7 @@ CLI checks
   - `powershell -ExecutionPolicy Bypass -File scripts/run_schoology_restore_drill.ps1 -Source local`
   - `powershell -ExecutionPolicy Bypass -File scripts/restore_schoology_state.ps1 -RuntimeMode docker -Source local -Snapshot latest`
   - `powershell -ExecutionPolicy Bypass -File scripts/register_schoology_tasks.ps1 -RuntimeMode docker -RunAsPassword "<password>"`
+- Restore drill coverage verifies the prod DB bundle plus gitignored runtime recovery files, including `data/beta/agent.runtime.db`.
 
 ## Gaps and risks
 
@@ -105,7 +106,7 @@ Managed Agents stack
 - `tests/dashboard_data.test.js` verifies dashboard health snapshots include Managed Agents bridge service/session/event status when the managed runtime is active and can surface the existing managed-dev beta runtime from `data/beta/agent.runtime.db`.
 - `tests/dashboard_ui_smoke.test.js` verifies the Admin panel renders Managed Agents session/event/alert details and folds Managed Agents alerts into the global status dot.
 - `tests/managed_agent_tools.test.js` verifies exported Managed Agents custom tool definitions cover the current Schoology tool surface.
-- `tests/managed_agent_definitions.test.js` verifies the Managed Agents system prompt keeps the reminder-default policy needed by parity stories, routes submitted/ungraded questions through the icon-aware filter, routes broad due-date status changes through `bulk_update_assignments_by_filter`, enables only `web_search`/`web_fetch` plus memory file tools from the built-in agent toolset, keeps `bash` disabled, and includes memory guardrails against storing secrets, raw grades, full assignment lists, private student records, unsafe content, or verbatim fetched/web content.
+- `tests/managed_agent_definitions.test.js` verifies the Managed Agents system prompt keeps the reminder-default policy needed by parity stories, routes submitted/ungraded questions through the submitted-status filter, resolves numbered-list bug references against current conversation context, routes broad due-date status changes through `bulk_update_assignments_by_filter`, enables only `web_search`/`web_fetch` plus memory file tools from the built-in agent toolset, keeps `bash` disabled, and includes memory guardrails against storing secrets, raw grades, full assignment lists, private student records, unsafe content, or verbatim fetched/web content.
 - `tests/kid_safe_content_filter.test.js` verifies ordinary Schoology and safe web prompts pass while adult, violent, dangerous, cyber-abuse, harassment, and self-harm requests are blocked or redirected.
 - Live Managed Agents parity now has artifacts from the story suite and judge (`20260527-052502`) using Claude sessions and local Schoology custom tools, including the submitted/ungraded icon-query story.
 - A broader isolated live Managed Agents JTBD UAT passed with Claude session `sesn_01HpAfEZH9345jZQC5Fh9dbB`, covering seeded assignment listing, manual status update, assignment note, assignment-linked reminder, standalone recurring reminder, correction/update, unsupported monthly fallback, daily summary, and due-reminder drain.

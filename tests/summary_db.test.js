@@ -121,6 +121,55 @@ test("buildDbSummary includes local due categories", () => {
   assert.equal(summary.actionable.find((row) => row.key === "future")?.dueCategory, "upcoming");
 });
 
+test("buildDbSummary keeps exact submitted missing rows out of Do Now", () => {
+  const db = createDb(":memory:");
+  syncAssignmentsFromState(db, {
+    assignments: {
+      magley: {
+        key: "magley",
+        course: "Science MS7 GT/AA",
+        title: "Lab: MAGLEY Review",
+        dueDate: "5/11/26 11:59pm",
+        status: "Submitted",
+        score: "",
+        url: "https://bcps.schoology.com/assignment/8386979006",
+        rawText: "",
+        firstSeenAt: "2026-06-02T10:00:00Z",
+        lastSeenAt: "2026-06-02T10:00:00Z",
+        lastMissingAt: "2026-06-02T10:00:00Z",
+        resolvedAt: null,
+        isMissing: true,
+      },
+      superhero: {
+        key: "superhero",
+        course: "Science MS7 GT/AA",
+        title: "Unit 4: CE Superhero Story (Turn-in)",
+        dueDate: "5/26/26 11:59pm",
+        status: "Missing",
+        score: "",
+        url: "",
+        rawText: "",
+        firstSeenAt: "2026-06-02T10:00:00Z",
+        lastSeenAt: "2026-06-02T10:00:00Z",
+        lastMissingAt: "2026-06-02T10:00:00Z",
+        resolvedAt: null,
+        isMissing: true,
+      },
+    },
+  });
+
+  const summary = buildDbSummary(db, {
+    includePending: true,
+    includeIgnored: false,
+    timeZone: "America/New_York",
+    now: new Date("2026-06-02T07:00:00-04:00"),
+  });
+
+  assert.equal(summary.actionable.some((row) => row.key === "magley"), false);
+  assert.equal(summary.pending.some((row) => row.key === "magley"), false);
+  assert.equal(summary.actionable.find((row) => row.key === "superhero")?.dueCategory, "overdue");
+});
+
 test("addAssignmentNote rejects unknown assignment key", () => {
   const db = createDb(":memory:");
   const result = addAssignmentNote(db, { key: "missing", note: "Test note" });

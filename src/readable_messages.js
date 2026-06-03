@@ -1,5 +1,6 @@
 import { classifySchoologyDueDate, parseSchoologyDate } from "./time.js";
 import { expandDisplayTitle, normalizeAscii } from "./text_utils.js";
+import { isSubmittedSchoologyStatus } from "./statuses.js";
 
 const MAX_SECTION_ITEMS = 5;
 const DEFAULT_TIME_ZONE = "America/New_York";
@@ -346,18 +347,9 @@ function listPendingRowsFromDb(db) {
     );
   };
 
-  const isSubmittedUngraded = (row) => {
-    const text = `${row?.status || ""} ${row?.rawText || ""}`.toLowerCase();
-    return (
-      text.includes("submitted, awaiting grade") ||
-      text.includes("submission that has not been graded") ||
-      text.includes("assignment submitted")
-    );
-  };
-
   return rows.filter((row) => {
     if (Number(row?.autoIgnored || 0) === 1) return false;
-    if (isSubmittedUngraded(row)) return false;
+    if (isSubmittedSchoologyStatus(row)) return false;
     return isPendingStatus(row?.manualStatus);
   });
 }

@@ -51,6 +51,7 @@ $requiredPaths = @(
   "data\storage.json",
   "data\beta\state.json",
   "data\beta\storage.json",
+  "data\beta\agent.runtime.db",
   "db\agent.db.prod"
 )
 $requiredDbArtifacts = @(

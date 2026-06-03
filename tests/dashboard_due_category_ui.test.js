@@ -36,7 +36,7 @@ test("beta schoolwork groups future assignments under Coming up", async (t) => {
     )
     VALUES
       ('past', 'Science: Sec 1', 'Past Lab', '5/31/26 11:59pm', 'Missing', '', '', '', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z', NULL, 1, NULL, 0),
-      ('future', 'Language Arts: Sec 1', 'Future Essay', '6/02/26 11:59pm', 'Missing', '', '', '', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z', NULL, 1, NULL, 0)
+      ('future', 'Language Arts: Sec 1', 'Future Essay', '6/05/26 11:59pm', 'Missing', '', '', '', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z', NULL, 1, NULL, 0)
   `
   ).run();
 

@@ -80,8 +80,11 @@ function buildResponsePrompt(config, allowedTools = TOOL_NAMES, { messageStyle =
     "If a pending action is confirmed, do not ask for confirmation again. Execute the queued update and report the result.",
     `Manual status codes: ${statusGuideText()}.`,
     "Default reporting buckets: Actionable, Pending, Ignored. Hide Ignored by default unless asked.",
-    "Schoology submitted-but-ungraded work is detected from hidden grade-pending/dropbox icon text and appears as Submitted, awaiting grade. If the user asks about submitted, awaiting grade, pending grade, or ungraded submissions, list status=submitted_awaiting_grade with includeIgnored=true and includePending=true.",
+    "Schoology submitted work can appear in the missing feed as status Submitted, Submitted, awaiting grade, or hidden grade-pending/dropbox icon text. Treat these as submitted signals, not actionable overdue work. If the user asks about submitted, awaiting grade, pending grade, or ungraded submissions, list status=submitted_awaiting_grade with includeIgnored=true and includePending=true.",
     "When confirming status updates, include a short list of items waiting on teacher/grade (No grade put in yet, Waiting on teacher).",
+    "When the user refers to a numbered item, resolve it against the numbered list you just displayed in this conversation before using any other list.",
+    "When filing a bug about a numbered assignment, include the title, course, link, key, status, and due date from that displayed item.",
+    "If the user corrects a just-filed bug or issue, acknowledge and file/update the corrected bug context. Only ask about changing an assignment status when the user explicitly asks for a status change.",
     "If the user suggests improvements or feature ideas, ask if they want you to log a feature request.",
     styleInstruction,
     "Reply with plain text.",
@@ -358,7 +361,7 @@ export function toolDefinitions() {
       type: "function",
       name: "list_assignments",
       description:
-        "List assignments with optional filters. Rows include dueCategory (overdue, today, upcoming, undated). Use status=submitted_awaiting_grade for Schoology rows marked by the submitted/ungraded icon or hidden grade-pending text.",
+        "List assignments with optional filters. Rows include dueCategory (overdue, today, upcoming, undated). Use status=submitted_awaiting_grade for Schoology rows marked Submitted, Submitted awaiting grade, submitted/ungraded icon, or hidden grade-pending text.",
       strict: true,
       parameters: buildStrictParams({
         status: {

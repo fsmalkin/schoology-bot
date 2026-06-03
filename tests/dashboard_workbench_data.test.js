@@ -162,6 +162,58 @@ test("dashboard workspaces keep future assignments out of overdue lanes", () => 
   }
 });
 
+test("dashboard workspaces route exact submitted missing rows to waiting", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "schoology-dashboard-submitted-"));
+  try {
+    const config = makeConfig(tempDir);
+    const db = createDb(":memory:");
+    db.prepare(
+      `
+      INSERT INTO assignments (
+        key, course, title, due_date, status, score, url, raw_text,
+        first_seen_at, last_seen_at, last_missing_at, resolved_at, is_missing, manual_status, auto_ignored
+      )
+      VALUES (
+        'magley',
+        'Science MS7 GT/AA: Sec 001',
+        'Lab: MAGLEY Review',
+        '5/11/26 11:59pm',
+        'Submitted',
+        '',
+        'https://bcps.schoology.com/assignment/8386979006',
+        '',
+        '2026-06-02T10:00:00Z',
+        '2026-06-02T10:00:00Z',
+        '2026-06-02T10:00:00Z',
+        NULL,
+        1,
+        NULL,
+        0
+      )
+    `
+    ).run();
+
+    const now = new Date("2026-06-02T07:00:00-04:00");
+    const home = buildHomeWorkspace({ config, dbOverride: db, now });
+    const assignments = buildAssignmentsWorkspace({
+      config,
+      query: { status: "missing", includePending: "true", includeIgnored: "true" },
+      dbOverride: db,
+      now,
+    });
+
+    assert.equal(home.sections.tonight.rows.some((row) => row.key === "magley"), false);
+    const waiting = home.sections.waiting.rows.find((row) => row.key === "magley");
+    assert.ok(waiting);
+    assert.equal(waiting.displayStatusLabel, "Submitted");
+    assert.match(waiting.reasonText, /still listed as missing/i);
+    assert.equal(assignments.summary.waiting, 1);
+    assert.equal(assignments.summary.overdue, 0);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("buildAssignmentsWorkspace includes parent-friendly status labels and reminder previews", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "schoology-schoolwork-assignments-"));
   try {

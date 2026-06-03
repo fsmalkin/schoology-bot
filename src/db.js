@@ -1,7 +1,12 @@
 import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
-import { getManualStatusCategory, normalizeManualStatus } from "./statuses.js";
+import {
+  getManualStatusCategory,
+  getSubmittedSchoologyStatusLabel,
+  isSubmittedSchoologyStatus,
+  normalizeManualStatus,
+} from "./statuses.js";
 import {
   classifySchoologyDueDate,
   formatDateYmd,
@@ -1489,15 +1494,6 @@ function normalizeAssignmentListStatus(value) {
   return normalized || "missing";
 }
 
-function isSubmittedUngraded(row) {
-  const text = `${row.status || ""} ${row.rawText || ""}`.toLowerCase();
-  return (
-    text.includes("submitted, awaiting grade") ||
-    text.includes("submission that has not been graded") ||
-    text.includes("assignment submitted")
-  );
-}
-
 export function listAssignments(db, options = {}) {
   const status = normalizeAssignmentListStatus(options.status);
   const course = options.course ? String(options.course).toLowerCase() : null;
@@ -1516,12 +1512,12 @@ export function listAssignments(db, options = {}) {
   if (status === "submitted_awaiting_grade") {
     filters.push(`
       (
-        LOWER(COALESCE(status, '')) LIKE @submittedStatus
+        LOWER(TRIM(COALESCE(status, ''))) LIKE @submittedStatus
         OR LOWER(COALESCE(raw_text, '')) LIKE @submittedRawUngraded
         OR LOWER(COALESCE(raw_text, '')) LIKE @submittedRawSubmitted
       )
     `);
-    params.submittedStatus = "%submitted, awaiting grade%";
+    params.submittedStatus = "submitted%";
     params.submittedRawUngraded = "%submission that has not been graded%";
     params.submittedRawSubmitted = "%assignment submitted%";
   }
@@ -1571,7 +1567,8 @@ export function listAssignments(db, options = {}) {
     const manualStatus = row.manualStatus || "";
     const manualCategory = getManualStatusCategory(manualStatus);
     const autoIgnored = row.autoIgnored === 1;
-    const inferredSubmittedUngraded = isSubmittedUngraded(row);
+    const submittedStatusLabel = getSubmittedSchoologyStatusLabel(row);
+    const inferredSubmittedUngraded = Boolean(submittedStatusLabel);
     const statusCategory = autoIgnored
       ? "ignored"
       : inferredSubmittedUngraded
@@ -1582,8 +1579,7 @@ export function listAssignments(db, options = {}) {
       isMissing: row.isMissing === 1,
       autoIgnored,
       ...classifySchoologyDueDate(row.dueDate, timeZone, nowDate),
-      effectiveStatus:
-        manualStatus || (inferredSubmittedUngraded ? "Submitted, awaiting grade" : row.status || ""),
+      effectiveStatus: manualStatus || submittedStatusLabel || row.status || "",
       statusCategory,
     };
   });
@@ -1859,15 +1855,15 @@ export function getAssignmentFollowUpContext(db, { key, title, course } = {}) {
   const notes = listAssignmentNotes(db, { keys: [assignment.key], limitPerAssignment: 3 }).get(assignment.key) || [];
   const reminders = listReminders(db, { key: assignment.key, status: "pending" });
   const manualStatus = String(assignment.manualStatus || "").trim();
-  const inferredSubmittedUngraded = isSubmittedUngraded(assignment);
+  const submittedStatusLabel = getSubmittedSchoologyStatusLabel(assignment);
+  const inferredSubmittedUngraded = Boolean(submittedStatusLabel);
   const statusCategory =
     Number(assignment.autoIgnored || 0) === 1
       ? "ignored"
       : inferredSubmittedUngraded
       ? "ignored"
       : getManualStatusCategory(manualStatus);
-  const effectiveStatus =
-    manualStatus || (inferredSubmittedUngraded ? "Submitted, awaiting grade" : assignment.status || "");
+  const effectiveStatus = manualStatus || submittedStatusLabel || assignment.status || "";
 
   return {
     ok: true,
@@ -2657,14 +2653,14 @@ export function completeResolvedAssignmentReminders(db, { completedAt = nowIso()
     const pendingManualOnly =
       Number(row.isMissing || 0) === 1 &&
       Number(row.autoIgnored || 0) !== 1 &&
-      !isSubmittedUngraded(row) &&
+      !isSubmittedSchoologyStatus(row) &&
       getManualStatusCategory(row.manualStatus || "") === "pending";
     if (pendingManualOnly) continue;
 
     const shouldComplete =
       Number(row.isMissing || 0) !== 1 ||
       Number(row.autoIgnored || 0) === 1 ||
-      isSubmittedUngraded(row);
+      isSubmittedSchoologyStatus(row);
     if (!shouldComplete) continue;
 
     const result = completeTask.run({ id: row.id, completed_at: completedAt });

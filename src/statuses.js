@@ -26,6 +26,12 @@ const STATUS_ALIAS_MAP = new Map([
   ["ignored", STATUS_CODE_MAP.C],
 ]);
 
+const SUBMITTED_AWAITING_GRADE_TEXT = [
+  "submitted, awaiting grade",
+  "submission that has not been graded",
+  "assignment submitted",
+];
+
 export function normalizeManualStatus(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -50,6 +56,34 @@ export function isIgnoredStatus(value) {
 
 export function isPendingStatus(value) {
   return getManualStatusCategory(value) === STATUS_CATEGORY.PENDING;
+}
+
+function normalizeStatusText(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+export function getSubmittedSchoologyStatusLabel(row = {}) {
+  const status = String(row?.status || "").trim();
+  const rawText = String(row?.rawText || row?.raw_text || "").trim();
+  const lowerStatus = normalizeStatusText(status);
+  const haystack = normalizeStatusText(`${status} ${rawText}`);
+
+  if (
+    lowerStatus === "submitted" ||
+    lowerStatus.startsWith("submitted,") ||
+    lowerStatus.startsWith("submitted (") ||
+    lowerStatus.startsWith("submitted -")
+  ) {
+    return status || "Submitted";
+  }
+  if (SUBMITTED_AWAITING_GRADE_TEXT.some((needle) => haystack.includes(needle))) {
+    return "Submitted, awaiting grade";
+  }
+  return "";
+}
+
+export function isSubmittedSchoologyStatus(row = {}) {
+  return Boolean(getSubmittedSchoologyStatusLabel(row));
 }
 
 export function statusGuideText() {

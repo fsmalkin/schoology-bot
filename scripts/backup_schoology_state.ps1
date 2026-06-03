@@ -229,7 +229,7 @@ if (-not $SkipSyncCopy) {
 
 $copiedItems = @()
 
-$filePaths = @(
+$importantGitignoredFiles = @(
   "data\state.json",
   "data\storage.json",
   "data\agent.db",
@@ -241,7 +241,7 @@ $filePaths = @(
   "data\beta\agent.runtime.db-wal",
   "data\beta\agent.runtime.db-shm"
 )
-foreach ($relative in $filePaths) {
+foreach ($relative in $importantGitignoredFiles) {
   if (Copy-FileIfExists -repoRoot $RepoRoot -snapshotRoot $snapshotRoot -relativePath $relative) {
     $copiedItems += $relative
   }
@@ -349,6 +349,14 @@ $status = [pscustomobject]@{
   archiveSyncPath = $(if ($SkipSyncCopy) { "" } else { $archiveSyncPath })
   manifestPath = $manifestPath
   copiedItems = $copiedItems
+  backupContents = @("db\agent.db.prod") + $copiedItems
+  sensitiveGitignoredItemsExcluded = @(
+    ".env",
+    ".env.*",
+    "data\secrets\",
+    "data\runtime\prod.env",
+    "data\runtime\env-backups\"
+  )
   dbExported = $dbExported
   dbSource = $dbSource
   retentionDays = $RetentionDays

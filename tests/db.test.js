@@ -254,6 +254,45 @@ test("listAssignments auto-ignores submitted items awaiting grade", () => {
   assert.equal(row.effectiveStatus, "Submitted, awaiting grade");
 });
 
+test("listAssignments auto-ignores exact submitted rows that still appear missing", () => {
+  const db = createDb();
+  seedDb(db);
+  db.prepare("UPDATE assignments SET status = ?, raw_text = ? WHERE key = ?").run(
+    "Submitted",
+    "",
+    "a2"
+  );
+
+  const defaultList = listAssignments(db, { status: "missing" });
+  assert.equal(defaultList.some((item) => item.key === "a2"), false);
+
+  const withIgnored = listAssignments(db, { status: "missing", includeIgnored: true });
+  const row = withIgnored.find((item) => item.key === "a2");
+  assert.ok(row);
+  assert.equal(row.statusCategory, "ignored");
+  assert.equal(row.effectiveStatus, "Submitted");
+
+  const submitted = listAssignments(db, { status: "submitted_awaiting_grade" });
+  assert.equal(submitted.length, 1);
+  assert.equal(submitted[0].key, "a2");
+});
+
+test("listAssignments does not treat Not Submitted as a submitted signal", () => {
+  const db = createDb();
+  seedDb(db);
+  db.prepare("UPDATE assignments SET status = ?, raw_text = ? WHERE key = ?").run(
+    "Not Submitted",
+    "",
+    "a2"
+  );
+
+  const defaultList = listAssignments(db, { status: "missing" });
+  const row = defaultList.find((item) => item.key === "a2");
+  assert.ok(row);
+  assert.equal(row.statusCategory, "actionable");
+  assert.equal(row.effectiveStatus, "Not Submitted");
+});
+
 test("listAssignments can query submitted-awaiting-grade icon rows directly", () => {
   const db = createDb();
   seedDb(db);

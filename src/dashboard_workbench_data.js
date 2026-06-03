@@ -6,7 +6,12 @@ import {
   listReminders,
   listTasks,
 } from "./db.js";
-import { STATUS_CODE_MAP, getManualStatusCategory } from "./statuses.js";
+import {
+  STATUS_CODE_MAP,
+  getManualStatusCategory,
+  getSubmittedSchoologyStatusLabel,
+  isSubmittedSchoologyStatus,
+} from "./statuses.js";
 import { addLocalReminderFields, addLocalReminderFieldsToList, recurrenceOptionList } from "./reminder_view.js";
 import {
   classifySchoologyDueDate,
@@ -144,15 +149,6 @@ function mapDueDate(rawDueDate, timeZone, nowDate) {
   };
 }
 
-function isSubmittedUngraded(row) {
-  const text = `${row.status || ""} ${row.rawText || ""}`.toLowerCase();
-  return (
-    text.includes("submitted, awaiting grade") ||
-    text.includes("submission that has not been graded") ||
-    text.includes("assignment submitted")
-  );
-}
-
 function displayBucket(category, { inferredSubmittedUngraded = false } = {}) {
   if (inferredSubmittedUngraded) return PARENT_BUCKETS.pending;
   return PARENT_BUCKETS[category] || PARENT_BUCKETS.actionable;
@@ -162,12 +158,18 @@ function displayStatusLabel(row, inferredSubmittedUngraded) {
   if (row.manualStatus && MANUAL_STATUS_UI[row.manualStatus]) {
     return MANUAL_STATUS_UI[row.manualStatus].label;
   }
-  if (inferredSubmittedUngraded) return "Submitted and awaiting grade";
+  if (inferredSubmittedUngraded) {
+    const submittedLabel = getSubmittedSchoologyStatusLabel(row);
+    return submittedLabel === "Submitted" ? "Submitted" : "Submitted and awaiting grade";
+  }
   return row.effectiveStatus || row.status || "Needs review";
 }
 
 function bucketReasonText(row, inferredSubmittedUngraded) {
   if (inferredSubmittedUngraded) {
+    if (getSubmittedSchoologyStatusLabel(row) === "Submitted") {
+      return "Schoology shows this as submitted even though it is still listed as missing.";
+    }
     return "Schoology shows this as submitted and still awaiting a grade.";
   }
   if (row.statusCategory === "pending") {
@@ -218,7 +220,7 @@ function mapAssignmentRow(row, notesByKey, reminderGroups, timeZone, nowDate) {
   const reminders = reminderGroups.get(row.key) || [];
   const nextReminder = reminders[0] || null;
   const dueFields = mapDueDate(row.dueDate, timeZone, nowDate);
-  const inferredSubmittedUngraded = row.isMissing === true && isSubmittedUngraded(row);
+  const inferredSubmittedUngraded = row.isMissing === true && isSubmittedSchoologyStatus(row);
   const bucket = displayBucket(row.statusCategory, { inferredSubmittedUngraded });
   const homeBucketLabel =
     bucket.id === "actionable" && dueFields.dueCategory === "upcoming" ? "Coming Up" : bucket.homeLabel;
@@ -601,7 +603,8 @@ export function buildAssignmentDetail({
   const notes = mapNotesPreview(notesByKey.get(key) || []);
   const reminderList = addLocalReminderFieldsToList(listReminders(db, { key, status: "all" }), timeZone);
   const pendingReminders = reminderList.filter((entry) => entry.status === "pending");
-  const inferredSubmittedUngraded = assignment.isMissing === 1 && isSubmittedUngraded(assignment);
+  const inferredSubmittedUngraded =
+    assignment.isMissing === 1 && isSubmittedSchoologyStatus(assignment);
   const statusCategory =
     assignment.autoIgnored === 1
       ? "ignored"

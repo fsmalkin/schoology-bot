@@ -63,10 +63,11 @@ Default backup locations:
 3. Freshness marker: `D:\backups\schoology\local\backup-status\last-success.json`
 
 Archive includes:
-1. `data/state.json`, `data/storage.json`, `data/agent.db`
-2. `data/beta/state.json`, `data/beta/storage.json`, `data/beta/agent.runtime.db` until the Managed Agents dev data path is finalized
-3. Prod DB SQLite bundle: `db/agent.db.prod`, `db/agent.db.prod-wal`, `db/agent.db.prod-shm`
-4. `manifest.json` checksums
+1. Prod DB SQLite bundle: `db/agent.db.prod`, `db/agent.db.prod-wal`, `db/agent.db.prod-shm`
+2. Gitignored runtime recovery files: `data/state.json`, `data/storage.json`, `data/agent.db*`, `data/beta/state.json`, `data/beta/storage.json`, `data/beta/agent.runtime.db*`
+3. `manifest.json` checksums
+
+Secret and local env material stays in secure backup storage outside this Drive-synced archive path: `.env*`, `data/secrets/`, `data/runtime/prod.env`, and `data/runtime/env-backups/`.
 
 ## Restore workflow
 Restore latest local archive:
@@ -116,7 +117,7 @@ schtasks /Query /TN Schoology-StartStacks-OnBoot /V /FO LIST
 ```
 
 Expected:
-1. Task logon mode is password-based, not `Interactive only`.
+1. Task logon mode is password-based.
 2. Startup fallback artifact is absent in Docker mode:
    `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\Schoology-StartStacks-OnLogon.cmd`
 
