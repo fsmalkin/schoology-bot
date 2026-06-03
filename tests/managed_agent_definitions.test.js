@@ -23,6 +23,7 @@ test("managed agent system prompt preserves reminder default policy", () => {
   assert.match(definition.system, /Only call assignments overdue when dueCategory is overdue/i);
   assert.match(definition.system, /numbered list you just displayed/i);
   assert.match(definition.system, /just-filed bug or issue/i);
+  assert.match(definition.system, /Short-lived current-thread context/i);
   assert.match(definition.system, /current conversation context before durable memory/i);
   assert.match(definition.system, /kid-appropriate/i);
   assert.match(definition.system, /web_search and web_fetch/i);

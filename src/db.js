@@ -294,6 +294,16 @@ function initDb(db) {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS conversation_contexts (
+      chat_id TEXT NOT NULL,
+      context_type TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      PRIMARY KEY (chat_id, context_type)
+    );
+
     CREATE TABLE IF NOT EXISTS managed_agent_sessions (
       chat_id TEXT NOT NULL,
       environment TEXT NOT NULL DEFAULT 'dev',
@@ -455,6 +465,23 @@ function ensureManagedAgentEventsTable(db) {
       ON managed_agent_events(chat_id, environment, created_at DESC, id DESC);
     CREATE INDEX IF NOT EXISTS idx_managed_agent_events_status
       ON managed_agent_events(environment, status, created_at DESC);
+  `);
+}
+
+function ensureConversationContextsTable(db) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS conversation_contexts (
+      chat_id TEXT NOT NULL,
+      context_type TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      PRIMARY KEY (chat_id, context_type)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_conversation_contexts_expires
+      ON conversation_contexts(expires_at);
   `);
 }
 
@@ -927,6 +954,13 @@ function runMigrations(db) {
         ensureManagedAgentEventsTable(db);
       },
     },
+    {
+      version: 10,
+      name: "conversation-contexts",
+      apply: () => {
+        ensureConversationContextsTable(db);
+      },
+    },
   ];
 
   const currentVersion = getSchemaVersion(db);
@@ -1041,6 +1075,134 @@ export function clearPendingAction(db, chatId) {
   if (!chatId) return { ok: false, error: "Missing chatId." };
   const result = db.prepare("DELETE FROM pending_actions WHERE chat_id = ?").run(chatId);
   return { ok: true, cleared: result.changes || 0 };
+}
+
+function parseConversationContextPayload(value) {
+  try {
+    const parsed = JSON.parse(String(value || "{}"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function normalizeConversationContextType(value) {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9_:-]+/g, "_");
+}
+
+export function setConversationContext(
+  db,
+  { chatId, type, payload, ttlHours = 24, createdAt = nowIso(), updatedAt = nowIso() } = {}
+) {
+  const contextType = normalizeConversationContextType(type);
+  if (!chatId || !contextType) return { ok: false, error: "Missing chatId or context type." };
+  const hours = Number(ttlHours);
+  const ttlMs = Number.isFinite(hours) && hours > 0 ? hours * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+  const baseMs = parseIsoMs(updatedAt) || Date.now();
+  const expiresAt = new Date(baseMs + ttlMs).toISOString();
+  const body = payload && typeof payload === "object" ? payload : {};
+
+  db.prepare(
+    `
+    INSERT INTO conversation_contexts (
+      chat_id,
+      context_type,
+      payload_json,
+      created_at,
+      updated_at,
+      expires_at
+    )
+    VALUES (
+      @chat_id,
+      @context_type,
+      @payload_json,
+      @created_at,
+      @updated_at,
+      @expires_at
+    )
+    ON CONFLICT(chat_id, context_type) DO UPDATE SET
+      payload_json = excluded.payload_json,
+      updated_at = excluded.updated_at,
+      expires_at = excluded.expires_at
+  `
+  ).run({
+    chat_id: String(chatId),
+    context_type: contextType,
+    payload_json: JSON.stringify(body),
+    created_at: createdAt,
+    updated_at: updatedAt,
+    expires_at: expiresAt,
+  });
+
+  return { ok: true, chatId, type: contextType, payload: body, expiresAt };
+}
+
+export function clearExpiredConversationContexts(db, { now = nowIso() } = {}) {
+  const result = db.prepare("DELETE FROM conversation_contexts WHERE expires_at <= ?").run(now);
+  return { ok: true, cleared: result.changes || 0 };
+}
+
+export function getConversationContext(db, chatId, type, { now = nowIso() } = {}) {
+  if (!chatId) return null;
+  const contextType = normalizeConversationContextType(type);
+  if (!contextType) return null;
+  clearExpiredConversationContexts(db, { now });
+  const row = db
+    .prepare(
+      `
+      SELECT
+        chat_id AS chatId,
+        context_type AS type,
+        payload_json AS payloadJson,
+        created_at AS createdAt,
+        updated_at AS updatedAt,
+        expires_at AS expiresAt
+      FROM conversation_contexts
+      WHERE chat_id = @chat_id
+        AND context_type = @context_type
+        AND expires_at > @now
+    `
+    )
+    .get({ chat_id: String(chatId), context_type: contextType, now });
+  if (!row) return null;
+  return {
+    chatId: row.chatId,
+    type: row.type,
+    payload: parseConversationContextPayload(row.payloadJson),
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    expiresAt: row.expiresAt,
+  };
+}
+
+export function listConversationContexts(db, chatId, { now = nowIso() } = {}) {
+  if (!chatId) return [];
+  clearExpiredConversationContexts(db, { now });
+  return db
+    .prepare(
+      `
+      SELECT
+        chat_id AS chatId,
+        context_type AS type,
+        payload_json AS payloadJson,
+        created_at AS createdAt,
+        updated_at AS updatedAt,
+        expires_at AS expiresAt
+      FROM conversation_contexts
+      WHERE chat_id = @chat_id
+        AND expires_at > @now
+      ORDER BY updated_at DESC, context_type
+    `
+    )
+    .all({ chat_id: String(chatId), now })
+    .map((row) => ({
+      chatId: row.chatId,
+      type: row.type,
+      payload: parseConversationContextPayload(row.payloadJson),
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      expiresAt: row.expiresAt,
+    }));
 }
 
 function parseManagedAgentMetadata(value) {

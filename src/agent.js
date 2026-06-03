@@ -41,6 +41,10 @@ import {
   buildCapabilitySummary,
   capabilityListForPrompt,
 } from "./capabilities.js";
+import {
+  buildShortLivedConversationContextPrompt,
+  recordDisplayedAssignmentListContext,
+} from "./conversation_context.js";
 import { buildReadableToolResponse } from "./readable_messages.js";
 import {
   buildKidSafeBlockedReply,
@@ -1302,10 +1306,11 @@ function hasWriteTool(executed) {
   return executed.some((item) => writeTools.has(item.call?.name));
 }
 
-function buildPlanInput(text, pending, bootstrap, memoryText = "") {
+function buildPlanInput(text, pending, bootstrap, memoryText = "", shortLivedContext = "") {
   const parts = [];
   if (bootstrap) parts.push(bootstrap);
   if (memoryText) parts.push(`Stored chat memory:\n${memoryText}`);
+  if (shortLivedContext) parts.push(shortLivedContext);
   parts.push(`User message:\n${text}`);
   const base = parts.join("\n\n");
   if (!pending) return base;
@@ -1519,11 +1524,12 @@ function buildBugDraftInstructions(kind) {
   ].join(" ");
 }
 
-async function buildBugDraft(client, config, text, provided, kind, previousResponseId) {
+async function buildBugDraft(client, config, text, provided, kind, previousResponseId, shortLivedContext = "") {
   const schema = buildBugDraftSchema();
   const input = [
     "User request:",
     text,
+    shortLivedContext ? `\n${shortLivedContext}` : "",
     "",
     "Provided fields (if any):",
     JSON.stringify(provided || {}, null, 2),
@@ -1717,7 +1723,14 @@ export async function runAgentMessage({ chatId, text, clientOverride, now = null
   }
 
   const conversationMemory = buildChatMemoryContext(chatMemory, currentStyle, chatState);
-  const planText = buildPlanInput(text, activePending, getBootstrapContext(), conversationMemory);
+  const shortLivedContext = buildShortLivedConversationContextPrompt(db, chatId);
+  const planText = buildPlanInput(
+    text,
+    activePending,
+    getBootstrapContext(),
+    conversationMemory,
+    shortLivedContext
+  );
   const allowedToolsOverride =
     activePending && pendingDecision === "proceed" ? [activePending.tool] : null;
   const allowedToolNames =
@@ -1831,7 +1844,15 @@ export async function runAgentMessage({ chatId, text, clientOverride, now = null
       let callArgs = parseToolCallArgs(call.arguments);
       if (normalizedTool === "open_bug_report" || normalizedTool === "open_feature_request") {
         const kind = normalizedTool === "open_feature_request" ? "feature" : "bug";
-        const draft = await buildBugDraft(client, config, text, callArgs, kind, loopPrev);
+        const draft = await buildBugDraft(
+          client,
+          config,
+          text,
+          callArgs,
+          kind,
+          loopPrev,
+          shortLivedContext
+        );
         callArgs = { title: draft.title, body: draft.body, labels: draft.labels };
       }
 
@@ -1841,6 +1862,7 @@ export async function runAgentMessage({ chatId, text, clientOverride, now = null
       const normalizedArgs = normalizeToolArgs(normalizedTool, mergedArgs);
       const output = await runToolByName(db, normalizedTool, normalizedArgs, {
         userText: text,
+        chatId,
         now,
       });
       executed.push({ call: { name: normalizedTool, arguments: normalizedArgs }, output });
@@ -1881,6 +1903,7 @@ export async function runAgentMessage({ chatId, text, clientOverride, now = null
   }
   const sanitized = sanitizeRepeatedText(finalText);
   const normalized = normalizeAscii(sanitized);
+  recordDisplayedAssignmentListContext(db, { chatId, executed, reply: normalized });
   const responseIdToStore = response?.id || guardResponseId || previousResponseId || "";
   if (responseIdToStore) {
     updateChatState(db, chatId, responseIdToStore);

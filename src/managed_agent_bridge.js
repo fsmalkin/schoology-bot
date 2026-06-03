@@ -21,6 +21,10 @@ import {
   shouldResetManagedSessionForIdle,
 } from "./managed_agent_status.js";
 import { runToolByName, TOOL_NAMES } from "./tool_runner.js";
+import {
+  buildShortLivedConversationContextPrompt,
+  recordDisplayedAssignmentListContext,
+} from "./conversation_context.js";
 import { normalizeAscii, sanitizeRepeatedText } from "./text_utils.js";
 import {
   buildKidSafeBlockedReply,
@@ -377,7 +381,7 @@ async function getOrStartSession({ db, config, client, chatId, now }) {
   return { sessionId, created: true, reason, session: stored.session, idleReset, idleDecision };
 }
 
-async function executeCustomToolUse({ db, call, userText, now }) {
+async function executeCustomToolUse({ db, call, userText, chatId, now }) {
   const toolName = normalizeManagedToolName(call.name);
   if (!call.id) {
     return { ok: false, error: "Custom tool event is missing an id." };
@@ -385,7 +389,7 @@ async function executeCustomToolUse({ db, call, userText, now }) {
   if (!toolName) {
     return { ok: false, error: `Unsupported Schoology tool: ${call.name || "unknown"}` };
   }
-  return await runToolByName(db, toolName, call.input || {}, { userText, now });
+  return await runToolByName(db, toolName, call.input || {}, { userText, chatId, now });
 }
 
 function serializeToolOutput(output, maxChars) {
@@ -504,6 +508,10 @@ export async function runManagedAgentMessage({
     retryRequest = buildRetryRequest(originalText, sessionInfo.session?.metadata || {});
     outboundUserText = retryRequest.text;
     attemptedUserText = retryRequest.previousText || originalText;
+    const shortLivedContext = buildShortLivedConversationContextPrompt(db, chatId);
+    const userEventText = shortLivedContext
+      ? `${shortLivedContext}\n\nUser message:\n${outboundUserText}`
+      : outboundUserText;
 
     safeRecordManagedEvent(db, {
       chatId,
@@ -536,7 +544,7 @@ export async function runManagedAgentMessage({
     await client.sendEvents(sessionId, [
       {
         type: "user.message",
-        content: [{ type: "text", text: outboundUserText }],
+        content: [{ type: "text", text: userEventText }],
       },
     ]);
 
@@ -587,6 +595,7 @@ export async function runManagedAgentMessage({
                     db,
                     call,
                     userText: outboundUserText,
+                    chatId,
                     now: toolNow,
                   });
                   completedActionIds.add(actionId);
@@ -667,6 +676,17 @@ export async function runManagedAgentMessage({
     }
 
     let reply = normalizeAscii(sanitizeRepeatedText(replyParts.join("\n").trim())) || "Done.";
+    recordDisplayedAssignmentListContext(db, {
+      chatId,
+      executed: executedTools.map((entry) => ({
+        call: {
+          name: normalizeManagedToolName(entry.call?.name) || entry.call?.name || "",
+          arguments: entry.call?.input || {},
+        },
+        output: entry.output,
+      })),
+      reply,
+    });
     const outputSafety = detectKidUnsafeContent(reply);
     let safety = null;
     if (!outputSafety.safe) {

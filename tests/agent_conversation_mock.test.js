@@ -145,6 +145,7 @@ test("agent conversation cases (mock)", async () => {
     listAssignments,
     getPendingAction,
     setPendingAction,
+    setConversationContext,
   } = await import("../src/db.js");
   const { getConfig } = await import("../src/config.js");
   const { runAgentMessage } = await import("../src/agent.js");
@@ -281,6 +282,34 @@ test("agent conversation cases (mock)", async () => {
   assert.match(reply7, /Which assignment/i);
   const pendingAfterInvalid = getPendingAction(getDb(getConfig()), chatId);
   assert.equal(pendingAfterInvalid, null);
+
+  setConversationContext(getDb(getConfig()), {
+    chatId,
+    type: "last_displayed_assignment_list",
+    payload: {
+      source: "assistant_reply",
+      items: [
+        {
+          index: 2,
+          key: "assignment:8386979006",
+          title: "Lab: MAGLEY Review",
+          course: "Science",
+          status: "Submitted",
+        },
+      ],
+    },
+  });
+  const mockContext = createMockClient([
+    textResponse("r13", "I see #2 is Lab: MAGLEY Review."),
+  ]);
+  const reply8 = await runAgentMessage({
+    chatId,
+    text: "No number 2, the MAGLEY assignment",
+    clientOverride: mockContext,
+  });
+  assert.match(reply8, /MAGLEY/);
+  assert.match(String(mockContext.calls[0].input || ""), /Short-lived current-thread context/);
+  assert.match(String(mockContext.calls[0].input || ""), /assignment:8386979006/);
 
   closeDb();
   await cleanupDb();

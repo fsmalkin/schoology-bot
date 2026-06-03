@@ -8,6 +8,7 @@ import {
   getManagedAgentSession,
   listManagedAgentEvents,
   resetManagedAgentSession,
+  setConversationContext,
   syncAssignmentsFromState,
   upsertManagedAgentSession,
 } from "../src/db.js";
@@ -106,6 +107,58 @@ test("managed agent bridge creates a session, sends Telegram text, and returns a
   assert.equal(stored.sessionId, "sesn_test");
   assert.equal(stored.metadata.environmentId, "env_test");
   assert.equal(stored.metadata.agentDefinitionRevision, MANAGED_AGENT_DEFINITION_REVISION);
+  db.close();
+});
+
+test("managed agent bridge injects short-lived thread context into user events", async () => {
+  const db = createDb();
+  setConversationContext(db, {
+    chatId: "chat-context",
+    type: "last_displayed_assignment_list",
+    payload: {
+      source: "assistant_reply",
+      items: [
+        {
+          index: 2,
+          key: "assignment:8386979006",
+          title: "Lab: MAGLEY Review",
+          course: "Science",
+          status: "Submitted",
+        },
+      ],
+    },
+  });
+  const client = makeMockClient({
+    streams: [
+      [
+        {
+          id: "evt_msg_1",
+          type: "agent.message",
+          content: [{ type: "text", text: "I can use that context." }],
+        },
+        {
+          id: "idle_1",
+          type: "session.status_idle",
+          stop_reason: { type: "end_turn" },
+        },
+      ],
+    ],
+  });
+
+  const result = await runManagedAgentMessage({
+    chatId: "chat-context",
+    text: "No number 2, the MAGLEY assignment",
+    clientOverride: client,
+    configOverride: makeConfig(),
+    dbOverride: db,
+    debug: true,
+  });
+
+  assert.equal(result.reply, "I can use that context.");
+  const userText = client.calls.sendEvents[0].events[0].content[0].text;
+  assert.match(userText, /Short-lived current-thread context/);
+  assert.match(userText, /assignment:8386979006/);
+  assert.match(userText, /User message:\nNo number 2, the MAGLEY assignment/);
   db.close();
 });
 

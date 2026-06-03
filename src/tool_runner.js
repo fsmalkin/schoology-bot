@@ -20,6 +20,10 @@ import {
   scheduleReminder,
 } from "./db.js";
 import { openBugReport, openFeatureRequest } from "./bugs.js";
+import {
+  getDisplayedAssignmentByIndex,
+  recordCreatedIssueContext,
+} from "./conversation_context.js";
 import { isIgnoredStatus, isPendingStatus, isSubmittedSchoologyStatus } from "./statuses.js";
 import { buildDailySummaryText, runReminders, runScrape } from "./tasks.js";
 import {
@@ -371,6 +375,59 @@ function enrichSingleReminderResult(result, reminderLike, timeZone) {
   return result;
 }
 
+function applyNumberedStatusesWithConversationContext(db, args = {}, context = {}) {
+  const chatId = context?.chatId ? String(context.chatId) : "";
+  if (!chatId) return applyNumberedStatuses(db, args);
+  const updates = [];
+  let resolvedAny = false;
+  const results = [];
+  for (const item of args.statusByIndex || []) {
+    const index = Number(item?.index || 0);
+    const status = String(item?.status || "").trim();
+    if (!index || !status) {
+      results.push({ input: item, result: { ok: false, error: "Missing index or status." } });
+      continue;
+    }
+    const assignment = getDisplayedAssignmentByIndex(db, chatId, index);
+    if (!assignment?.key) {
+      results.push({
+        input: item,
+        result: { ok: false, error: `No stored displayed assignment at index ${index}.` },
+      });
+      continue;
+    }
+    resolvedAny = true;
+    updates.push({
+      input: item,
+      update: { key: assignment.key, title: assignment.title || "", course: assignment.course || "", status },
+      assignment,
+    });
+  }
+  if (!resolvedAny) return applyNumberedStatuses(db, args);
+
+  let successCount = 0;
+  for (const entry of updates) {
+    const result = updateAssignmentStatus(db, entry.update);
+    if (result.ok) successCount += 1;
+    results.push({
+      input: entry.input,
+      assignment: {
+        key: entry.assignment.key,
+        title: entry.assignment.title || "",
+        course: entry.assignment.course || "",
+      },
+      result,
+    });
+  }
+  return {
+    ok: true,
+    successCount,
+    total: results.length,
+    source: "conversation_context",
+    results,
+  };
+}
+
 export async function runToolByName(db, toolName, args, context = {}) {
   const config = getConfig();
   const timeZone = config?.schedule?.timezone || "America/New_York";
@@ -395,7 +452,7 @@ export async function runToolByName(db, toolName, args, context = {}) {
         userText: context?.userText,
       });
     case "apply_numbered_statuses":
-      return applyNumberedStatuses(db, args);
+      return applyNumberedStatusesWithConversationContext(db, args, context);
     case "add_assignment_note":
       return addAssignmentNote(db, args);
     case "schedule_reminder":
@@ -611,7 +668,16 @@ export async function runToolByName(db, toolName, args, context = {}) {
       }
     }
     case "open_bug_report":
-      return await openBugReport(config, args);
+      {
+        const result = await openBugReport(config, args);
+        recordCreatedIssueContext(db, {
+          chatId: context?.chatId,
+          args,
+          output: result,
+          userText: context?.userText || "",
+        });
+        return result;
+      }
     case "open_feature_request":
       return await openFeatureRequest(config, args);
     default:

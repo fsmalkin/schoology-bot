@@ -57,6 +57,11 @@ test("db migrations add task columns and index", () => {
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'managed_agent_events'")
     .get();
   assert.ok(managedAgentEvents);
+
+  const conversationContexts = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'conversation_contexts'")
+    .get();
+  assert.ok(conversationContexts);
 });
 
 test("db migrations move pending legacy reminders into assignment tasks", () => {
