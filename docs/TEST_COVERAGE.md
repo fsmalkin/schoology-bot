@@ -21,7 +21,7 @@ Unit tests
 - Short-lived conversation context persistence for recent displayed assignment lists, just-created issues, expiry cleanup, prompt injection, and context-aware numbered status updates.
 - Schoology scraper title fallback for rows that have visible text but no assignment link (`Note: This material is not available within Schoology` pattern).
 - Schoology scraper conflict handling for MUA/external-tool-link rows (score beats Missing badge, detail-page fallback for ambiguous rows, capped fallback volume).
-- Submitted assignment handling: scraper coverage for Schoology grade-pending/dropbox icon hidden text, exact `Submitted` missing-feed rows, DB auto-file behavior, and direct `submitted_awaiting_grade` assignment queries.
+- Submitted assignment handling: scraper coverage for Schoology grade-pending/dropbox icon hidden text, exact `Submitted` missing-feed rows, manual `Submitted` waiting-summary routing, DB auto-file behavior, and direct `submitted_awaiting_grade` assignment queries.
 - Assignment list filtering verifies both flat and bucketed missing-list outputs honor ignored/pending visibility flags, keeping already-handled rows out of default agent-visible buckets.
 - Dashboard health/data builders (heartbeat + snapshot assembly).
 - Dashboard parent-home and schoolwork data builders (home section classification, local due-category routing, exact `Submitted` missing-feed rows in Waiting, parent-facing labels, assignment notes preview, reminder summary, task-only filtering, and raw-text title fallback when stored titles are blank).

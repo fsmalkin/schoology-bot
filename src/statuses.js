@@ -16,8 +16,17 @@ export const STATUS_CATEGORY = {
 };
 
 const IGNORED_STATUSES = new Set([STATUS_CODE_MAP.A, STATUS_CODE_MAP.B, STATUS_CODE_MAP.C]);
-const PENDING_STATUSES = new Set([STATUS_CODE_MAP.D, STATUS_CODE_MAP.E, STATUS_CODE_MAP.F]);
+const MANUAL_SUBMITTED_STATUS = "Submitted";
+const PENDING_STATUSES = new Set([
+  STATUS_CODE_MAP.D,
+  STATUS_CODE_MAP.E,
+  STATUS_CODE_MAP.F,
+  MANUAL_SUBMITTED_STATUS,
+]);
 const STATUS_ALIAS_MAP = new Map([
+  ["submitted", MANUAL_SUBMITTED_STATUS],
+  ["turned in", MANUAL_SUBMITTED_STATUS],
+  ["turn in complete", MANUAL_SUBMITTED_STATUS],
   ["no action needed", STATUS_CODE_MAP.C],
   ["no action", STATUS_CODE_MAP.C],
   ["nothing needed", STATUS_CODE_MAP.C],

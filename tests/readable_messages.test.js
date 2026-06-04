@@ -105,6 +105,33 @@ test("buildReadableDailySummary routes future assignments to Soon", () => {
   assert.doesNotMatch(output, /Future Essay \| Overdue/);
 });
 
+test("buildReadableDailySummary renders submitted waiting rows without overdue action wording", () => {
+  const output = buildReadableDailySummary({
+    summary: {
+      actionable: [],
+      pending: [
+        {
+          course: "Science MS7 GT/AA: Sec 004 B PER04",
+          title: "Lab: MAGLEY Review",
+          dueDate: "5/11/26 11:59pm",
+          status: "Missing",
+          manualStatus: "Submitted",
+          url: "https://bcps.schoology.com/assignment/8386979006",
+        },
+      ],
+    },
+    reminders: { today: [], overdue: [], upcoming: [] },
+    state: { lastScrapeAt: "2026-06-02T10:00:01.486Z" },
+    timeZone: "America/New_York",
+    now: "2026-06-04T07:00:00-04:00",
+  });
+
+  assert.match(output, /\nWaiting\n/);
+  assert.match(output, /Lab: MAGLEY Review \| Due Mon, May 11, 2026, 11:59 PM \| Waiting on teacher\/grade \(Submitted\)/);
+  assert.doesNotMatch(output, /Overdue since Mon, May 11, 2026/);
+  assert.doesNotMatch(output, /Needs action \(Submitted\)/);
+});
+
 test("buildReadableDailySummary caps each section at five items", () => {
   const actionable = [];
   for (let i = 1; i <= 7; i += 1) {

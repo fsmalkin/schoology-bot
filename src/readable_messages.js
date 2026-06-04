@@ -99,16 +99,19 @@ export function formatFriendlyStatus(status) {
   if (lower === "will complete in class") {
     return "Will complete in class";
   }
+  if (lower === "submitted") {
+    return "Waiting on teacher/grade (Submitted)";
+  }
   return `Needs action (${official})`;
 }
 
-function formatDueLabel(dueDate, timeZone, nowDate) {
+function formatDueLabel(dueDate, timeZone, nowDate, { showOverdue = true } = {}) {
   const raw = String(dueDate || "").trim();
   if (!raw) return "Due date not shown";
   const parsed = parseSchoologyDate(raw, timeZone) || asDate(raw);
   if (!parsed) return `Due ${raw}`;
   const label = formatDayDateTime(parsed, timeZone, false);
-  if (parsed < nowDate) {
+  if (showOverdue && parsed < nowDate) {
     return `Overdue since ${label}`;
   }
   return `Due ${label}`;
@@ -128,12 +131,12 @@ function displayTitle(title) {
   return expandDisplayTitle(title || "");
 }
 
-function buildAssignmentItem(item, { timeZone, nowDate, includeLink, messageStyle }) {
+function buildAssignmentItem(item, { timeZone, nowDate, includeLink, messageStyle, showOverdue = true }) {
   const style = normalizeMessageStyle(messageStyle);
   const course = simplifyCourseName(item?.course);
   const title = displayTitle(item?.title || "Untitled assignment");
   const status = formatFriendlyStatus(item?.manualStatus || item?.status || item?.effectiveStatus || "");
-  const due = formatDueLabel(item?.dueDate, timeZone, nowDate);
+  const due = formatDueLabel(item?.dueDate, timeZone, nowDate, { showOverdue });
   const line = isPlainLanguageStyle(style)
     ? `${course}: ${title}. ${due}. Status: ${status}.`
     : `[${course}] ${title} | ${due} | ${status}`;
@@ -423,7 +426,13 @@ export function buildReadableDailySummaryWithStyle({
   }
 
   const waitingItems = pending.map((item) =>
-    buildAssignmentItem(item, { timeZone: tz, nowDate, includeLink: false, messageStyle: style })
+    buildAssignmentItem(item, {
+      timeZone: tz,
+      nowDate,
+      includeLink: false,
+      messageStyle: style,
+      showOverdue: false,
+    })
   );
 
   const lines = [];

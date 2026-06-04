@@ -170,6 +170,62 @@ test("buildDbSummary keeps exact submitted missing rows out of Do Now", () => {
   assert.equal(summary.actionable.find((row) => row.key === "superhero")?.dueCategory, "overdue");
 });
 
+test("buildDbSummary routes manual submitted rows to waiting", () => {
+  const db = createDb(":memory:");
+  syncAssignmentsFromState(db, {
+    assignments: {
+      magley: {
+        key: "magley",
+        course: "Science MS7 GT/AA",
+        title: "Lab: MAGLEY Review",
+        dueDate: "5/11/26 11:59pm",
+        status: "Missing",
+        score: "",
+        url: "https://bcps.schoology.com/assignment/8386979006",
+        rawText: "",
+        firstSeenAt: "2026-06-02T10:00:00Z",
+        lastSeenAt: "2026-06-02T10:00:00Z",
+        lastMissingAt: "2026-06-02T10:00:00Z",
+        resolvedAt: null,
+        isMissing: true,
+      },
+      superhero: {
+        key: "superhero",
+        course: "Science MS7 GT/AA",
+        title: "Unit 4: CE Superhero Story (Turn-in)",
+        dueDate: "5/26/26 11:59pm",
+        status: "Missing",
+        score: "",
+        url: "",
+        rawText: "",
+        firstSeenAt: "2026-06-02T10:00:00Z",
+        lastSeenAt: "2026-06-02T10:00:00Z",
+        lastMissingAt: "2026-06-02T10:00:00Z",
+        resolvedAt: null,
+        isMissing: true,
+      },
+    },
+  });
+  db.prepare("UPDATE assignments SET manual_status = ? WHERE key = ?").run(
+    "Submitted",
+    "assignment:8386979006"
+  );
+
+  const summary = buildDbSummary(db, {
+    includePending: true,
+    includeIgnored: false,
+    timeZone: "America/New_York",
+    now: new Date("2026-06-04T07:00:00-04:00"),
+  });
+
+  assert.equal(summary.actionable.some((row) => row.key === "assignment:8386979006"), false);
+  assert.equal(
+    summary.pending.find((row) => row.key === "assignment:8386979006")?.manualStatus,
+    "Submitted"
+  );
+  assert.equal(summary.actionable.find((row) => row.key === "superhero")?.dueCategory, "overdue");
+});
+
 test("addAssignmentNote rejects unknown assignment key", () => {
   const db = createDb(":memory:");
   const result = addAssignmentNote(db, { key: "missing", note: "Test note" });
