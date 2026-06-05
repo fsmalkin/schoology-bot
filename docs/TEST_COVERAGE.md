@@ -13,7 +13,7 @@ Unit tests
 - Reminder assumption inference (cadence/time defaults and unsupported cadence fallback).
 - Reminder normalization edge-cases (model-supplied time override, unsupported-cadence warning when recurrence is pre-normalized, and date-cue preservation while defaulting time).
 - Refresh login-failure messaging when `SCHOLOGY_IDP` is already configured (avoids redundant provider prompts).
-- Schoology auth flow coverage for Microsoft/BCPS keep-signed-in handling, remote-auth SAML handoff, BCPS local credential forms, native Schoology fallback, and explicit saved-credential rejection diagnostics.
+- Schoology auth flow coverage for Microsoft/BCPS keep-signed-in handling, remote-auth SAML handoff, BCPS local credential forms, native Schoology fallback, explicit saved-credential rejection diagnostics, and usable Grades-page fallback when Schoology keeps Playwright navigation waiting after the page renders.
 - Login-failure Telegram alert throttling (first alert, cooldown suppression, changed-error resend, post-success resend).
 - Assignment identity canonicalization (`assignment:<id>`) and legacy-key merge behavior.
 - Assignment identity migration v6 (backfill `assignment_id`, dedupe by ID, and reference relink for notes/tasks).

@@ -23,11 +23,24 @@ async function launchChromiumOrSkip(t) {
   }
 }
 
+function schoologyDueDateFromNow(daysFromNow) {
+  const date = new Date();
+  date.setDate(date.getDate() + daysFromNow);
+  return `${new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    month: "numeric",
+    day: "2-digit",
+    year: "2-digit",
+  }).format(date)} 11:59pm`;
+}
+
 test("beta schoolwork groups future assignments under Coming up", async (t) => {
   const tempDir = makeDashboardTempDir("schoology-dashboard-due-ui-");
   const config = makeDashboardConfig(tempDir);
   seedDashboardStateFile(config);
   const db = getDb(config);
+  const pastDueDate = schoologyDueDateFromNow(-5);
+  const futureDueDate = schoologyDueDateFromNow(5);
   db.prepare(
     `
     INSERT INTO assignments (
@@ -35,10 +48,10 @@ test("beta schoolwork groups future assignments under Coming up", async (t) => {
       first_seen_at, last_seen_at, last_missing_at, resolved_at, is_missing, manual_status, auto_ignored
     )
     VALUES
-      ('past', 'Science: Sec 1', 'Past Lab', '5/31/26 11:59pm', 'Missing', '', '', '', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z', NULL, 1, NULL, 0),
-      ('future', 'Language Arts: Sec 1', 'Future Essay', '6/05/26 11:59pm', 'Missing', '', '', '', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z', NULL, 1, NULL, 0)
+      ('past', 'Science: Sec 1', 'Past Lab', ?, 'Missing', '', '', '', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z', NULL, 1, NULL, 0),
+      ('future', 'Language Arts: Sec 1', 'Future Essay', ?, 'Missing', '', '', '', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z', NULL, 1, NULL, 0)
   `
-  ).run();
+  ).run(pastDueDate, futureDueDate);
 
   let browser;
   let stop = async () => {};

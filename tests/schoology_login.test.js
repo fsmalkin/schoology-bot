@@ -164,3 +164,70 @@ test("BCPS credential rejection surfaces a clear saved-credentials error", async
     );
   });
 });
+
+test("Grades page readiness recognizes a usable logged-in page", async () => {
+  await withPage(async (page) => {
+    await page.route("https://bcps.schoology.com/grades/grades", async (route) => {
+      await route.fulfill({
+        contentType: "text/html",
+        body: `
+          <main>
+            <h1>Grades</h1>
+            <nav>Current Selected tab Past</nav>
+            <a href="/assignment/8401501960">Spring Concert Reflection</a>
+            <table>
+              <tr class="report-row item-row">
+                <td>Grade Report</td>
+              </tr>
+            </table>
+            <input id="signInName" style="display: none" />
+          </main>
+        `,
+      });
+    });
+
+    await page.goto("https://bcps.schoology.com/grades/grades");
+
+    assert.equal(await schoologyLoginTestHooks.isGradesPageReady(page), true);
+  });
+});
+
+test("Grades navigation tolerates timeout when the page is already usable", async () => {
+  const calls = [];
+  const fakePage = {
+    async goto(url, options) {
+      calls.push(["goto", url, options]);
+      throw new Error("page.goto: Timeout 30000ms exceeded.");
+    },
+    async waitForTimeout(milliseconds) {
+      calls.push(["waitForTimeout", milliseconds]);
+    },
+  };
+
+  const result = await schoologyLoginTestHooks.gotoWithUsablePageFallback(fakePage, "https://bcps.schoology.com/grades/grades", {
+    isUsable: async () => true,
+  });
+
+  assert.deepEqual(result, { ok: true, timedOut: true });
+  assert.deepEqual(calls, [
+    ["goto", "https://bcps.schoology.com/grades/grades", { waitUntil: "domcontentloaded", timeout: 30000 }],
+    ["waitForTimeout", 1000],
+  ]);
+});
+
+test("Grades navigation keeps real timeout failures when the page is not usable", async () => {
+  const fakePage = {
+    async goto() {
+      throw new Error("page.goto: Timeout 30000ms exceeded.");
+    },
+    async waitForTimeout() {},
+  };
+
+  await assert.rejects(
+    () =>
+      schoologyLoginTestHooks.gotoWithUsablePageFallback(fakePage, "https://bcps.schoology.com/grades/grades", {
+        isUsable: async () => false,
+      }),
+    /Timeout 30000ms exceeded/
+  );
+});

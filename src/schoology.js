@@ -68,6 +68,48 @@ async function throwIfCredentialRejected(page, label = "Schoology") {
   throw new Error(`${label} login rejected the saved credentials. Verify SCHOLOGY_USERNAME/SCHOLOGY_PASSWORD and retry.`);
 }
 
+async function isGradesPageReady(page) {
+  try {
+    return await page.evaluate(() => {
+      const text = String(document.body?.innerText || "").replace(/\s+/g, " ").trim();
+      const hasGradeContent =
+        /Grades|Grade Report/i.test(text) &&
+        (document.querySelectorAll("tr.report-row, .report-row, a[href*='/assignment/']").length > 0 ||
+          /Download Student Report|Current Selected tab|Past/i.test(text));
+      return location.href.includes("/grades/grades") && hasGradeContent;
+    });
+  } catch {
+    return false;
+  }
+}
+
+async function gotoWithUsablePageFallback(
+  page,
+  url,
+  { waitUntil = "domcontentloaded", timeout = 30000, isUsable = async () => false } = {}
+) {
+  try {
+    await page.goto(url, { waitUntil, timeout });
+    return { ok: true, timedOut: false };
+  } catch (err) {
+    const message = String(err?.message || err || "");
+    if (!/timeout/i.test(message)) throw err;
+    await page.waitForTimeout(1000).catch(() => {});
+    if (await isUsable(page)) {
+      return { ok: true, timedOut: true };
+    }
+    throw err;
+  }
+}
+
+async function gotoGradesPage(page, config) {
+  return await gotoWithUsablePageFallback(page, config.schoology.gradesUrl, {
+    waitUntil: "domcontentloaded",
+    timeout: 30000,
+    isUsable: isGradesPageReady,
+  });
+}
+
 async function waitForRenderedLoginControls(page, timeout = 15000) {
   try {
     await page.waitForFunction(
@@ -499,9 +541,9 @@ async function runLoginFlow(page, config, provider) {
 }
 
 async function ensureLoggedIn(page, config) {
-  await page.goto(config.schoology.gradesUrl, { waitUntil: "domcontentloaded" });
+  await gotoGradesPage(page, config);
 
-  if (!(await isLoginRequired(page))) {
+  if ((await isGradesPageReady(page)) || !(await isLoginRequired(page))) {
     return;
   }
 
@@ -513,10 +555,10 @@ async function ensureLoggedIn(page, config) {
     const didAttempt = await runLoginFlow(page, config, idp);
     if (!didAttempt) continue;
 
-    await page.waitForLoadState("networkidle").catch(() => {});
-    await page.goto(config.schoology.gradesUrl, { waitUntil: "domcontentloaded" });
+    await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
+    await gotoGradesPage(page, config);
 
-    if (!(await isLoginRequired(page))) {
+    if ((await isGradesPageReady(page)) || !(await isLoginRequired(page))) {
       return;
     }
   }
@@ -555,7 +597,7 @@ async function selectStudentIfNeeded(page, studentName) {
     const studentOption = page.getByRole("link", { name: new RegExp(studentName, "i") }).first();
     if (await isVisible(studentOption)) {
       await studentOption.click();
-      await page.waitForLoadState("networkidle");
+      await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
     }
   }
 }
@@ -1009,7 +1051,7 @@ export async function scrapeMissingAssignments(config) {
     try {
       await ensureLoggedIn(page, config);
       await selectStudentIfNeeded(page, config.schoology.studentName);
-      await page.waitForLoadState("networkidle");
+      await page.waitForLoadState("networkidle", { timeout: 10000 }).catch(() => {});
 
       const assignments = await extractAssignments(page, {
         detailFetcher: (url) => fetchDetailHtml(page, url),
@@ -1072,6 +1114,8 @@ export async function extractAssignmentsFromHtml(html, options = {}) {
 
 export const schoologyLoginTestHooks = {
   buildSchoologySamlUrl,
+  gotoWithUsablePageFallback,
+  isGradesPageReady,
   maybeHandleMicrosoftKmsi,
   runLoginFlow,
 };
