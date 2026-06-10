@@ -87,3 +87,17 @@ Codex owns Docker operations for this repo. Do not ask the user to restart servi
   - issue comment handoff: Done, Next, Blockers
   - repo worklog entry: `Timestamp ET | Issue | Goal | Done | Next | Blockers | Validation run | Thread link`
 
+
+## Owner-facing docs & dashboards: serve via the docs-hub (cross-project rule)
+The owner reads on MOBILE over Tailscale. NEVER share a repo-relative `.md` path as the
+only pointer — it doesn't render on a phone. Publish, then share the full URL.
+- **The hub (always-on, independent of every dev server):** `node D:\services\docs-hub\hub-server.js`
+  — port **8123**, binds 0.0.0.0, root-jailed static server over `D:\services\docs-hub\site\<project>\...`.
+  If `http://127.0.0.1:8123/` is down (e.g. after reboot), restart it via a `run_in_background` shell call.
+- **Publish a doc:** copy the `.md` into `D:\services\docs-hub\site\<project>\docs\` and add an entry to
+  the `INDEX` array in `site\<project>\docs\index.html` (the mobile markdown renderer — copy
+  `site\factr\docs\index.html` to bootstrap a new project). Share:
+  `http://100.112.221.6:8123/<project>/docs/?doc=<file-stem>`
+- **Dashboards:** publish to `site\<project>\` (e.g. `plan-progress.html`) → share
+  `http://100.112.221.6:8123/<project>/<file>`.
+- Lead with the Tailscale URL (`100.112.221.6` — stable); the repo path may follow in parentheses.
