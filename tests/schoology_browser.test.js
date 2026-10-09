@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 import { getSchoologyBrowserLaunchOptions } from "../src/schoology_browser.js";
+import { launchChromiumOrSkip } from "./browser_test_utils.js";
 
 test("Schoology browser keeps the default headless Chromium selection", () => {
   for (const channel of [undefined, null, "", "  "]) {
@@ -41,4 +42,20 @@ test("Playwright rejects an unsupported selected channel before browser startup"
     chromium.launch(getSchoologyBrowserLaunchOptions("schoology-unsupported-test")),
     /Unsupported chromium channel/,
   );
+});
+
+test("UI fixture rethrows a rejected explicit channel instead of skipping", async () => {
+  const prior = process.env.SCHOLOGY_BROWSER_CHANNEL;
+  let skipped = false;
+  try {
+    process.env.SCHOLOGY_BROWSER_CHANNEL = "schoology-unsupported-test";
+    await assert.rejects(
+      launchChromiumOrSkip({ skip: () => { skipped = true; } }),
+      /Unsupported chromium channel/,
+    );
+    assert.equal(skipped, false);
+  } finally {
+    if (prior === undefined) delete process.env.SCHOLOGY_BROWSER_CHANNEL;
+    else process.env.SCHOLOGY_BROWSER_CHANNEL = prior;
+  }
 });

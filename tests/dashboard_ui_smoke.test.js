@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { chromium } from "playwright";
+import { launchChromiumOrSkip } from "./browser_test_utils.js";
 import {
   closeDb,
   getDb,
@@ -18,19 +18,6 @@ import {
   seedDashboardTasks,
   startDashboardServer,
 } from "./dashboard_test_utils.js";
-
-async function launchChromiumOrSkip(t) {
-  try {
-    return await chromium.launch({ headless: true });
-  } catch (err) {
-    const message = String(err?.message || err);
-    if (message.includes("Executable doesn't exist") || message.includes("browserType.launch")) {
-      t.skip("Playwright Chromium is not installed in this environment.");
-      return null;
-    }
-    throw err;
-  }
-}
 
 test("dashboard card interactions open the review drawer and keep writes explicit", async (t) => {
   const tempDir = makeDashboardTempDir("schoology-dashboard-ui-");
