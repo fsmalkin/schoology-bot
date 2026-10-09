@@ -2,11 +2,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 import { schoologyLoginTestHooks } from "../src/schoology.js";
+import { getSchoologyBrowserLaunchOptions } from "../src/schoology_browser.js";
 
 async function withPage(fn) {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch(
+    getSchoologyBrowserLaunchOptions(process.env.SCHOLOGY_BROWSER_CHANNEL)
+  );
   const page = await browser.newPage();
   try {
+    await page.route("**/*", (route) => route.abort());
     return await fn(page);
   } finally {
     await browser.close();

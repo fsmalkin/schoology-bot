@@ -89,6 +89,7 @@ Purpose: single-page reference for how the Schoology bot works, how it runs, and
 Key settings:
 - SCHOLOGY_USERNAME / SCHOLOGY_PASSWORD
 - SCHOLOGY_LOGIN_ATTEMPTS / SCHOLOGY_LOGIN_RETRY_DELAY_MS
+- SCHOLOGY_BROWSER_CHANNEL (optional Playwright channel, for example `chrome`)
 - LOGIN_DIAGNOSTIC_PATH
 - TIMEZONE (defaults to America/New_York)
 - SCRAPE_CRON / SEND_CRON / REMINDER_CRON
@@ -107,6 +108,17 @@ Secrets can be supplied by direct env values or by `<NAME>_FILE` paths. Direct
 env values win. Production deployment should use Windows Credential Manager as
 the source of truth, export Docker secret files under `data/secrets/prod/`, and
 load `data/runtime/prod.env`; see `docs/SECRETS.md`.
+
+The Schoology scraper passes `SCHOLOGY_BROWSER_CHANNEL` to Playwright when
+configured. An empty setting keeps the existing headless Chromium default.
+Playwright validates the channel and reports an error when the selected browser
+is unsupported or unavailable. Browser selection preserves the Docker service
+management policy below.
+
+Offline HTML extractors accept `{ browserChannel: "chrome" }` as their optional
+second argument. Scraper and mock-login fixture tests use
+`SCHOLOGY_BROWSER_CHANNEL` to select an installed browser without visiting
+Schoology. Mock-login pages abort unmatched network routes.
 
 ## Commands
 - Run scheduler: `npm start`

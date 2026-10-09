@@ -3,7 +3,20 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { extractAssignmentsFromHtml, extractMissingAssignmentsFromHtml } from "../src/schoology.js";
+import {
+  extractAssignmentsFromHtml as extractAssignmentsWithBrowser,
+  extractMissingAssignmentsFromHtml as extractMissingWithBrowser,
+} from "../src/schoology.js";
+
+const browserOptions = { browserChannel: process.env.SCHOLOGY_BROWSER_CHANNEL };
+
+function extractAssignmentsFromHtml(html, options = {}) {
+  return extractAssignmentsWithBrowser(html, { ...browserOptions, ...options });
+}
+
+function extractMissingAssignmentsFromHtml(html) {
+  return extractMissingWithBrowser(html, browserOptions);
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
