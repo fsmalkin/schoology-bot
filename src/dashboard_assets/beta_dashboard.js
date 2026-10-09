@@ -73,7 +73,6 @@ const state = {
 let flashTimer = null;
 let refreshBusyTimer = null;
 let refreshBusyStartedAt = 0;
-let renderSequence = 0;
 let assignmentDrawerRequestSeq = 0;
 
 function esc(value) {
@@ -1627,7 +1626,6 @@ function renderDrawer() {
 
 function renderAll() {
   const drawerSnapshot = captureDrawerSnapshot();
-  const sequence = ++renderSequence;
   syncNavActive();
   updateSystemStatusDot();
   renderMetricRow();
@@ -1637,10 +1635,7 @@ function renderAll() {
   renderAdminPane();
   renderDrawer();
   if (drawerSnapshot) {
-    requestAnimationFrame(() => {
-      if (sequence !== renderSequence) return;
-      restoreDrawerSnapshot(drawerSnapshot);
-    });
+    restoreDrawerSnapshot(drawerSnapshot);
   }
 }
 
