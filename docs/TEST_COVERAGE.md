@@ -90,6 +90,8 @@ Schoology scraping (live)
 
 Telegram end-to-end
 - Unit coverage verifies Telegram forum-topic/thread option normalization and per-thread target keys.
+- `tests/telegram_agent_startup.test.js` evaluates the actual Telegram entrypoint, runtime dispatcher and pure message helpers with synthetic saved-state bytes and mocked Telegram, managed-backend and database imports. Fourteen cases cover lock ownership before polling, denied or uncertain access, invalid lock/PID data, exclusive claims, stale PID recovery, Linux PID reuse, constructor failure and ownership-safe shutdown. Normal routing preserves the allowed chat/topic and ignores unauthorized, bot and duplicate input. No real account, SDK, school records or Telegram message is used.
+- The short acquisition claim serializes stale-lock recovery. If a process dies during acquisition, its abandoned `.acquire` claim must be investigated and removed only after verifying that no owner remains; startup deliberately refuses to overwrite an uncertain claim.
 - Automated live inbound Telegram receive -> tool -> send is still not covered by a repeatable test harness.
 - Manual UAT is required after changes to agent or formatting. Current beta-thread outbound smoke passed with `.env.managed-dev`; one inbound beta-thread message was handled by the Managed Agents path and recorded a `schoology-dev` managed session. One more inbound message should be captured against the current Dockerized managed-dev container instance.
 
