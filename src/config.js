@@ -105,6 +105,7 @@ const config = {
     studentName: env("STUDENT_NAME", ""),
     idp: env("SCHOLOGY_IDP", "auto"),
     ssoSchool: env("SCHOLOGY_SSO_SCHOOL", "Baltimore County Public Schools"),
+    browserChannel: env("SCHOLOGY_BROWSER_CHANNEL").trim(),
     loginAttempts: numEnv("SCHOLOGY_LOGIN_ATTEMPTS", 2),
     loginRetryDelayMs: numEnv("SCHOLOGY_LOGIN_RETRY_DELAY_MS", 1500),
   },

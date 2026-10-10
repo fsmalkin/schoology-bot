@@ -112,6 +112,11 @@ export function createDashboardServer({
       const url = new URL(req.url || "/", "http://localhost");
       const assignmentDetailMatch = url.pathname.match(/^\/api\/assignments\/([^/]+)\/detail$/);
 
+      if (req.method === "GET" && url.pathname === "/favicon.ico") {
+        res.writeHead(204, { "Cache-Control": "no-store" });
+        res.end();
+        return;
+      }
       if (req.method === "GET" && url.pathname === "/") {
         return sendText(res, 200, assets.html, "text/html; charset=utf-8");
       }

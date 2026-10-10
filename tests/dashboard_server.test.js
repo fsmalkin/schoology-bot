@@ -107,6 +107,28 @@ test("dashboard server serves page, assets, and parent-first read APIs", async (
   }
 });
 
+test("dashboard answers an empty favicon without hiding unknown resources or methods", async () => {
+  const tempDir = makeDashboardTempDir("schoology-dashboard-favicon-");
+  const config = makeDashboardConfig(tempDir);
+  const { baseUrl, stop } = await startDashboardServer({ config, logger: { log: () => {} } });
+  try {
+    for (const suffix of ["/favicon.ico", "/favicon.ico?version=fixture"]) {
+      const response = await fetch(baseUrl + suffix);
+      assert.equal(response.status, 204);
+      assert.equal(await response.text(), "");
+      assert.equal(response.headers.get("cache-control"), "no-store");
+    }
+    const unknown = await fetch(baseUrl + "/assets/missing-fixture.js");
+    assert.equal(unknown.status, 404);
+    const wrongMethod = await fetch(baseUrl + "/favicon.ico", { method: "POST" });
+    assert.equal(wrongMethod.status, 404);
+  } finally {
+    await stop();
+    closeDb();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("dashboard write API rejects unsafe requests", async () => {
   const tempDir = makeDashboardTempDir("schoology-dashboard-unsafe-");
   const config = makeDashboardConfig(tempDir);

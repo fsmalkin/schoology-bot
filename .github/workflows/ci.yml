@@ -18,7 +18,24 @@ jobs:
           node-version: "22"
       - name: Install
         run: npm install
+      - name: Prepare offline test storage
+        run: mkdir -p data
+      - name: Verify existing Chrome
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { chromium } from "playwright";
+          const browser = await chromium.launch({ headless: true, channel: "chrome" });
+          try {
+            const page = await browser.newPage();
+            assert.equal(await page.evaluate(() => 1 + 1), 2);
+            console.log(`CI-EXISTING-CHROME-PASS ${browser.version()}`);
+          } finally {
+            await browser.close();
+          }
+          NODE
       - name: Test (offline)
         env:
           SKIP_LIVE_TESTS: "1"
+          SCHOLOGY_BROWSER_CHANNEL: "chrome"
         run: npm test

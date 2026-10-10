@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { chromium } from "playwright";
 import { deriveSchoologyAssignmentTitle } from "./text_utils.js";
+import { getSchoologyBrowserLaunchOptions } from "./schoology_browser.js";
 
 const MAX_DETAIL_FALLBACK_ROWS = 25;
 const MISSING_HINT_RE = /\b(missing|not completed|not submitted|no submission|not turned in|incomplete|absent)\b/i;
@@ -1043,7 +1044,9 @@ export async function scrapeMissingAssignments(config) {
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const useStorageState = storageExists && attempt === 1;
     const contextOptions = useStorageState ? { storageState: config.paths.storagePath } : {};
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch(
+      getSchoologyBrowserLaunchOptions(config.schoology.browserChannel)
+    );
     const context = await browser.newContext(contextOptions);
     const page = await context.newPage();
     page.setDefaultTimeout(30000);
@@ -1089,8 +1092,10 @@ export async function scrapeMissingAssignments(config) {
   throw new Error("Scrape failed without a captured error.");
 }
 
-export async function extractMissingAssignmentsFromHtml(html) {
-  const browser = await chromium.launch({ headless: true });
+export async function extractMissingAssignmentsFromHtml(html, options = {}) {
+  const browser = await chromium.launch(
+    getSchoologyBrowserLaunchOptions(options.browserChannel)
+  );
   const page = await browser.newPage();
   try {
     await page.setContent(html, { waitUntil: "domcontentloaded" });
@@ -1102,7 +1107,9 @@ export async function extractMissingAssignmentsFromHtml(html) {
 }
 
 export async function extractAssignmentsFromHtml(html, options = {}) {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch(
+    getSchoologyBrowserLaunchOptions(options.browserChannel)
+  );
   const page = await browser.newPage();
   try {
     await page.setContent(html, { waitUntil: "domcontentloaded" });

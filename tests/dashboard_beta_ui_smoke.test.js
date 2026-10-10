@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { chromium } from "playwright";
+import { launchChromiumOrSkip } from "./browser_test_utils.js";
 import { closeDb, getDb } from "../src/db.js";
 import { runToolByName } from "../src/tool_runner.js";
 import {
@@ -12,19 +12,6 @@ import {
   seedDashboardTasks,
   startDashboardServer,
 } from "./dashboard_test_utils.js";
-
-async function launchChromiumOrSkip(t) {
-  try {
-    return await chromium.launch({ headless: true });
-  } catch (err) {
-    const message = String(err?.message || err);
-    if (message.includes("Executable doesn't exist") || message.includes("browserType.launch")) {
-      t.skip("Playwright Chromium is not installed in this environment.");
-      return null;
-    }
-    throw err;
-  }
-}
 
 async function readJson(url) {
   const response = await fetch(url);
@@ -140,7 +127,7 @@ test("beta dashboard boots cleanly and keeps assignment drawer flows explicit", 
 
     const page = await browser.newPage();
     page.on("console", (msg) => {
-      if (msg.type() === "error") consoleErrors.push(msg.text());
+      if (msg.type() === "error") consoleErrors.push(`${msg.text()} (${msg.location().url || "unknown URL"})`);
     });
     page.on("pageerror", (err) => {
       pageErrors.push(String(err?.stack || err));
@@ -307,7 +294,7 @@ test("beta dashboard supports task CRUD and surfaces Submitted partial failures"
 
     const page = await browser.newPage();
     page.on("console", (msg) => {
-      if (msg.type() === "error") consoleErrors.push(msg.text());
+      if (msg.type() === "error") consoleErrors.push(`${msg.text()} (${msg.location().url || "unknown URL"})`);
     });
     page.on("pageerror", (err) => {
       pageErrors.push(String(err?.stack || err));
@@ -421,7 +408,7 @@ test("beta drawer preserves reminder drafts across rerendered view switches", as
 
     const page = await browser.newPage();
     page.on("console", (msg) => {
-      if (msg.type() === "error") consoleErrors.push(msg.text());
+      if (msg.type() === "error") consoleErrors.push(`${msg.text()} (${msg.location().url || "unknown URL"})`);
     });
     page.on("pageerror", (err) => {
       pageErrors.push(String(err?.stack || err));
@@ -448,6 +435,17 @@ test("beta drawer preserves reminder drafts across rerendered view switches", as
     await page.waitForSelector('[data-view-panel="schoolwork"]:not([hidden])');
     await waitForDrawerOpen(page);
     await ensureReminderSectionOpen(page);
+
+    const immediateDraft = await page.evaluate(() => {
+      document.querySelector('.nav-item[data-view="admin"]').click();
+      document.querySelector('.nav-item[data-view="schoolwork"]').click();
+      return Object.fromEntries(new FormData(
+        document.querySelector('#drawerContent form[data-form="assignment-drawer-reminder"]')
+      ).entries());
+    });
+    assert.equal(immediateDraft.remindAt, "2026-03-24T16:45");
+    assert.equal(immediateDraft.recurrence, "weekdays");
+    assert.equal(immediateDraft.message, "Draft reminder should survive rerender");
 
     assert.equal(await page.locator('#drawerContent input[name="remindAt"]').inputValue(), "2026-03-24T16:45");
     assert.equal(await page.locator('#drawerContent select[name="recurrence"]').inputValue(), "weekdays");
@@ -487,7 +485,7 @@ test("beta assignment drawer ignores stale delayed detail responses and late det
 
     const page = await browser.newPage();
     page.on("console", (msg) => {
-      if (msg.type() === "error") consoleErrors.push(msg.text());
+      if (msg.type() === "error") consoleErrors.push(`${msg.text()} (${msg.location().url || "unknown URL"})`);
     });
     page.on("pageerror", (err) => {
       pageErrors.push(String(err?.stack || err));
@@ -612,7 +610,7 @@ test("beta drawer preserves drafts across timer-driven health polling", async (t
       };
     });
     page.on("console", (msg) => {
-      if (msg.type() === "error") consoleErrors.push(msg.text());
+      if (msg.type() === "error") consoleErrors.push(`${msg.text()} (${msg.location().url || "unknown URL"})`);
     });
     page.on("pageerror", (err) => {
       pageErrors.push(String(err?.stack || err));
