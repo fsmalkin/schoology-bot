@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { randomUUID } from "node:crypto";
 import TelegramBot from "node-telegram-bot-api";
 import {
   getConfig,
@@ -10,6 +11,7 @@ import {
 import { runChatMessage } from "./agent_runtime.js";
 import { renderTelegramHtml, renderTelegramPlain } from "./telegram_format.js";
 import { batchMessages } from "./telegram_queue.js";
+import { claimLinuxProcessLease } from "./telegram_process_lock.js";
 import { getDb } from "./db.js";
 import { writeServiceHeartbeat } from "./health.js";
 import {
@@ -29,13 +31,16 @@ validateTelegramConfig();
 validateAgentRuntimeConfig();
 
 const allowedChats = new Set((config.telegram.chatIds || []).map((id) => String(id)));
-const bot = new TelegramBot(config.telegram.botToken, { polling: true });
+let bot;
 const logPath =
   process.env.AGENT_LOG_PATH && process.env.AGENT_LOG_PATH.trim().length > 0
     ? process.env.AGENT_LOG_PATH.trim()
     : path.join(config.paths.dataDir, "agent.log");
 
 const lockPath = path.join(config.paths.dataDir, "telegram_agent.lock");
+const lockClaimPath = `${lockPath}.acquire`;
+let ownedLockContents = null;
+let ownedProcessLease = null;
 const queueByChat = new Map();
 const timerByChat = new Map();
 const targetByKey = new Map();
@@ -158,55 +163,94 @@ async function sendFormattedMessage(chatId, text, options = {}) {
 }
 
 function acquireLock() {
+  fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+  // Container PIDs are namespace-local. Retain a kernel lease on the shared
+  // data inode throughout execution before consulting any PID metadata.
+  if (process.platform === "linux") {
+    ownedProcessLease = claimLinuxProcessLease(`${lockPath}.lease`);
+  }
+  // Serialize stale-lock recovery as well as fresh claims. An uncertain or
+  // abandoned acquisition claim requires recovery; never overwrite it.
+  const claim = JSON.stringify({ pid: process.pid, owner: randomUUID() });
+  fs.writeFileSync(lockClaimPath, claim, { encoding: "utf8", flag: "wx" });
   try {
     if (fs.existsSync(lockPath)) {
       const raw = fs.readFileSync(lockPath, "utf8");
       const existing = JSON.parse(raw);
-      if (existing?.pid) {
-        if (existing.pid === process.pid) {
-          // same process, safe to continue
-        } else {
-          try {
-            process.kill(existing.pid, 0);
-            // Guard against stale pid reuse by confirming this pid is actually another
-            // telegram agent process on Linux runtimes.
-            const isLinux = process.platform === "linux";
-            let isTelegramAgentProcess = true;
-            if (isLinux) {
-              try {
-                const cmdlinePath = `/proc/${existing.pid}/cmdline`;
-                if (fs.existsSync(cmdlinePath)) {
-                  const cmdline = fs.readFileSync(cmdlinePath, "utf8").replace(/\u0000/g, " ");
-                  isTelegramAgentProcess = cmdline.includes("telegram_agent.js");
-                }
-              } catch {
-                // If cmdline cannot be read, fall back to conservative behavior.
-                isTelegramAgentProcess = true;
-              }
-            }
-            if (isTelegramAgentProcess) {
-              console.error(`Another agent instance is already running (pid ${existing.pid}).`);
-              process.exit(1);
-            }
-            // Stale lock from unrelated pid reuse; allow startup.
-          } catch (err) {
-            // stale lock
-          }
+      if (!Number.isSafeInteger(existing?.pid) || existing.pid <= 0) {
+        throw new Error("Telegram agent lock has an invalid pid; refusing startup.");
+      }
+      if (existing.platform !== process.platform ||
+          (process.platform === "linux" && existing.kernelLease !== ownedProcessLease.protocol)) {
+        throw new Error("Telegram lock has legacy or foreign ownership; verified recovery required.");
+      }
+      // Native processes have unique PIDs on their host. On Linux the lifetime
+      // lease now excludes cooperating containers with the same local PID.
+      let stale = existing.pid === process.pid;
+      if (!stale) {
+        try {
+          process.kill(existing.pid, 0);
+        } catch (err) {
+          if (err?.code !== "ESRCH") throw err;
+          stale = true;
         }
       }
+      // Preserve the existing Linux PID-reuse check. A denied or unavailable
+      // command line does not establish that a live process is unrelated.
+      if (!stale && process.platform === "linux") {
+        try {
+          const cmdlinePath = `/proc/${existing.pid}/cmdline`;
+          if (fs.existsSync(cmdlinePath)) {
+            const cmdline = fs.readFileSync(cmdlinePath, "utf8").replace(/\u0000/g, " ");
+            stale = !cmdline.includes("telegram_agent.js");
+          }
+        } catch {
+          stale = false;
+        }
+      }
+      if (!stale) {
+        throw new Error(`Another agent instance is already running (pid ${existing.pid}).`);
+      }
+      if (fs.readFileSync(lockPath, "utf8") !== raw) {
+        throw new Error("Telegram agent lock changed during acquisition; refusing startup.");
+      }
+      fs.unlinkSync(lockPath);
     }
-    fs.mkdirSync(path.dirname(lockPath), { recursive: true });
-    fs.writeFileSync(lockPath, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }), "utf8");
-  } catch (err) {
-    console.warn("Failed to create lock file:", err?.message || err);
+    const contents = JSON.stringify({
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+      owner: randomUUID(),
+      platform: process.platform,
+      kernelLease: ownedProcessLease?.protocol,
+    });
+    fs.writeFileSync(lockPath, contents, { encoding: "utf8", flag: "wx" });
+    ownedLockContents = contents;
+  } finally {
+    if (fs.readFileSync(lockClaimPath, "utf8") !== claim) {
+      throw new Error("Telegram startup acquisition claim changed; refusing startup.");
+    }
+    fs.unlinkSync(lockClaimPath);
   }
 }
 
 function releaseLock() {
-  try {
-    if (fs.existsSync(lockPath)) fs.unlinkSync(lockPath);
-  } catch (err) {
-    // ignore
+  if (ownedLockContents) {
+    try {
+      if (fs.readFileSync(lockPath, "utf8") === ownedLockContents) fs.unlinkSync(lockPath);
+    } catch {
+      // Missing or unreadable locks are not authority to remove another claim.
+    } finally {
+      ownedLockContents = null;
+    }
+  }
+  // Once a polling client exists, keep the lease until the OS closes the
+  // descriptor at process termination. Startup failures can release it now.
+  if (ownedProcessLease && !bot) {
+    try {
+      ownedProcessLease.release();
+    } finally {
+      ownedProcessLease = null;
+    }
   }
 }
 
@@ -225,8 +269,15 @@ function appendLog(line) {
   }
 }
 
+try {
+  acquireLock();
+  bot = new TelegramBot(config.telegram.botToken, { polling: true });
+} catch (err) {
+  releaseLock();
+  console.error("Telegram agent startup failed:", redactSensitiveString(err?.message || String(err)));
+  process.exit(1);
+}
 appendLog("Telegram agent started.");
-acquireLock();
 updateHeartbeat();
 setInterval(() => updateHeartbeat(), 30000);
 

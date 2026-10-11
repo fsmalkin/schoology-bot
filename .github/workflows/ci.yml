@@ -38,4 +38,5 @@ jobs:
         env:
           SKIP_LIVE_TESTS: "1"
           SCHOLOGY_BROWSER_CHANNEL: "chrome"
+          TELEGRAM_PID_NAMESPACE_TEST: "1"
         run: npm test
