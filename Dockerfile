@@ -2,7 +2,7 @@ FROM mcr.microsoft.com/playwright:v1.58.1-jammy
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential util-linux \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json* ./

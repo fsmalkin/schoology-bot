@@ -11,6 +11,7 @@ import {
 import { runChatMessage } from "./agent_runtime.js";
 import { renderTelegramHtml, renderTelegramPlain } from "./telegram_format.js";
 import { batchMessages } from "./telegram_queue.js";
+import { claimLinuxProcessLease } from "./telegram_process_lock.js";
 import { getDb } from "./db.js";
 import { writeServiceHeartbeat } from "./health.js";
 import {
@@ -39,6 +40,7 @@ const logPath =
 const lockPath = path.join(config.paths.dataDir, "telegram_agent.lock");
 const lockClaimPath = `${lockPath}.acquire`;
 let ownedLockContents = null;
+let ownedProcessLease = null;
 const queueByChat = new Map();
 const timerByChat = new Map();
 const targetByKey = new Map();
@@ -162,6 +164,11 @@ async function sendFormattedMessage(chatId, text, options = {}) {
 
 function acquireLock() {
   fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+  // Container PIDs are namespace-local. Retain a kernel lease on the shared
+  // data inode throughout execution before consulting any PID metadata.
+  if (process.platform === "linux") {
+    ownedProcessLease = claimLinuxProcessLease(`${lockPath}.lease`);
+  }
   // Serialize stale-lock recovery as well as fresh claims. An uncertain or
   // abandoned acquisition claim requires recovery; never overwrite it.
   const claim = JSON.stringify({ pid: process.pid, owner: randomUUID() });
@@ -173,12 +180,20 @@ function acquireLock() {
       if (!Number.isSafeInteger(existing?.pid) || existing.pid <= 0) {
         throw new Error("Telegram agent lock has an invalid pid; refusing startup.");
       }
-      let stale = false;
-      try {
-        process.kill(existing.pid, 0);
-      } catch (err) {
-        if (err?.code !== "ESRCH") throw err;
-        stale = true;
+      if (existing.platform !== process.platform ||
+          (process.platform === "linux" && existing.kernelLease !== ownedProcessLease.protocol)) {
+        throw new Error("Telegram lock has legacy or foreign ownership; verified recovery required.");
+      }
+      // Native processes have unique PIDs on their host. On Linux the lifetime
+      // lease now excludes cooperating containers with the same local PID.
+      let stale = existing.pid === process.pid;
+      if (!stale) {
+        try {
+          process.kill(existing.pid, 0);
+        } catch (err) {
+          if (err?.code !== "ESRCH") throw err;
+          stale = true;
+        }
       }
       // Preserve the existing Linux PID-reuse check. A denied or unavailable
       // command line does not establish that a live process is unrelated.
@@ -205,6 +220,8 @@ function acquireLock() {
       pid: process.pid,
       startedAt: new Date().toISOString(),
       owner: randomUUID(),
+      platform: process.platform,
+      kernelLease: ownedProcessLease?.protocol,
     });
     fs.writeFileSync(lockPath, contents, { encoding: "utf8", flag: "wx" });
     ownedLockContents = contents;
@@ -217,13 +234,23 @@ function acquireLock() {
 }
 
 function releaseLock() {
-  if (!ownedLockContents) return;
-  try {
-    if (fs.readFileSync(lockPath, "utf8") === ownedLockContents) fs.unlinkSync(lockPath);
-  } catch {
-    // Missing or unreadable locks are not authority to remove another claim.
-  } finally {
-    ownedLockContents = null;
+  if (ownedLockContents) {
+    try {
+      if (fs.readFileSync(lockPath, "utf8") === ownedLockContents) fs.unlinkSync(lockPath);
+    } catch {
+      // Missing or unreadable locks are not authority to remove another claim.
+    } finally {
+      ownedLockContents = null;
+    }
+  }
+  // Once a polling client exists, keep the lease until the OS closes the
+  // descriptor at process termination. Startup failures can release it now.
+  if (ownedProcessLease && !bot) {
+    try {
+      ownedProcessLease.release();
+    } finally {
+      ownedProcessLease = null;
+    }
   }
 }
 

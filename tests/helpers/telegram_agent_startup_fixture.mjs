@@ -4,6 +4,7 @@ import vm from "node:vm";
 import { EventEmitter } from "node:events";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 
 // Evaluate the real entrypoint without importing credentials, SQLite or an SDK.
 const [scenario, directory] = process.argv.slice(2);
@@ -13,21 +14,35 @@ const guardPath = `${lockPath}.acquire`;
 const reportPath = path.join(root, "report.json");
 const markerPath = path.join(root, "synthetic-saved-state.bin");
 const marker = Buffer.from("SYNTHETIC EXISTING STATE: preserve this byte for byte");
-const priorLock = scenario === "malformed-lock"
+const kernelCase = scenario.startsWith("kernel-");
+const fixturePlatform = kernelCase ? process.platform : scenario.startsWith("linux-") ? "linux" : "win32";
+const samePid = scenario.endsWith("self-pid") || ["linux-same-pid-live-owner", "linux-legacy-lock", "foreign-platform"].includes(scenario);
+let priorLock = scenario === "malformed-lock"
   ? "not-json"
-  : JSON.stringify({ pid: scenario === "invalid-pid" ? -1 : 424242, startedAt: "fixture" });
+  : JSON.stringify({
+    pid: scenario === "invalid-pid" ? -1 : samePid ? process.pid : 424242,
+    startedAt: "fixture",
+    platform: scenario === "linux-legacy-lock" ? undefined : scenario.includes("foreign-platform") ? (fixturePlatform === "linux" ? "win32" : "linux") : fixturePlatform,
+    kernelLease: fixturePlatform === "linux" ? "linux-flock-v1" : undefined,
+  });
 const existingCases = new Set([
   "live-owner", "stale-owner", "unknown-pid", "malformed-lock", "invalid-pid",
   "read-denied", "linux-unrelated", "linux-unreadable",
+  "self-pid", "linux-self-pid", "linux-live-owner",
+  "linux-same-pid-live-owner", "linux-lease-missing", "linux-lease-uncertain",
+  "linux-legacy-lock", "linux-lease-changed", "foreign-platform", "linux-foreign-platform",
 ]);
 fs.writeFileSync(markerPath, marker);
 if (existingCases.has(scenario)) fs.writeFileSync(lockPath, priorLock);
+if (kernelCase && fs.existsSync(lockPath)) priorLock = fs.readFileSync(lockPath, "utf8");
 if (scenario === "startup-claimed") fs.writeFileSync(guardPath, "another startup claim");
 const events = [];
 const handlers = new Map();
 const timeouts = new Map();
 let nextTimer = 0;
 let bot;
+const leaseDescriptors = new Set();
+let leaseHeld = false;
 
 function record(type, details = {}) {
   events.push({ type, ...details });
@@ -43,14 +58,23 @@ function fixturePath(value) {
   return resolved;
 }
 function flush() {
-  fs.writeFileSync(reportPath, JSON.stringify({
+  const report = {
     events,
     priorLock,
     lock: fs.existsSync(lockPath) ? fs.readFileSync(lockPath, "utf8") : null,
     guard: fs.existsSync(guardPath) ? fs.readFileSync(guardPath, "utf8") : null,
     markerUnchanged: fs.readFileSync(markerPath).equals(marker),
     markerSha256: createHash("sha256").update(fs.readFileSync(markerPath)).digest("hex"),
-  }));
+  };
+  fs.writeFileSync(reportPath, JSON.stringify(report));
+  if (kernelCase) {
+    const status = fs.readFileSync("/proc/self/status", "utf8");
+    const hostPid = Number(status.match(/^NSpid:\s+(\d+)/m)?.[1]);
+    report.namespacePid = process.pid;
+    report.hostPid = hostPid;
+    report.startTicks = fs.readFileSync(`/proc/${hostPid}/stat`, "utf8").split(") ")[1].split(" ")[19];
+    process.stdout.write(`${JSON.stringify(report)}\n`);
+  }
 }
 
 const fakeFs = {
@@ -61,6 +85,9 @@ const fakeFs = {
   readFileSync(value, encoding) {
     if (String(value).startsWith("/proc/")) {
       if (scenario === "linux-unreadable") throw codedError("EACCES");
+      if (scenario === "linux-self-pid" || scenario === "linux-live-owner") {
+        return "node\u0000src/telegram_agent.js\u0000";
+      }
       return "node\u0000unrelated-service.js\u0000";
     }
     const file = fixturePath(value);
@@ -68,6 +95,25 @@ const fakeFs = {
     return fs.readFileSync(file, encoding);
   },
   mkdirSync(value, options) { return fs.mkdirSync(fixturePath(value), options); },
+  openSync(value, flags) {
+    const fd = fs.openSync(fixturePath(value), flags);
+    leaseDescriptors.add(fd);
+    return fd;
+  },
+  closeSync(fd) {
+    if (!leaseDescriptors.delete(fd)) throw new Error("Unowned fixture descriptor");
+    fs.closeSync(fd);
+    leaseHeld = false;
+    record("lease-release");
+  },
+  fstatSync(fd, options) {
+    if (!leaseDescriptors.has(fd)) throw new Error("Unowned fixture descriptor");
+    return fs.fstatSync(fd, options);
+  },
+  statSync(value, options) {
+    const stat = fs.statSync(fixturePath(value), options);
+    return scenario === "linux-lease-changed" ? { dev: stat.dev, ino: stat.ino + 1n } : stat;
+  },
   writeFileSync(value, data, options) {
     const file = fixturePath(value);
     if (file === lockPath && scenario === "write-denied") throw codedError("EACCES");
@@ -98,6 +144,7 @@ class FakeTelegramBot extends EventEmitter {
       polling: options.polling,
       lockAlreadyPresent: fs.existsSync(lockPath),
       claimReleased: !fs.existsSync(guardPath),
+      leaseHeld,
     });
     if (scenario === "constructor-failure") throw new Error("fixture client construction failed");
     bot = this;
@@ -127,7 +174,7 @@ const context = vm.createContext({
   process: {
     pid: process.pid,
     env: {},
-    platform: scenario.startsWith("linux-") ? "linux" : "win32",
+    platform: fixturePlatform,
     kill(pid, signal) {
       record("pid-probe", { pid, signal });
       if (scenario === "stale-owner") throw codedError("ESRCH");
@@ -152,6 +199,23 @@ function synthetic(identifier, exports) {
   return modules.get(identifier);
 }
 const mocks = {
+  "node:fs": { default: fakeFs },
+  "node:child_process": {
+    spawnSync(command, args, options) {
+      if (command !== "/usr/bin/flock" || !leaseDescriptors.has(options.stdio[3]) || Object.keys(options.env).length) {
+        throw new Error("Unexpected process or environment in kernel-lock fixture");
+      }
+      record("lease-probe");
+      let result;
+      if (scenario === "linux-lease-missing") result = { error: codedError("ENOENT"), status: null };
+      else if (scenario === "linux-lease-uncertain") result = { error: codedError("EACCES"), status: null };
+      else if (["linux-live-owner", "linux-same-pid-live-owner"].includes(scenario)) result = { status: 1 };
+      else if (kernelCase && scenario !== "kernel-mutant") result = spawnSync(command, args, options);
+      else result = { status: 0 };
+      leaseHeld = !result.error && result.status === 0;
+      return result;
+    },
+  },
   "node:crypto": { randomUUID: () => "synthetic-owner-id" },
   fs: { default: fakeFs },
   path: { default: path },
@@ -179,6 +243,7 @@ const mocks = {
 };
 const actual = new Set([
   "telegram_agent.js", "agent_runtime.js", "telegram_format.js", "telegram_queue.js", "telegram_threading.js", "text_utils.js",
+  "telegram_process_lock.js",
 ]);
 function source(filename) {
   if (!modules.has(filename)) {
@@ -198,7 +263,7 @@ try {
   const module = source(entry);
   await module.link(linker);
   await module.evaluate();
-  if (["normal", "stale-owner", "linux-unrelated", "signal-release", "replaced-owner-release"].includes(scenario)) {
+  if (["normal", "stale-owner", "linux-unrelated", "self-pid", "linux-self-pid", "signal-release", "replaced-owner-release"].includes(scenario)) {
     const message = { chat: { id: 7001 }, from: { is_bot: false }, message_id: 81, message_thread_id: 33, text: "What schoolwork is next?" };
     bot.emit("message", { ...message, chat: { id: 9999 } });
     bot.emit("message", { ...message, from: { is_bot: true } });
@@ -210,8 +275,12 @@ try {
     for (let i = 0; i < 8; i += 1) await new Promise((resolve) => setImmediate(resolve));
   }
   if (scenario === "replaced-owner-release") fs.writeFileSync(lockPath, "replacement owner's lock");
-  if (scenario === "signal-release" || scenario === "replaced-owner-release") handlers.get("SIGTERM")();
+  if (["signal-release", "replaced-owner-release", "linux-signal-release"].includes(scenario)) handlers.get("SIGTERM")();
   flush();
+  if (scenario === "kernel-owner") {
+    process.stdin.on("end", () => process.exit(97));
+    process.stdin.resume();
+  }
 } catch (error) {
   record("unhandled", { text: error.message });
   flush();
