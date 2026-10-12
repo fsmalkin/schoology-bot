@@ -1,5 +1,39 @@
 # Codex Execution Plans (ExecPlans)
 
+## Current report to the selected three-member group (October 12, 2026)
+
+Goal: deliver the approved complete current Mayari report to the qualified
+existing group, then continue the original backend/history/runtime recovery.
+This source milestone prepares that delivery; it does not establish live
+account/audience consent, report transmission or phone acceptance.
+
+Scope: extend the existing optional once-report PowerShell operator. Preserve
+default private mode, the pure formatter, opaque Windows reader and old receipts.
+Group mode requires exact group/bot IDs, two approved human IDs, audience and
+report hashes, typed membership checks and the existing durable single send.
+No services, original data, credentials, membership, schedules or paid APIs change.
+
+Risk: an extra or mismatched group member could receive a private report.
+Mitigation: refuse unsupported/unbound inputs, exact three-member identity/type
+checks, count recheck and explicit caller/live approval boundary. Metadata is
+point-in-time evidence; the operator cannot freeze later group membership.
+
+Milestones: (1) actual offline group preparation and mocked sender controls;
+(2) affected tests, source checks and required exact-head CI; (3) scoped source
+integration/main readback; (4) after human sign-in, independently qualify actual
+account/audience and admit fresh current payload, one send and phone readback.
+
+Validation: positive private/group workflows, refused identity/size/permission
+and malformed inputs, disabled-guard mutation witness, stale/expired report,
+metadata-only output and duplicate protection across changed audience/name/SID.
+Synthetic provider checks stay distinct from actual phone/runtime acceptance.
+
+Rollback: revert only this source commit. Retain old private mode, all operation
+receipts and original state; never delete claims to resend a report.
+
+Open: actual human group members/consent and sign-in; original hosted account,
+protected history and runtime remain separate recovery requirements.
+
 This file defines how we create and maintain execution plans for larger work.
 
 ## Purpose

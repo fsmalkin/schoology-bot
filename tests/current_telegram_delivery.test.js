@@ -112,3 +112,65 @@ for(const name of ['repeatSuccess','repeatTimeout','differentOperationSamePayloa
     assert.deepEqual(result.Requests,['getMe','getChat','sendMessage']);
   });
 }
+
+const groupRequests=['getMe','getChat','getChatMemberCount','getChatMember','getChatMember','getChatMember','getChatMemberCount','sendMessage'];
+
+test('actual group Prepare CLI binds the declared two humans without credentials or provider use',t=>{
+  const f=fixture(t);const before=readFileSync(f.input);
+  const args=['-SnapshotPath',f.input,'-Prepare','-RecipientType','group','-RecipientChatId','-2000','-ExpectedBotId','1000','-GroupMemberIds','3000,2000'];
+  const {child,result}=invoke(sender,args);
+  assert.equal(child.status,0);assert.equal(result.State,'PREPARED_NO_CREDENTIAL_OR_PROVIDER_USE');
+  assert.equal(result.RecipientType,'group');assert.equal(result.DeclaredMemberCount,3);
+  assert.equal(result.AudienceSha256,createHash('sha256').update('schoology-current-group-audience/v1\n-2000\n1000\n2000\n3000').digest('hex'));
+  assert.equal(result.CredentialLookups,0);assert.equal(result.MetadataRequests,0);assert.equal(result.SendAttempts,0);
+  assert.deepEqual(readFileSync(f.input),before);assert.deepEqual(readdirSync(f.receipts),[]);
+});
+
+for(const name of ['groupSuccess','groupReorderedMembers']){
+  test(`${name} completes the actual sender with bound small-group audience and one mocked send`,t=>{
+    const {result}=runCase(t,name);const receipt=result.Results[0];
+    assert.equal(receipt.State,'DELIVERED_API_VERIFIED_PHONE_PENDING');assert.equal(receipt.PhoneAcceptance,false);
+    assert.equal(receipt.RecipientType,'group');assert.equal(receipt.VerifiedMemberCount,3);
+    assert.equal(receipt.SendAttempts,1);assert.equal(receipt.MetadataRequests,7);assert.equal(result.CredentialReads,1);
+    assert.deepEqual(result.Requests,groupRequests);assert.equal(result.ReservedBeforeSend,true);assert.equal(result.PayloadOptionsVerified,true);
+  });
+}
+for(const name of ['groupOmittedAudience','groupWrongAudience','groupDuplicateMembers','groupBotInHumanList','groupTooManyMembers','groupInvalidHumanId','groupPositiveChatId','groupUnsupportedType','groupPrivateWithAudience']){
+  test(`${name} refuses unbound group input before any credential or provider effect`,t=>{
+    const {result}=runCase(t,name);assert.equal(result.Results[0].State,'INPUT_REFUSED');
+    assert.equal(result.CredentialReads,0);assert.equal(result.Results[0].SendAttempts,0);assert.deepEqual(result.Requests,[]);
+  });
+}
+for(const [name,requestCount,state] of [
+  ['groupWrongRecipient',2,'AUTH_ESCALATION_GROUP_RECIPIENT'],['groupWrongType',2,'AUTH_ESCALATION_GROUP_RECIPIENT'],
+  ['groupExpanded',3,'AUTH_ESCALATION_GROUP_AUDIENCE'],['groupInvalidCount',3,'AUTH_ESCALATION_GROUP_AUDIENCE'],
+  ['groupBotLeft',4,'AUTH_ESCALATION_GROUP_AUDIENCE'],['groupBotRestricted',4,'AUTH_ESCALATION_GROUP_AUDIENCE'],
+  ['groupBotPermissionString',4,'AUTH_ESCALATION_GROUP_AUDIENCE'],['groupMembershipString',5,'AUTH_ESCALATION_GROUP_AUDIENCE'],
+  ['groupWrongBotUsername',4,'AUTH_ESCALATION_GROUP_AUDIENCE'],['groupMember429',4,'AUTH_ESCALATION_GROUP_AUDIENCE'],
+  ['groupMemberException',4,'AUTH_ESCALATION_GROUP_AUDIENCE'],['groupWrongHumanId',5,'AUTH_ESCALATION_GROUP_AUDIENCE'],
+  ['groupHumanIsBot',5,'AUTH_ESCALATION_GROUP_AUDIENCE'],['groupHumanLeft',5,'AUTH_ESCALATION_GROUP_AUDIENCE'],
+  ['groupAudienceDrift',7,'AUTH_ESCALATION_GROUP_AUDIENCE'],['groupExpiredDuringMetadata',7,'SNAPSHOT_EXPIRED_BEFORE_SEND']
+]){
+  test(`${name} stops actual group delivery before a message`,t=>{
+    const {result}=runCase(t,name);assert.equal(result.Results[0].State,state);assert.equal(result.Results[0].SendAttempts,0);
+    assert.equal(result.CredentialReads,1);assert.deepEqual(result.Requests,groupRequests.slice(0,requestCount));
+    if(name==='groupMember429')assert.equal(result.Results[0].RetryAfterSeconds,172800);
+  });
+}
+test('disabled membership-count guard changes the expanded-group attack to a send, proving the refusal seam matters',t=>{
+  const {result}=runCase(t,'groupDisabledCountGuard');assert.equal(result.Results[0].State,'DELIVERED_API_VERIFIED_PHONE_PENDING');
+  assert.equal(result.Results[0].SendAttempts,1);assert.deepEqual(result.Requests,groupRequests);
+});
+for(const name of ['groupSendTimeout','groupWrongReturnedChat','groupWrongReturnedType']){
+  test(`${name} consumes the single group send without retry or sensitive output`,t=>{
+    const {result}=runCase(t,name);assert.equal(result.Results[0].State,'SEND_UNKNOWN_DO_NOT_RETRY');
+    assert.equal(result.Results[0].SendAttempts,1);assert.deepEqual(result.Requests,groupRequests);assert.equal(result.ReservedBeforeSend,true);
+  });
+}
+for(const name of ['groupRepeatSuccess','groupDifferentOperation','groupChangedAudience','groupChangedUsername','groupChangedSid']){
+  test(`${name} cannot duplicate the same report in the same group`,t=>{
+    const {result}=runCase(t,name);assert.equal(result.Results[0].State,'DELIVERED_API_VERIFIED_PHONE_PENDING');
+    assert.equal(result.Results[1].State,name==='groupRepeatSuccess'?'EXISTING_RECEIPT_DO_NOT_RETRY':'EXISTING_PAYLOAD_CLAIM_DO_NOT_RETRY');
+    assert.equal(result.Results[1].SendAttempts,0);assert.equal(result.CredentialReads,1);assert.deepEqual(result.Requests,groupRequests);
+  });
+}

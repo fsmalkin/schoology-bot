@@ -35,6 +35,16 @@ wrong returned text/chat, and no secret/report/error output. A complete mocked
 workflow validates the actual receipt written before the one send attempt.
 The operator has no default send and no token argument or export lifecycle.
 
+Group controls run the real offline `pwsh -File` preparation with comma-separated
+human IDs and test the actual sender functions with mocked metadata. They cover
+explicit three-member audience/hash binding, member count and a final count
+recheck, exact bot/human identities and roles, strict membership/permission
+booleans, refusal of other bots and unqualified types, metadata failure and full
+retry delays, expiry, exact returned group receipt and one send after durable
+reservation. A disabled count guard turns the expanded-group attack into a
+send, proving that refusal seam matters. Duplicate controls retain the same
+effect claim despite changed audience, username, SID or operation name.
+
 These tests use synthetic credentials and provider responses. They do not prove
 the production credential adapter, current account/recipient, actual Telegram
 delivery, phone acceptance or restored original runtime. Those require their
