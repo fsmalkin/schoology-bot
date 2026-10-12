@@ -1,5 +1,20 @@
 # Codex Execution Plans (ExecPlans)
 
+## Required PowerShell runtime probe (October 12, 2026)
+
+PR47's first CI attempt stopped at the ten-second version probe before the
+67 sender cases registered. The same source passed on the next runner, but
+the old probe discarded subprocess status and error details. Cold startup
+remains a hypothesis, not a measured cause.
+
+Use a bounded 30-second probe per existing candidate and retain only safe,
+correlated failure metadata. Require a successful PowerShell 7 process;
+never skip the operator cases. All 83 affected checks passed: the six probe
+controls, 67 sender cases and ten formatter cases. Exact source/main CI and
+scoped integration are next. This is
+agent-owned adjacent recovery while the exact Console sign-in action waits.
+Original data, runtime, models and reminders remain under their existing holds.
+
 ## Publish the qualified request window (October 12, 2026)
 
 One actual current report reached the approved existing Telegram group. Its
