@@ -45,6 +45,17 @@ reservation. A disabled count guard turns the expanded-group attack into a
 send, proving that refusal seam matters. Duplicate controls retain the same
 effect claim despite changed audience, username, SID or operation name.
 
+Transport controls verify one shared client across the complete private/group
+workflow and cleanup on success and failure. Typed timeout cases at the initial
+count, member lookup and final count preserve the exact failed stage, clear an
+earlier HTTP 200, retain the last completed request count and emit type names
+without the token-bearing exception message. Send timeout remains consumed and
+cannot retry. These 67 sender cases plus 10 formatter cases pass locally.
+The full local suite passes320 tests (314 pass/0 fail/6 platform or live skips)
+with the same installed-Chrome settings as CI. The initial local run's11 browser
+launch failures are retained; it used an absent bundled browser. No new install
+or live provider test was needed for the source checks.
+
 These tests use synthetic credentials and provider responses. They do not prove
 the production credential adapter, current account/recipient, actual Telegram
 delivery, phone acceptance or restored original runtime. Those require their

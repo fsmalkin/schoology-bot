@@ -82,6 +82,18 @@ declared audience, public bot username, Windows SID or operation name cannot
 retry that same report through the fixed receipt directory. Private claims
 retain their previous format.
 
+Each authorized invocation uses one isolated HTTP client for its metadata and
+single send, with fresh request bodies and responses. It disposes the client
+at the end. The 12-second request timeout, redirect refusal and response size
+limit are unchanged; there are no automatic retries.
+
+Failure receipts identify the current request, whether its helper returned a result,
+the last completed metadata count, failed stage and exception type names.
+`LastHttpStatus` and API success are cleared before each request, so an earlier
+HTTP 200 cannot describe a later timeout. A metadata transport failure remains
+unsent; any send timeout remains `SEND_UNKNOWN_DO_NOT_RETRY`. Exception messages,
+request URLs, tokens, report text and raw provider bodies are never output.
+
 The script reads only the existing prod bot credential through the native
 Windows library, verifies `getMe` and `getChat`, and reserves the one send on
 disk before calling `sendMessage`. Both operation and payload claims survive

@@ -128,13 +128,25 @@ function ConvertFrom-CurrentTelegramResponse([int]$Status, [string]$Json) {
   return [pscustomobject]@{ Status=$Status; Success=($Status -ge 200 -and $Status -lt 300 -and $body.ok -is [bool] -and $body.ok); Result=$body.result; RetryAfterSeconds=$retry }
 }
 
-function Invoke-CurrentTelegramRequest([string]$Token, [string]$Method, [hashtable]$Parameters) {
-  if ($Method -cnotin @('getMe','getChat','getChatMemberCount','getChatMember','sendMessage')) { throw 'Unsupported Telegram method' }
+function New-CurrentTelegramTransport {
   $handler=[Net.Http.HttpClientHandler]::new()
   $handler.AllowAutoRedirect=$false
   $client=[Net.Http.HttpClient]::new($handler)
   $client.Timeout=[TimeSpan]::FromSeconds(12)
   $client.MaxResponseContentBufferSize=65536
+  return [pscustomobject]@{ Client=$client; Handler=$handler }
+}
+
+function Close-CurrentTelegramTransport($Transport) {
+  # Cleanup must not replace the delivery result with a secret-bearing error.
+  try { $Transport.Client.Dispose() } catch {}
+  try { $Transport.Handler.Dispose() } catch {}
+}
+
+function Invoke-CurrentTelegramRequest([string]$Token, [string]$Method, [hashtable]$Parameters, $Transport) {
+  if ($Method -cnotin @('getMe','getChat','getChatMemberCount','getChatMember','sendMessage')) { throw 'Unsupported Telegram method' }
+  if ($Transport.Client -isnot [Net.Http.HttpClient]) { throw 'Workflow transport required' }
+  $client=$Transport.Client
   $content=$null; $response=$null
   try {
     $content=[Net.Http.StringContent]::new(($Parameters | ConvertTo-Json -Depth 8 -Compress), [Text.Encoding]::UTF8, 'application/json')
@@ -142,7 +154,7 @@ function Invoke-CurrentTelegramRequest([string]$Token, [string]$Method, [hashtab
     return ConvertFrom-CurrentTelegramResponse ([int]$response.StatusCode) ($response.Content.ReadAsStringAsync().GetAwaiter().GetResult())
   } finally {
     if ($response) { $response.Dispose() }; if ($content) { $content.Dispose() }
-    $client.Dispose(); $handler.Dispose(); $Token=$null; $body=$null
+    $Token=$null; $body=$null; $client=$null
   }
 }
 
@@ -161,7 +173,7 @@ function Invoke-CurrentReportDelivery {
     [string]$Kind='private', [string[]]$MemberIds, [string]$AudienceHash)
   $receipt=@{ Format='schoology-current-delivery-receipt/v1'; State='INPUT_REFUSED'; OperationId=$null;
     CredentialLookups=0; MetadataRequests=0; SendAttempts=0; PhoneAcceptance=$false }
-  $failure='INPUT_REFUSED'; $lease=$null; $token=$null; $report=$null
+  $failure='INPUT_REFUSED'; $lease=$null; $token=$null; $report=$null; $transport=$null
   try {
     if ([bool]$PrepareOnly -eq [bool]$SendOnce) { throw 'Choose one explicit mode' }
     if ($Kind -cnotin @('private','group')) { throw 'Explicit supported recipient type required' }
@@ -202,38 +214,50 @@ function Invoke-CurrentReportDelivery {
     Write-CurrentDeliveryReceipt $lease $receipt
     $token=Get-CurrentBotCredential $RepoRoot $WindowsSid
     if ($token -cnotmatch '^[0-9]{5,20}:[A-Za-z0-9_-]{20,}$') { throw 'Existing token unavailable or malformed' }
+    $failure='TRANSPORT_INIT_UNVERIFIED'
+    $transport=New-CurrentTelegramTransport
     $failure='AUTH_ESCALATION_BOT_IDENTITY'
     $receipt.MetadataRequests=1; $receipt.State='BOT_IDENTITY_RESERVED'
+    $receipt.LastRequestMethod='getMe'; $receipt.RequestCompleted=$false; $receipt.LastHttpStatus=$null; $receipt.LastApiOk=$null; $receipt.RetryAfterSeconds=$null
     Write-CurrentDeliveryReceipt $lease $receipt
-    $self=Invoke-CurrentTelegramRequest $token 'getMe' @{}
+    $self=Invoke-CurrentTelegramRequest $token 'getMe' @{} $transport
+    $receipt.RequestCompleted=$true; $receipt.LastApiOk=$self.Success; $receipt.LastCompletedMetadataRequests=1
     $receipt.LastHttpStatus=$self.Status; $receipt.RetryAfterSeconds=$self.RetryAfterSeconds
     if (-not $self.Success -or $self.Result.is_bot -isnot [bool] -or -not $self.Result.is_bot -or
       [string]$self.Result.id -cne $BotId -or $self.Result.username -cne $BotUsername) { throw 'Bot identity mismatch' }
     $failure=if ($group) { 'AUTH_ESCALATION_GROUP_RECIPIENT' } else { 'AUTH_ESCALATION_PRIVATE_RECIPIENT' }
     $receipt.MetadataRequests=2; $receipt.State=if ($group) { 'GROUP_RECIPIENT_RESERVED' } else { 'PRIVATE_RECIPIENT_RESERVED' }
+    $receipt.LastRequestMethod='getChat'; $receipt.RequestCompleted=$false; $receipt.LastHttpStatus=$null; $receipt.LastApiOk=$null; $receipt.RetryAfterSeconds=$null
     Write-CurrentDeliveryReceipt $lease $receipt
-    $chat=Invoke-CurrentTelegramRequest $token 'getChat' @{chat_id=$ChatId}
+    $chat=Invoke-CurrentTelegramRequest $token 'getChat' @{chat_id=$ChatId} $transport
+    $receipt.RequestCompleted=$true; $receipt.LastApiOk=$chat.Success; $receipt.LastCompletedMetadataRequests=2
     $receipt.LastHttpStatus=$chat.Status; $receipt.RetryAfterSeconds=$chat.RetryAfterSeconds
     if (-not $chat.Success -or [string]$chat.Result.id -cne $ChatId -or $chat.Result.type -cne $Kind) { throw 'Recipient mismatch' }
     if ($group) {
       $failure='AUTH_ESCALATION_GROUP_AUDIENCE'
       $receipt.MetadataRequests++; $receipt.State='GROUP_MEMBER_COUNT_RESERVED'
+      $receipt.LastRequestMethod='getChatMemberCount'; $receipt.RequestCompleted=$false; $receipt.LastHttpStatus=$null; $receipt.LastApiOk=$null; $receipt.RetryAfterSeconds=$null
       Write-CurrentDeliveryReceipt $lease $receipt
-      $count=Invoke-CurrentTelegramRequest $token 'getChatMemberCount' @{chat_id=$ChatId}
+      $count=Invoke-CurrentTelegramRequest $token 'getChatMemberCount' @{chat_id=$ChatId} $transport
+      $receipt.RequestCompleted=$true; $receipt.LastApiOk=$count.Success; $receipt.LastCompletedMetadataRequests=$receipt.MetadataRequests
       $receipt.LastHttpStatus=$count.Status; $receipt.RetryAfterSeconds=$count.RetryAfterSeconds
       if (-not (Test-CurrentGroupMemberCount $count $audience.MemberCount)) { throw 'Group member count mismatch' }
       foreach ($id in @($BotId)+@($audience.MemberIds)) {
         $receipt.MetadataRequests++; $receipt.State='GROUP_MEMBER_IDENTITY_RESERVED'
+        $receipt.LastRequestMethod='getChatMember'; $receipt.RequestCompleted=$false; $receipt.LastHttpStatus=$null; $receipt.LastApiOk=$null; $receipt.RetryAfterSeconds=$null
         Write-CurrentDeliveryReceipt $lease $receipt
-        $member=Invoke-CurrentTelegramRequest $token 'getChatMember' @{chat_id=$ChatId;user_id=$id}
+        $member=Invoke-CurrentTelegramRequest $token 'getChatMember' @{chat_id=$ChatId;user_id=$id} $transport
+        $receipt.RequestCompleted=$true; $receipt.LastApiOk=$member.Success; $receipt.LastCompletedMetadataRequests=$receipt.MetadataRequests
         $receipt.LastHttpStatus=$member.Status; $receipt.RetryAfterSeconds=$member.RetryAfterSeconds
         if (-not (Test-CurrentGroupMember $member $id ($id -ceq $BotId) $BotUsername)) { throw 'Group member identity mismatch' }
       }
       # Recheck size after identities; metadata never grants consent or protects
       # against later group membership changes. The live tuple remains external.
       $receipt.MetadataRequests++; $receipt.State='GROUP_MEMBER_COUNT_RECHECK_RESERVED'
+      $receipt.LastRequestMethod='getChatMemberCount'; $receipt.RequestCompleted=$false; $receipt.LastHttpStatus=$null; $receipt.LastApiOk=$null; $receipt.RetryAfterSeconds=$null
       Write-CurrentDeliveryReceipt $lease $receipt
-      $count=Invoke-CurrentTelegramRequest $token 'getChatMemberCount' @{chat_id=$ChatId}
+      $count=Invoke-CurrentTelegramRequest $token 'getChatMemberCount' @{chat_id=$ChatId} $transport
+      $receipt.RequestCompleted=$true; $receipt.LastApiOk=$count.Success; $receipt.LastCompletedMetadataRequests=$receipt.MetadataRequests
       $receipt.LastHttpStatus=$count.Status; $receipt.RetryAfterSeconds=$count.RetryAfterSeconds
       if (-not (Test-CurrentGroupMemberCount $count $audience.MemberCount)) { throw 'Group membership changed' }
       $receipt.VerifiedMemberCount=$audience.MemberCount
@@ -242,8 +266,10 @@ function Invoke-CurrentReportDelivery {
     if ((Get-DeliveryUtcNow) - [DateTimeOffset]::Parse($report.ObservedAt) -gt [TimeSpan]::FromMinutes(15)) { throw 'Refresh current snapshot before sending' }
     $failure='SEND_UNKNOWN_DO_NOT_RETRY'
     $receipt.SendAttempts=1; $receipt.State='SEND_RESERVED'
+    $receipt.LastRequestMethod='sendMessage'; $receipt.RequestCompleted=$false; $receipt.LastHttpStatus=$null; $receipt.LastApiOk=$null; $receipt.RetryAfterSeconds=$null
     Write-CurrentDeliveryReceipt $lease $receipt
-    $sent=Invoke-CurrentTelegramRequest $token 'sendMessage' @{chat_id=$ChatId; text=$report.Text; link_preview_options=@{is_disabled=$true}; allow_paid_broadcast=$false}
+    $sent=Invoke-CurrentTelegramRequest $token 'sendMessage' @{chat_id=$ChatId; text=$report.Text; link_preview_options=@{is_disabled=$true}; allow_paid_broadcast=$false} $transport
+    $receipt.RequestCompleted=$true; $receipt.LastApiOk=$sent.Success
     $receipt.LastHttpStatus=$sent.Status; $receipt.RetryAfterSeconds=$sent.RetryAfterSeconds
     if (-not $sent.Success) { $failure='SEND_REFUSED_DO_NOT_RETRY'; throw 'Send refused' }
     if ($sent.Result.message_id -isnot [int] -and $sent.Result.message_id -isnot [long]) { throw 'Message receipt unavailable' }
@@ -257,10 +283,21 @@ function Invoke-CurrentReportDelivery {
   } catch {
     # Never emit exception messages/stacks, URLs, provider descriptions, token,
     # input records or report text. A send timeout consumes its one attempt.
+    $receipt.FailedStage=$receipt.State
+    $receipt.ErrorClassChain=@()
+    $exception=$_.Exception
+    while ($exception -and $receipt.ErrorClassChain.Count -lt 8) {
+      $receipt.ErrorClassChain+=@($exception.GetType().Name)
+      $exception=$exception.InnerException
+    }
+    if ($receipt.SendAttempts -eq 0 -and $receipt.RequestCompleted -eq $false -and
+      @($receipt.ErrorClassChain | Where-Object { $_ -in @('TaskCanceledException','OperationCanceledException','TimeoutException','HttpRequestException') }).Count -gt 0) {
+      $failure='METADATA_TRANSPORT_UNVERIFIED'
+    }
     $receipt.State=$failure
     if ($lease) { try { Write-CurrentDeliveryReceipt $lease $receipt } catch {} }
     return $receipt
-  } finally { if ($lease) { $lease.Dispose() }; $token=$null; $report=$null; $self=$null; $chat=$null; $sent=$null; $member=$null; $count=$null; $audience=$null }
+  } finally { if ($transport) { Close-CurrentTelegramTransport $transport }; if ($lease) { $lease.Dispose() }; $token=$null; $report=$null; $self=$null; $chat=$null; $sent=$null; $member=$null; $count=$null; $audience=$null; $transport=$null; $exception=$null }
 }
 
 $membersForCall=@()

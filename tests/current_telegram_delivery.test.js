@@ -80,6 +80,7 @@ test('actual sender functions bind bot/private recipient/payload and reserve bef
   assert.equal(receipt.State,'DELIVERED_API_VERIFIED_PHONE_PENDING');assert.equal(receipt.PhoneAcceptance,false);
   assert.equal(receipt.MessageId,11);assert.equal(receipt.SendAttempts,1);assert.equal(result.CredentialReads,1);
   assert.deepEqual(result.Requests,['getMe','getChat','sendMessage']);assert.equal(result.ReservedBeforeSend,true);assert.equal(result.PayloadOptionsVerified,true);
+  assert.equal(result.TransportCreates,1);assert.equal(result.TransportCloses,1);assert.equal(result.AllRequestsShareTransport,true);
 });
 for(const [name,state,requests,lookups] of [
   ['wrongHash','INPUT_REFUSED',[],0],['invalidRecipient','INPUT_REFUSED',[],0],
@@ -133,6 +134,7 @@ for(const name of ['groupSuccess','groupReorderedMembers']){
     assert.equal(receipt.RecipientType,'group');assert.equal(receipt.VerifiedMemberCount,3);
     assert.equal(receipt.SendAttempts,1);assert.equal(receipt.MetadataRequests,7);assert.equal(result.CredentialReads,1);
     assert.deepEqual(result.Requests,groupRequests);assert.equal(result.ReservedBeforeSend,true);assert.equal(result.PayloadOptionsVerified,true);
+    assert.equal(result.TransportCreates,1);assert.equal(result.TransportCloses,1);assert.equal(result.AllRequestsShareTransport,true);
   });
 }
 for(const name of ['groupOmittedAudience','groupWrongAudience','groupDuplicateMembers','groupBotInHumanList','groupTooManyMembers','groupInvalidHumanId','groupPositiveChatId','groupUnsupportedType','groupPrivateWithAudience']){
@@ -160,6 +162,31 @@ for(const [name,requestCount,state] of [
 test('disabled membership-count guard changes the expanded-group attack to a send, proving the refusal seam matters',t=>{
   const {result}=runCase(t,'groupDisabledCountGuard');assert.equal(result.Results[0].State,'DELIVERED_API_VERIFIED_PHONE_PENDING');
   assert.equal(result.Results[0].SendAttempts,1);assert.deepEqual(result.Requests,groupRequests);
+});
+
+for(const [name,count,stage,method] of [
+  ['groupInitialCountTimeout',3,'GROUP_MEMBER_COUNT_RESERVED','getChatMemberCount'],
+  ['groupMemberTimeout',4,'GROUP_MEMBER_IDENTITY_RESERVED','getChatMember'],
+  ['groupFinalCountTimeout',7,'GROUP_MEMBER_COUNT_RECHECK_RESERVED','getChatMemberCount'],
+]){
+  test(`${name} records this request's timeout, clears prior HTTP200 and closes the shared transport without sending`,t=>{
+    const {result}=runCase(t,name);const receipt=result.Results[0];
+    assert.equal(receipt.State,'METADATA_TRANSPORT_UNVERIFIED');assert.equal(receipt.SendAttempts,0);
+    assert.equal(receipt.FailedStage,stage);assert.equal(receipt.LastRequestMethod,method);
+    assert.equal(receipt.RequestCompleted,false);assert.equal(receipt.LastHttpStatus,null);assert.equal(receipt.LastApiOk,null);
+    assert.equal(receipt.LastCompletedMetadataRequests,count-1);
+    assert.ok(receipt.ErrorClassChain.includes('TaskCanceledException'));assert.ok(receipt.ErrorClassChain.includes('TimeoutException'));
+    assert.deepEqual(result.Requests,groupRequests.slice(0,count));
+    assert.equal(result.TransportCreates,1);assert.equal(result.TransportCloses,1);assert.equal(result.AllRequestsShareTransport,true);
+  });
+}
+
+test('a send timeout keeps its consumed-send boundary and records no stale metadata response',t=>{
+  const {result}=runCase(t,'groupSendTimeout');const receipt=result.Results[0];
+  assert.equal(receipt.State,'SEND_UNKNOWN_DO_NOT_RETRY');assert.equal(receipt.SendAttempts,1);
+  assert.equal(receipt.FailedStage,'SEND_RESERVED');assert.equal(receipt.LastRequestMethod,'sendMessage');
+  assert.equal(receipt.RequestCompleted,false);assert.equal(receipt.LastHttpStatus,null);
+  assert.equal(receipt.LastCompletedMetadataRequests,7);assert.equal(result.TransportCreates,1);assert.equal(result.TransportCloses,1);
 });
 for(const name of ['groupSendTimeout','groupWrongReturnedChat','groupWrongReturnedType']){
   test(`${name} consumes the single group send without retry or sensitive output`,t=>{
