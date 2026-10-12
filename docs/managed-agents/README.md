@@ -63,6 +63,29 @@ Acceptance criteria:
   current-runtime dependency is proven.
 
 ## Dev Config
+
+### One Claude credential on the recovery PC
+
+For the existing original Schoology workspace, a human may enter only its
+Claude API key into Windows Credential Manager with a hidden console prompt:
+
+```powershell
+pwsh -NoProfile -File scripts/manage_schoology_secrets.ps1 -Action import -Environment prod -ClaudeKeyOnly
+```
+
+This opt-in mode uses only `schoology-bot/prod/ANTHROPIC_API_KEY`. It reads no
+environment files, asks for no other credentials and exports no plaintext.
+It refuses an already-present key and forced overwrite. A successful import
+requires an opaque exact-value readback; a failed readback must not be retried.
+The key is entered by the human into the hidden prompt and never into a chat.
+Existing import, verify and export commands retain their original behavior.
+Installation alone does not prove provider authentication or authorize a
+model run, API spend, access to old data, or service/reminder activation.
+
+`-ClaudeKeyOnly -DryRun` prints the exact intended target without credential
+reads, prompts or writes. The real encrypted Windows installation remains a
+human consumer check; the automated CLI fixtures use an in-memory mock store.
+
 Tracked by [#27](https://github.com/fsmalkin/schoology-bot/issues/27).
 
 Implemented foundation:

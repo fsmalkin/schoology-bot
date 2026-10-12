@@ -9,10 +9,15 @@ param(
   [string]$RuntimeEnvPath = "",
   [switch]$IncludeOptional,
   [switch]$DryRun,
+  [switch]$ClaudeKeyOnly,
   [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($ClaudeKeyOnly -and ($Action -ne "import" -or $FromEnvFile -or $IncludeOptional -or $Force)) {
+  throw "ClaudeKeyOnly requires import without FromEnvFile, IncludeOptional or Force."
+}
 
 function Write-Step($message) {
   Write-Host ("[secrets] " + $message)
@@ -310,11 +315,14 @@ function Protect-LocalPath([string]$Path) {
 
 function Import-Secrets() {
   Add-CredentialManagerType
-  $keys = Get-SecretKeys $Environment
   $sourceValues = @{}
-  if (-not [string]::IsNullOrWhiteSpace($FromEnvFile)) {
+  if ($ClaudeKeyOnly) {
+    $keys = @("ANTHROPIC_API_KEY")
+  } elseif (-not [string]::IsNullOrWhiteSpace($FromEnvFile)) {
+    $keys = Get-SecretKeys $Environment
     $sourceValues = Read-EnvFile (Join-Path $RepoRoot $FromEnvFile)
   } else {
+    $keys = Get-SecretKeys $Environment
     $sourceValues = Read-MergedEnv (Get-DefaultSourceFiles $Environment)
   }
 
@@ -325,21 +333,34 @@ function Import-Secrets() {
       continue
     }
 
+    if ($ClaudeKeyOnly -and -not [string]::IsNullOrWhiteSpace([SchoologyBot.CredentialManager]::Read($target))) {
+      throw "Credential already present: $target. No overwrite performed."
+    }
+
     $secret = $null
-    if ($sourceValues.Contains($key)) {
-      $secret = [string]$sourceValues[$key]
-    } else {
-      $secure = Read-Host -AsSecureString "Enter value for $target"
-      $secret = ConvertFrom-SecureStringPlain $secure
-    }
-    if ([string]::IsNullOrWhiteSpace($secret)) {
-      if ($requiredByEnvironment[$Environment] -contains $key) {
-        throw "Missing required secret: $target"
+    $secure = $null
+    try {
+      if ($sourceValues.Contains($key)) {
+        $secret = [string]$sourceValues[$key]
+      } else {
+        $secure = Read-Host -AsSecureString "Enter value for $target"
+        $secret = ConvertFrom-SecureStringPlain $secure
       }
-      continue
+      if ([string]::IsNullOrWhiteSpace($secret)) {
+        if ($requiredByEnvironment[$Environment] -contains $key) {
+          throw "Missing required secret: $target"
+        }
+        continue
+      }
+      [SchoologyBot.CredentialManager]::Write($target, "schoology-bot", $secret)
+      if ($ClaudeKeyOnly -and -not [string]::Equals([SchoologyBot.CredentialManager]::Read($target), $secret, [System.StringComparison]::Ordinal)) {
+        throw "Credential readback failed: $target. Do not repeat the import."
+      }
+      Write-Step "Stored $target"
+    } finally {
+      $secret = $null
+      if ($null -ne $secure) { $secure.Dispose() }
     }
-    [SchoologyBot.CredentialManager]::Write($target, "schoology-bot", $secret)
-    Write-Step "Stored $target"
   }
 }
 

@@ -1,5 +1,16 @@
 # Test Coverage and Gaps
 
+## Claude-only native credential import
+
+`tests/claude_key_import.test.js` executes the actual PowerShell7 importer
+with an in-memory credential class and synthetic hidden-prompt input. It
+covers one exact target and opaque readback, forbidden environment-file
+access, a dry run with no prompts/store reads/writes, refused action/source/
+optional/Force combinations, existing-key refusal, empty input, failed
+readback without a second write, and unchanged five-key legacy import.
+No real native credential store, secret, provider or paid model is exercised.
+Actual encrypted installation and provider authentication remain separate.
+
 This document summarizes current test coverage and the known gaps.
 
 ## Current report command
