@@ -1,0 +1,10 @@
+{
+  "format": "schoology-current-assignments/v1",
+  "sourceOrigin": "https://example.schoology.com",
+  "observedAt": "2026-10-12T00:00:00Z",
+  "complete": true,
+  "assignments": [
+    { "course": "Example Algebra", "title": "Example equations", "dueDate": "10/11/26 11:59pm", "status": "Missing", "isMissing": true, "url": "/assignment/1001" },
+    { "course": "Example Science", "title": "Example lab", "dueDate": "10/12/26 11:59pm", "status": "Submitted, awaiting grade", "isMissing": true, "url": "/assignment/1002" }
+  ]
+}

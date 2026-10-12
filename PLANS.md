@@ -103,6 +103,44 @@ Notes:
 ---
 
 Title:
+Current Schoology Report During Recovery
+
+Last updated:
+2026-10-11
+
+Goal:
+- Deliver the approved current-data school report on Fred's phone through the existing bot, preserving original artifacts and keeping automatic reminders off.
+
+Scope:
+- Add an explicit current-snapshot report entrypoint using existing deterministic formatting and submission/date behavior. Do not load saved state/SQLite/configuration or an AI service.
+- Qualify the original student in the existing sanctioned Schoology browser session, then obtain only current course/title/due/status/assignment-link fields. Preserve coverage and observation-time evidence.
+- Qualify the exact existing bot/chat and opaque credential use before separately binding one live report delivery.
+- Original annotations/history, conversational runtime, schedules, new accounts/keys and paid API calls remain outside this slice's acceptance.
+
+Risks and mitigations:
+- Partial, stale or mismatched records could look like no missing work. Require explicit snapshot format, timestamp and coverage; label partial views and reject stale/future input. Input declarations do not prove live reader identity or coverage.
+- Old manual exceptions are excluded by the owner's choice. State that in the report; preserve current submitted-work exclusion and never overwrite originals.
+- Secret/data/send effects retain their own exact operation fences. Source and synthetic CLI validation do not grant or prove live access/delivery.
+
+Plan:
+- Implement the pure report and CLI; verify actual stdin/file workflows, invalid/default input and a no-service-import negative control.
+- Run affected checks and existing offline CI; publish/review/integrate only the optional source change.
+- Verify the current student/session and exact existing delivery path, then produce and verify the requested phone report. Report any genuine Fred-only action in FOCUS; keep technical work with this owner.
+
+Validation and rollback:
+- Current report unit/CLI controls plus affected formatting/status tests, full offline suite, diff/secret checks and exact-head CI.
+- Live reader and phone evidence remain separate; no full-service claim from these source checks.
+- Revert the scoped optional report commit if needed. Do not delete/overwrite original data, restart the old runtime or replay a spent provider effect.
+
+Open questions:
+- Current original-subject session and exact bot/chat qualification are not yet proven. They are agent-owned bounded qualification work until an actual human-only authentication or destination action is identified.
+
+Notes:
+- Direct owner choice "Use current data" resolves FOCUS27's reporting-baseline decision. ALEPH-383 / fsmalkin/aleph#453 retains the exact existing task/writer and all prior operation accounting.
+
+---
+
+Title:
 Managed Agents Dev Runtime UAT
 
 Last updated:

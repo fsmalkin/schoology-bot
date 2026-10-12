@@ -7,6 +7,7 @@
     "scrape": "node src/run.js scrape",
     "send": "node src/run.js send",
     "run-once": "node src/run.js once",
+    "summary:current": "node src/current_summary_cli.js",
     "start": "node src/scheduler.js",
     "telegram:updates": "node src/telegram_updates.js",
     "telegram:updates:beta": "node scripts/with_env.js .env.beta node -r dotenv/config src/telegram_updates.js",
