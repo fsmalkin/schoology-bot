@@ -7,13 +7,15 @@ import { tmpdir, homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildCurrentSummary } from '../src/current_summary.js';
+import { selectPowerShell7 } from './helpers/powershell_runtime.js';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const sender=path.join(root,'scripts/send_current_schoology_report.ps1');
 const harness=path.join(root,'tests/helpers/current_telegram_delivery_cases.ps1');
 const candidates=['pwsh',...(process.platform==='win32'?[path.join(homedir(),'.cache/codex-runtimes/codex-primary-runtime/dependencies/native/powershell/pwsh.exe')]:[])];
-const shell=candidates.find(command=>spawnSync(command,['-NoProfile','-NonInteractive','-Command','$PSVersionTable.PSVersion.Major'],{encoding:'utf8',windowsHide:true,timeout:10000}).stdout?.trim()==='7');
-assert.ok(shell,'PowerShell 7 is required for the actual operator-path tests; no silent platform skip.');
+const selection=selectPowerShell7(candidates);
+const shell=selection.command;
+assert.ok(shell,'PowerShell 7 is required for the actual operator-path tests; no silent platform skip. Probe metadata: '+JSON.stringify(selection.attempts));
 const privateMarker='SYNTHETIC_PRIVATE_ASSIGNMENT';
 const fakeToken='12345'+':'+('x'.repeat(35));
 function fixture(t,changes={}){

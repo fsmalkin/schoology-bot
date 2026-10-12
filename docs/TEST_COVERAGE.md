@@ -26,6 +26,13 @@ Its adapters replace only credential/provider access and the expiry-test clock.
 The existing Node formatter still runs as a child process on real synthetic
 input files. PowerShell 7 is required rather than silently skipping the lane.
 
+Runtime selection gives each existing shell candidate a bounded 30-second
+startup probe. A failed probe reports candidate number, elapsed time, exit,
+signal and allowlisted error code; raw output and error messages are omitted.
+`tests/powershell_runtime.test.js` covers delayed startup, timeout/fallback,
+failed processes that print 7, missing/unsupported/malformed runtimes and
+diagnostic redaction. All operator cases remain mandatory after selection.
+
 Controls cover exact bot and private-recipient binding, refusal of the sender
 as recipient, reviewed payload hash, stale/oversized input, original ISO offset
 preservation, expiry during metadata verification, missing credentials, rate
