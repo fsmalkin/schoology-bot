@@ -132,7 +132,7 @@ function New-CurrentTelegramTransport {
   $handler=[Net.Http.HttpClientHandler]::new()
   $handler.AllowAutoRedirect=$false
   $client=[Net.Http.HttpClient]::new($handler)
-  $client.Timeout=[TimeSpan]::FromSeconds(12)
+  $client.Timeout=[TimeSpan]::FromSeconds(30)
   $client.MaxResponseContentBufferSize=65536
   return [pscustomobject]@{ Client=$client; Handler=$handler }
 }
