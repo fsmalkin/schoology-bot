@@ -1,5 +1,30 @@
 # Codex Execution Plans (ExecPlans)
 
+## Operator request timeout correction (October 12, 2026)
+
+The confirmed current account and group are ready. Two real report invocations
+stopped before sending, and a send-disabled trace caught a 12-second metadata
+timeout with no response. The prior receipt retained an earlier HTTP 200 and
+reported a coarse audience authentication state.
+
+Reuse one isolated HTTP client through the bounded operator workflow, then
+dispose it. Keep the existing timeout, TLS, redirect and response-size rules,
+fresh request/response objects, audience/freshness checks and durable claims.
+Add request-correlated completion/status/stage/type diagnostics; never copy
+exception messages or retry a consumed operation. Existing real report claims
+remain closed. Source revert is the rollback.
+
+Affected validation: 77/77 passed, including initial/member/final metadata
+timeouts, client sharing/cleanup, stale-status removal, unknown send and all
+existing duplicate/identity/audience controls. The full suite passed320 tests,
+314 pass/0 fail/6 platform or live skips, with CI's existing-Chrome settings.
+The first local run used the absent default Playwright browser and is retained
+as an environment failure; no browser was installed. Exact-head source
+CI/main readback and a separately admitted real send-disabled metadata consumer
+are next. New current-report delivery needs a fresh observation and exact live
+binding. Full original backend/history/runtime and phone acceptance remain open;
+automatic reminders stay off.
+
 ## Current report to the selected three-member group (October 12, 2026)
 
 Goal: deliver the approved complete current Mayari report to the qualified

@@ -1,5 +1,7 @@
 # Worklog
 
+2026-10-12 11:46 ET | [ALEPH-383 / aleph#453](https://github.com/fsmalkin/aleph/issues/453#issuecomment-6127556303) | Deliver the approved current report through a reliable bounded operator | Corrected per-request HTTP client creation to one isolated client per workflow and added request-correlated status/completion/stage/type diagnostics. A real send-disabled trace caught a 12032ms metadata timeout; no authentication denial or report send was established. Actor: Schoology Migration /root, agent result, not an owner ruling | Full suite, exact-head source/main CI and separately admitted real metadata consumer, then a newly observed current report and exact one-message effect | Both sign-in/selection tasks are complete; no fabricated Fred technical action. Original history/backend/runtime/phone acceptance remains open, reminders off, every old operation/claim preserved | Affected77/77 passed (67 sender cases,10 formatter); typed initial/member/final timeout, single-client cleanup, prior-status clearing, duplicate/unknown-send and no-secret controls. Source actual credential/provider/message effects0 | Existing Schoology task01a073b6-fd0c-7ad1-842e-c4ef12365e19
+
 Execution state is tracked centrally on the FSM Engineering Board.
 This file is the repo-local handoff ledger for cross-thread continuity.
 

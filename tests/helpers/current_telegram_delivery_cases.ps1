@@ -16,6 +16,10 @@ $script:ClockOffset=0
 $script:ReservedBeforeSend=$false
 $script:PayloadOptionsVerified=$false
 $script:GroupCountReads=0
+$script:TransportCreates=0
+$script:TransportCloses=0
+$script:FirstTransport=$null
+$script:AllRequestsShareTransport=$true
 $groupCase=($CaseName -like 'group*' -and $CaseName -ne 'groupRecipient')
 $script:FakeToken=('12345'+':'+('x'*35))
 if($CaseName -eq 'parseRetry'){
@@ -30,8 +34,16 @@ function Get-CurrentBotCredential([string]$Root,[string]$Sid){
   return $script:FakeToken
 }
 function Get-DeliveryUtcNow {return [DateTimeOffset]::UtcNow.AddMinutes($script:ClockOffset)}
-function Invoke-CurrentTelegramRequest([string]$Token,[string]$Method,[hashtable]$Parameters){
+function New-CurrentTelegramTransport {
+  $script:TransportCreates++
+  return [pscustomobject]@{ Marker='SYNTHETIC_WORKFLOW_ONLY' }
+}
+function Close-CurrentTelegramTransport($Transport) { $script:TransportCloses++ }
+function Invoke-CurrentTelegramRequest([string]$Token,[string]$Method,[hashtable]$Parameters,$Transport){
   $script:Requests.Add($Method)
+  if (-not $Transport) { $script:AllRequestsShareTransport=$false }
+  elseif (-not $script:FirstTransport) { $script:FirstTransport=$Transport }
+  elseif (-not [object]::ReferenceEquals($script:FirstTransport,$Transport)) { $script:AllRequestsShareTransport=$false }
   if($Method -eq 'getMe'){
     if($CaseName -eq 'metadata429'){return [pscustomobject]@{Status=429;Success=$false;RetryAfterSeconds=30;Result=$null}}
     $id=if($CaseName -eq 'wrongBot'){'1001'}else{'1000'}
@@ -45,11 +57,17 @@ function Invoke-CurrentTelegramRequest([string]$Token,[string]$Method,[hashtable
   }
   if($Method -eq 'getChatMemberCount'){
     $script:GroupCountReads++
+    if($CaseName -eq 'groupInitialCountTimeout' -or ($CaseName -eq 'groupFinalCountTimeout' -and $script:GroupCountReads -eq 2)){
+      throw [Threading.Tasks.TaskCanceledException]::new("request $Token",[TimeoutException]::new("request $Token"))
+    }
     if($CaseName -eq 'groupExpiredDuringMetadata' -and $script:GroupCountReads -eq 2){$script:ClockOffset=16}
     $count=if($CaseName -in @('groupExpanded','groupDisabledCountGuard') -or ($CaseName -eq 'groupAudienceDrift' -and $script:GroupCountReads -eq 2)){4}elseif($CaseName -eq 'groupInvalidCount'){'3'}else{3}
     return [pscustomobject]@{Status=200;Success=$true;RetryAfterSeconds=0;Result=$count}
   }
   if($Method -eq 'getChatMember'){
+    if($CaseName -eq 'groupMemberTimeout'){
+      throw [Threading.Tasks.TaskCanceledException]::new("request $Token",[TimeoutException]::new("request $Token"))
+    }
     if($CaseName -eq 'groupMember429'){return [pscustomobject]@{Status=429;Success=$false;RetryAfterSeconds=172800;Result=$null}}
     if($CaseName -eq 'groupMemberException'){throw "member request $script:FakeToken"}
     $bot=($Parameters.user_id -ceq '1000')
@@ -104,4 +122,4 @@ if($CaseName -in @('repeatSuccess','repeatTimeout','differentOperationSamePayloa
   $results+=@(Invoke-CurrentReportDelivery @binding)
 }
 $receiptContents=@(Get-ChildItem -LiteralPath $ReceiptDirectory -File | ForEach-Object { [IO.File]::ReadAllText($_.FullName) })
-[pscustomobject]@{Results=$results;CredentialReads=$script:CredentialReads;Requests=@($script:Requests);ReservedBeforeSend=$script:ReservedBeforeSend;PayloadOptionsVerified=$script:PayloadOptionsVerified;ReceiptContents=$receiptContents} | ConvertTo-Json -Depth 12 -Compress
+[pscustomobject]@{Results=$results;CredentialReads=$script:CredentialReads;Requests=@($script:Requests);ReservedBeforeSend=$script:ReservedBeforeSend;PayloadOptionsVerified=$script:PayloadOptionsVerified;ReceiptContents=$receiptContents;TransportCreates=$script:TransportCreates;TransportCloses=$script:TransportCloses;AllRequestsShareTransport=$script:AllRequestsShareTransport} | ConvertTo-Json -Depth 12 -Compress
