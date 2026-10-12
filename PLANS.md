@@ -1,5 +1,24 @@
 # Codex Execution Plans (ExecPlans)
 
+## One Claude key through the native secure prompt (October 12, 2026)
+
+The original Aleph Schoology workspace, production environment, agent and
+memory store are now qualified. Production configuration shows version5,
+Sonnet4.6 and Medium effort; original sessions are idle. The sign-in action
+is completed. The retained native Claude-key lookup was absent.
+
+The existing importer reads environment files and asks for five prod keys.
+Add an explicit Claude-only secure prompt that never reads those files,
+refuses an existing key and validates the one encrypted store write through
+opaque readback. All13 affected checks passed with the real script under an
+isolated mock credential class, including refused scope, empty input and bad
+readback. Publish after exact source/main CI, then save the exact
+Fred-only installation action. No real credential, paid API, model, original
+data or runtime action belongs to this source preparation.
+
+PR48 is merged at main4f54d78; its 83 affected checks and source/main321-pass
+CI receipts are accepted in aleph#453. Full original recovery remains open.
+
 ## Required PowerShell runtime probe (October 12, 2026)
 
 PR47's first CI attempt stopped at the ten-second version probe before the
