@@ -2,6 +2,22 @@
 
 This document summarizes current test coverage and the known gaps.
 
+## Current report command
+
+`tests/current_summary.test.js` covers current missing/submitted classification,
+exclusion of saved manual annotations and reminders, complete versus partial
+empty snapshots, stale/future timestamps, invalid row/origin/timezone inputs,
+safe same-origin links and duplicate/conflicting records. Actual CLI stdin/file
+workflows run with configuration, database, scraper, Telegram and AI imports
+denied. A legacy-command negative control proves the denial guard is exercised.
+The file workflow verifies its input and neighboring synthetic saved state stay
+unchanged; malformed input and unsupported/default/send modes fail explicitly.
+
+These checks use synthetic records. They do not establish current Schoology
+authentication, reader coverage, credential/bot/chat identity, phone delivery
+or restoration of original saved history. `complete` is supplied by the reader
+and must be independently grounded in the live view.
+
 ## Coverage summary
 
 Unit tests

@@ -2,6 +2,24 @@
 
 Purpose: single-page reference for how the Schoology bot works, how it runs, and where data lives.
 
+## Current report during recovery
+
+The October 11, 2026 owner-approved baseline permits a current-only report while
+original saved data remains preserved and unrecovered. `src/current_summary.js`
+uses the existing readable formatter and current submission/date rules, with no
+database, saved-state, configuration or service client import.
+`src/current_summary_cli.js` reads only explicitly supplied JSON from stdin or a
+named snapshot file. It does not fetch records, call a model, send a message,
+write application state or start reminders/services.
+
+The current-snapshot contract and coverage/freshness limits are documented in
+README. Saved manual annotations and reminder history are excluded; current
+submitted work remains excluded from the actionable missing list. Input claims
+do not prove the correct reader or complete coverage. Live original-subject
+reading and exact existing-bot phone delivery require their own task-bound
+evidence. This optional report is not restoration of the old conversational or
+scheduled runtime, and the service descriptions below do not activate it.
+
 ## Services
 - schoology (scheduler)
   - Runs cron jobs for scrape, summary send, and reminders.

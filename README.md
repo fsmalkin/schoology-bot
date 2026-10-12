@@ -4,6 +4,37 @@ A friendly, local-first Schoology assistant that logs in, finds missing assignme
 
 It runs on your machine today and is ready to move to a server later.
 
+## Current assignment report (approved October 11, 2026)
+
+For the current recovery slice, Fred approved using current Schoology records
+while preserving the unrecovered original files and keeping automatic reminders
+off. `npm run summary:current -- --stdin` formats an explicitly supplied fresh
+snapshot without loading `.env`, SQLite, saved application state or an AI client.
+Alternatively, use `--snapshot <current-snapshot.json>` for an explicitly chosen
+input file. The command writes the report to stdout; it does not scrape, send,
+persist state, start services or schedule anything.
+
+The input object has `format: "schoology-current-assignments/v1"`,
+`sourceOrigin: "https://bcps.schoology.com"`, an ISO `observedAt` timestamp with a
+timezone, boolean `complete`, and an `assignments` array. Each assignment needs
+`course`, `title`, boolean `isMissing`, and optional `dueDate`, `status` and `url`.
+Only current fields are used. Saved manual exceptions, notes, auto-ignore flags,
+reminders and conversations are excluded. Submitted Schoology work is excluded
+from missing work, retaining the existing submission rule.
+
+The reader must verify the correct student and current view before creating the
+snapshot. `complete: true` is a caller assertion about coverage, not an automated
+proof. Partial views are labeled and never claim a complete empty missing list.
+Snapshots older than 15 minutes or more than one minute in the future are
+rejected. Links stay within the declared Schoology origin and omit query/fragment
+parameters. Invalid input fails without falling back to old/default data.
+
+The offline fixture in `tests/fixtures/current-summary.json` contains synthetic
+example assignments and a fixed test timestamp. It is not a live school report.
+Current reader, existing Telegram bot/chat qualification and actual phone
+delivery remain separate from source/CLI validation. The commands below describe
+the full runtime; they are not activation instructions for this recovery slice.
+
 ## What it does
 - Scrapes Schoology grades and detects missing or incomplete work.
 - Sends a daily summary via Telegram (SMS or email optional).
