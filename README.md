@@ -50,11 +50,37 @@ hash binds the entire plaintext report after removing its terminal CR/LF;
 reports exceeding Telegram's one-message limit are refused, not shortened.
 
 `-Send` is a separate, explicitly authorized operator effect. It requires the
-stable operation ID, verified private recipient ID, expected bot ID/username,
+stable operation ID, verified recipient ID, expected bot ID/username,
 expected Windows SID, reviewed report hash and existing receipt directory.
 Confirm the actual owner account and destination and record the bounded live
 tuple in the canonical issue first. These caller claims do not grant consent
 or discover the recipient. The recipient must differ from the bot's own ID.
+
+Private chats remain the default. A basic three-member group is an explicit
+option: two qualified human accounts and the expected bot. Prepare both the
+fresh report and declared audience without credentials or network access:
+
+Group preparation also returns the audience hash and declared member count.
+
+```powershell
+pwsh -NoProfile -File scripts/send_current_schoology_report.ps1 -SnapshotPath <current-snapshot.json> -Prepare -RecipientType group -RecipientChatId <verified-negative-group-id> -ExpectedBotId <verified-bot-id> -GroupMemberIds "<approved-human-id>,<approved-human-id>"
+```
+
+For the authorized `-Send`, supply these group fields and the preparation's
+`-ExpectedAudienceSha256`, as well as all normal send bindings. Comma-separated
+IDs work through `pwsh -File`; their order does not change the audience hash.
+The script checks the exact group type/ID, member count, expected bot and both
+human identities, then rechecks the count before the single send. A mismatch,
+missing member or refused metadata request stops it. Other bots, larger groups,
+supergroups and unbound audiences are refused. It does not change membership
+or bot permissions. These point-in-time checks and caller hashes never grant
+consent or guarantee future group membership: qualify the actual account and
+audience and record the exact authorized current-report effect first.
+
+The group payload claim uses bot ID, group ID and complete report hash. Changing
+declared audience, public bot username, Windows SID or operation name cannot
+retry that same report through the fixed receipt directory. Private claims
+retain their previous format.
 
 The script reads only the existing prod bot credential through the native
 Windows library, verifies `getMe` and `getChat`, and reserves the one send on

@@ -8,6 +8,9 @@ param(
   [string]$ExpectedWindowsSid,
   [string]$ExpectedReportSha256,
   [string]$ReceiptDirectory,
+  [string]$RecipientType='private',
+  [string[]]$GroupMemberIds,
+  [string]$ExpectedAudienceSha256,
   [switch]$Prepare,
   [switch]$Send
 )
@@ -19,6 +22,34 @@ function Get-DeliveryHash([string]$Text) {
 }
 
 function Get-DeliveryUtcNow { return [DateTimeOffset]::UtcNow }
+
+function Get-CurrentGroupAudience([string]$ChatId, [string]$BotId, [string[]]$MemberIds) {
+  if ($ChatId -cnotmatch '^-[1-9][0-9]{0,15}$' -or $BotId -cnotmatch '^[1-9][0-9]{0,15}$' -or $MemberIds.Count -ne 2) {
+    throw 'Exact three-member group binding required'
+  }
+  $members=@($MemberIds | Sort-Object -CaseSensitive)
+  if (@($members | Select-Object -Unique).Count -ne 2) { throw 'Distinct human member IDs required' }
+  foreach ($id in $members) {
+    if ($id -cnotmatch '^[1-9][0-9]{0,15}$' -or $id -ceq $BotId) { throw 'Exact human member IDs required' }
+  }
+  $ids=$members -join "`n"
+  return [pscustomobject]@{ MemberIds=$members; MemberCount=3; Sha256=(Get-DeliveryHash "schoology-current-group-audience/v1`n$ChatId`n$BotId`n$ids") }
+}
+
+function Test-CurrentGroupMemberCount($Response, [int]$Expected) {
+  return ($Response.Success -and ($Response.Result -is [int] -or $Response.Result -is [long]) -and $Response.Result -eq $Expected)
+}
+
+function Test-CurrentGroupMember($Response, [string]$Id, [bool]$Bot, [string]$Username) {
+  if (-not $Response.Success -or [string]$Response.Result.user.id -cne $Id -or
+    $Response.Result.user.is_bot -isnot [bool] -or $Response.Result.user.is_bot -ne $Bot) { return $false }
+  $member=$Response.Result
+  $present=($member.status -cin @('creator','administrator','member') -or ($member.status -ceq 'restricted' -and $member.is_member -is [bool] -and $member.is_member))
+  if (-not $present) { return $false }
+  if ($Bot -and ($member.user.username -cne $Username -or
+    ($member.status -ceq 'restricted' -and ($member.can_send_messages -isnot [bool] -or -not $member.can_send_messages)))) { return $false }
+  return $true
+}
 
 function Get-CurrentDeliveryReport([string]$RepoRoot, [string]$InputPath) {
   # Read only the supplied snapshot. Bound input before invoking the existing
@@ -98,7 +129,7 @@ function ConvertFrom-CurrentTelegramResponse([int]$Status, [string]$Json) {
 }
 
 function Invoke-CurrentTelegramRequest([string]$Token, [string]$Method, [hashtable]$Parameters) {
-  if ($Method -cnotin @('getMe','getChat','sendMessage')) { throw 'Unsupported Telegram method' }
+  if ($Method -cnotin @('getMe','getChat','getChatMemberCount','getChatMember','sendMessage')) { throw 'Unsupported Telegram method' }
   $handler=[Net.Http.HttpClientHandler]::new()
   $handler.AllowAutoRedirect=$false
   $client=[Net.Http.HttpClient]::new($handler)
@@ -126,33 +157,45 @@ function Write-CurrentDeliveryReceipt([IO.FileStream]$Stream, [hashtable]$Receip
 function Invoke-CurrentReportDelivery {
   param([string]$RepoRoot, [string]$InputPath, [string]$Operation, [string]$ChatId,
     [string]$BotId, [string]$BotUsername, [string]$WindowsSid, [string]$ReportHash,
-    [string]$Receipts, [switch]$PrepareOnly, [switch]$SendOnce)
+    [string]$Receipts, [switch]$PrepareOnly, [switch]$SendOnce,
+    [string]$Kind='private', [string[]]$MemberIds, [string]$AudienceHash)
   $receipt=@{ Format='schoology-current-delivery-receipt/v1'; State='INPUT_REFUSED'; OperationId=$null;
     CredentialLookups=0; MetadataRequests=0; SendAttempts=0; PhoneAcceptance=$false }
   $failure='INPUT_REFUSED'; $lease=$null; $token=$null; $report=$null
   try {
     if ([bool]$PrepareOnly -eq [bool]$SendOnce) { throw 'Choose one explicit mode' }
+    if ($Kind -cnotin @('private','group')) { throw 'Explicit supported recipient type required' }
+    $group=($Kind -ceq 'group')
+    $audience=$null
+    if ($group) { $audience=Get-CurrentGroupAudience $ChatId $BotId $MemberIds }
+    elseif ($MemberIds.Count -gt 0 -or $AudienceHash) { throw 'Group fields require explicit group mode' }
     $report=Get-CurrentDeliveryReport $RepoRoot $InputPath
     $receipt.ReportSha256=$report.Sha256
     $receipt.ReportCharacters=$report.Characters
     $receipt.ObservedAt=$report.ObservedAt
+    if ($group) { $receipt.RecipientType='group'; $receipt.AudienceSha256=$audience.Sha256; $receipt.DeclaredMemberCount=$audience.MemberCount }
     if ($PrepareOnly) { $receipt.State='PREPARED_NO_CREDENTIAL_OR_PROVIDER_USE'; return $receipt }
     if ($Operation -cnotmatch '^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$' -or
-      $ChatId -cnotmatch '^[1-9][0-9]{0,15}$' -or $BotId -cnotmatch '^[1-9][0-9]{0,15}$' -or $ChatId -ceq $BotId -or
+      (-not $group -and $ChatId -cnotmatch '^[1-9][0-9]{0,15}$') -or $BotId -cnotmatch '^[1-9][0-9]{0,15}$' -or $ChatId -ceq $BotId -or
       $BotUsername -cnotmatch '^[A-Za-z0-9_]{5,32}$' -or $WindowsSid -cnotmatch '^S-1-5-21-[0-9-]+$' -or
       $ReportHash -notmatch '^[a-fA-F0-9]{64}$' -or $ReportHash.ToLowerInvariant() -cne $report.Sha256 -or
+      ($group -and ($AudienceHash -notmatch '^[a-fA-F0-9]{64}$' -or $AudienceHash.ToLowerInvariant() -cne $audience.Sha256)) -or
       -not [IO.Directory]::Exists($Receipts)) { throw 'Exact delivery binding required' }
     $receipt.OperationId=$Operation
     $receipt.BotId=$BotId; $receipt.BotUsername=$BotUsername; $receipt.RecipientChatId=$ChatId
     $binding=Get-DeliveryHash "$BotId`n$BotUsername`n$ChatId`n$($report.Sha256)`n$WindowsSid"
     $receipt.BindingSha256=$binding
+    # Group sends are the same external effect despite changed audience claims,
+    # public bot name or caller SID. Keep the older private claim unchanged.
+    $effect=if ($group) { Get-DeliveryHash "schoology-current-group-send-effect/v1`n$BotId`n$ChatId`n$($report.Sha256)" } else { $binding }
+    if ($group) { $receipt.EffectSha256=$effect }
     $failure='EXISTING_RECEIPT_DO_NOT_RETRY'
     $lease=[IO.FileStream]::new((Join-Path $Receipts "$Operation.json"), [IO.FileMode]::CreateNew, [IO.FileAccess]::ReadWrite, [IO.FileShare]::Read)
     $receipt.State='RESERVED'
     Write-CurrentDeliveryReceipt $lease $receipt
     # Also refuse a second operation name for the identical external effect.
     $failure='EXISTING_PAYLOAD_CLAIM_DO_NOT_RETRY'
-    $claim=[IO.FileStream]::new((Join-Path $Receipts "$binding.claim"), [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+    $claim=[IO.FileStream]::new((Join-Path $Receipts "$effect.claim"), [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::Read)
     try { $claimBytes=[Text.Encoding]::UTF8.GetBytes($Operation); $claim.Write($claimBytes,0,$claimBytes.Length); $claim.Flush($true) } finally { $claim.Dispose() }
     $failure='AUTH_ESCALATION_CREDENTIAL'
     $receipt.CredentialLookups=1; $receipt.State='CREDENTIAL_LOOKUP_RESERVED'
@@ -166,12 +209,35 @@ function Invoke-CurrentReportDelivery {
     $receipt.LastHttpStatus=$self.Status; $receipt.RetryAfterSeconds=$self.RetryAfterSeconds
     if (-not $self.Success -or $self.Result.is_bot -isnot [bool] -or -not $self.Result.is_bot -or
       [string]$self.Result.id -cne $BotId -or $self.Result.username -cne $BotUsername) { throw 'Bot identity mismatch' }
-    $failure='AUTH_ESCALATION_PRIVATE_RECIPIENT'
-    $receipt.MetadataRequests=2; $receipt.State='PRIVATE_RECIPIENT_RESERVED'
+    $failure=if ($group) { 'AUTH_ESCALATION_GROUP_RECIPIENT' } else { 'AUTH_ESCALATION_PRIVATE_RECIPIENT' }
+    $receipt.MetadataRequests=2; $receipt.State=if ($group) { 'GROUP_RECIPIENT_RESERVED' } else { 'PRIVATE_RECIPIENT_RESERVED' }
     Write-CurrentDeliveryReceipt $lease $receipt
     $chat=Invoke-CurrentTelegramRequest $token 'getChat' @{chat_id=$ChatId}
     $receipt.LastHttpStatus=$chat.Status; $receipt.RetryAfterSeconds=$chat.RetryAfterSeconds
-    if (-not $chat.Success -or [string]$chat.Result.id -cne $ChatId -or $chat.Result.type -cne 'private') { throw 'Private recipient mismatch' }
+    if (-not $chat.Success -or [string]$chat.Result.id -cne $ChatId -or $chat.Result.type -cne $Kind) { throw 'Recipient mismatch' }
+    if ($group) {
+      $failure='AUTH_ESCALATION_GROUP_AUDIENCE'
+      $receipt.MetadataRequests++; $receipt.State='GROUP_MEMBER_COUNT_RESERVED'
+      Write-CurrentDeliveryReceipt $lease $receipt
+      $count=Invoke-CurrentTelegramRequest $token 'getChatMemberCount' @{chat_id=$ChatId}
+      $receipt.LastHttpStatus=$count.Status; $receipt.RetryAfterSeconds=$count.RetryAfterSeconds
+      if (-not (Test-CurrentGroupMemberCount $count $audience.MemberCount)) { throw 'Group member count mismatch' }
+      foreach ($id in @($BotId)+@($audience.MemberIds)) {
+        $receipt.MetadataRequests++; $receipt.State='GROUP_MEMBER_IDENTITY_RESERVED'
+        Write-CurrentDeliveryReceipt $lease $receipt
+        $member=Invoke-CurrentTelegramRequest $token 'getChatMember' @{chat_id=$ChatId;user_id=$id}
+        $receipt.LastHttpStatus=$member.Status; $receipt.RetryAfterSeconds=$member.RetryAfterSeconds
+        if (-not (Test-CurrentGroupMember $member $id ($id -ceq $BotId) $BotUsername)) { throw 'Group member identity mismatch' }
+      }
+      # Recheck size after identities; metadata never grants consent or protects
+      # against later group membership changes. The live tuple remains external.
+      $receipt.MetadataRequests++; $receipt.State='GROUP_MEMBER_COUNT_RECHECK_RESERVED'
+      Write-CurrentDeliveryReceipt $lease $receipt
+      $count=Invoke-CurrentTelegramRequest $token 'getChatMemberCount' @{chat_id=$ChatId}
+      $receipt.LastHttpStatus=$count.Status; $receipt.RetryAfterSeconds=$count.RetryAfterSeconds
+      if (-not (Test-CurrentGroupMemberCount $count $audience.MemberCount)) { throw 'Group membership changed' }
+      $receipt.VerifiedMemberCount=$audience.MemberCount
+    }
     $failure='SNAPSHOT_EXPIRED_BEFORE_SEND'
     if ((Get-DeliveryUtcNow) - [DateTimeOffset]::Parse($report.ObservedAt) -gt [TimeSpan]::FromMinutes(15)) { throw 'Refresh current snapshot before sending' }
     $failure='SEND_UNKNOWN_DO_NOT_RETRY'
@@ -181,7 +247,7 @@ function Invoke-CurrentReportDelivery {
     $receipt.LastHttpStatus=$sent.Status; $receipt.RetryAfterSeconds=$sent.RetryAfterSeconds
     if (-not $sent.Success) { $failure='SEND_REFUSED_DO_NOT_RETRY'; throw 'Send refused' }
     if ($sent.Result.message_id -isnot [int] -and $sent.Result.message_id -isnot [long]) { throw 'Message receipt unavailable' }
-    if ($sent.Result.message_id -le 0 -or [string]$sent.Result.chat.id -cne $ChatId -or $sent.Result.chat.type -cne 'private' -or
+    if ($sent.Result.message_id -le 0 -or [string]$sent.Result.chat.id -cne $ChatId -or $sent.Result.chat.type -cne $Kind -or
       [string]$sent.Result.from.id -cne $BotId -or $sent.Result.from.is_bot -isnot [bool] -or -not $sent.Result.from.is_bot -or
       $sent.Result.text -cne $report.Text) { throw 'Message receipt mismatch' }
     $receipt.MessageId=$sent.Result.message_id
@@ -194,9 +260,11 @@ function Invoke-CurrentReportDelivery {
     $receipt.State=$failure
     if ($lease) { try { Write-CurrentDeliveryReceipt $lease $receipt } catch {} }
     return $receipt
-  } finally { if ($lease) { $lease.Dispose() }; $token=$null; $report=$null; $self=$null; $chat=$null; $sent=$null }
+  } finally { if ($lease) { $lease.Dispose() }; $token=$null; $report=$null; $self=$null; $chat=$null; $sent=$null; $member=$null; $count=$null; $audience=$null }
 }
 
-$result=Invoke-CurrentReportDelivery -RepoRoot ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))) -InputPath $SnapshotPath -Operation $OperationId -ChatId $RecipientChatId -BotId $ExpectedBotId -BotUsername $ExpectedBotUsername -WindowsSid $ExpectedWindowsSid -ReportHash $ExpectedReportSha256 -Receipts $ReceiptDirectory -PrepareOnly:$Prepare -SendOnce:$Send
+$membersForCall=@()
+if ($GroupMemberIds) { $membersForCall=@($GroupMemberIds | ForEach-Object { $_ -split ',' }) }
+$result=Invoke-CurrentReportDelivery -RepoRoot ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))) -InputPath $SnapshotPath -Operation $OperationId -ChatId $RecipientChatId -BotId $ExpectedBotId -BotUsername $ExpectedBotUsername -WindowsSid $ExpectedWindowsSid -ReportHash $ExpectedReportSha256 -Receipts $ReceiptDirectory -PrepareOnly:$Prepare -SendOnce:$Send -Kind $RecipientType -MemberIds $membersForCall -AudienceHash $ExpectedAudienceSha256
 $result | ConvertTo-Json -Depth 8 -Compress
 if ($result.State -cnotin @('PREPARED_NO_CREDENTIAL_OR_PROVIDER_USE','DELIVERED_API_VERIFIED_PHONE_PENDING')) { exit 2 }
