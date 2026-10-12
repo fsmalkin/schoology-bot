@@ -56,6 +56,14 @@ with the same installed-Chrome settings as CI. The initial local run's11 browser
 launch failures are retained; it used an absent bundled browser. No new install
 or live provider test was needed for the source checks.
 
+The default request window is now 30 seconds, matching the separately admitted
+settings used for one verified production report. An offline check of the actual
+transport factory confirmed that bound, redirect refusal and the 64 KiB
+response limit without credential or network access. All 77 existing operator
+and formatter cases passed, including timeout, no-retry and audience controls. The earlier
+report receipt is point-in-time delivery evidence; it does not establish phone
+acceptance, recurring operation or recovery of original saved history.
+
 These tests use synthetic credentials and provider responses. They do not prove
 the production credential adapter, current account/recipient, actual Telegram
 delivery, phone acceptance or restored original runtime. Those require their

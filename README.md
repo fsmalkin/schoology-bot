@@ -84,8 +84,9 @@ retain their previous format.
 
 Each authorized invocation uses one isolated HTTP client for its metadata and
 single send, with fresh request bodies and responses. It disposes the client
-at the end. The 12-second request timeout, redirect refusal and response size
-limit are unchanged; there are no automatic retries.
+at the end. Each request has a 30-second timeout, matching the bounded settings
+used for the verified current report. Redirect refusal and the response size
+limit remain in place; there are no automatic retries.
 
 Failure receipts identify the current request, whether its helper returned a result,
 the last completed metadata count, failed stage and exception type names.

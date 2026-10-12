@@ -1,5 +1,25 @@
 # Codex Execution Plans (ExecPlans)
 
+## Publish the qualified request window (October 12, 2026)
+
+One actual current report reached the approved existing Telegram group. Its
+complete returned text matched the reviewed report. A separately bounded
+30-second request window succeeded after the published 12-second window had
+timed out before any send. The report receipt and all earlier claims are
+retained in [aleph#453](https://github.com/fsmalkin/aleph/issues/453#issuecomment-6128859119).
+
+Publish that single timeout change in the normal operator. Keep one isolated
+client per invocation, fresh request/response disposal, exact audience,
+freshness and duplicate guards, and no automatic retry. Source rollback is a
+scoped revert. No new report, credential use or provider call is needed.
+
+Validation passed: the actual transport factory uses a 30-second bound with
+redirect refusal and a 64 KiB response limit; it made no credential or network
+request. The existing 67 sender and 10 formatter cases passed. Required
+exact-head source/main CI and scoped integration are next. The only
+current Fred action is the saved FOCUS phone-readability check. Original saved
+history, backend and runtime remain open; automatic reminders stay off.
+
 ## Operator request timeout correction (October 12, 2026)
 
 The confirmed current account and group are ready. Two real report invocations
