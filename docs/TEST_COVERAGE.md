@@ -18,6 +18,29 @@ authentication, reader coverage, credential/bot/chat identity, phone delivery
 or restoration of original saved history. `complete` is supplied by the reader
 and must be independently grounded in the live view.
 
+## One-time current report delivery
+
+`tests/current_telegram_delivery.test.js` executes the actual PowerShell operator
+preparation and imports the actual sender functions for provider-free tests.
+Its adapters replace only credential/provider access and the expiry-test clock.
+The existing Node formatter still runs as a child process on real synthetic
+input files. PowerShell 7 is required rather than silently skipping the lane.
+
+Controls cover exact bot and private-recipient binding, refusal of the sender
+as recipient, reviewed payload hash, stale/oversized input, original ISO offset
+preservation, expiry during metadata verification, missing credentials, rate
+limit metadata, durable before-send reservation, an ambiguous existing receipt,
+same-operation and same-payload duplicate suppression, HTTP refusal, timeout,
+wrong returned text/chat, and no secret/report/error output. A complete mocked
+workflow validates the actual receipt written before the one send attempt.
+The operator has no default send and no token argument or export lifecycle.
+
+These tests use synthetic credentials and provider responses. They do not prove
+the production credential adapter, current account/recipient, actual Telegram
+delivery, phone acceptance or restored original runtime. Those require their
+separately authorized live evidence. Full backend/reminder acceptance remains
+open, and these tests do not activate it.
+
 ## Coverage summary
 
 Unit tests

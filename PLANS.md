@@ -423,3 +423,39 @@ Notes:
 - 2026-03-08: Decision - collapse secondary home sections, convert `All Schoolwork` from a board to one grouped list, and keep only one editable drawer section open at a time to reduce visual noise.
 - 2026-03-20: Decision - keep `/beta` on the existing dashboard API contract and add a dedicated beta test layer rather than splitting backend behavior.
 - 2026-03-20: Decision - prioritize beta stabilization around client-state safety: stale request guards, draft preservation, and focus return before broader polish.
+
+## October 12, 2026: one approved current report to the existing Telegram chat
+
+Full outcome: restore the owner-resumed Schoology backend/runtime and useful
+school/phone consumer, preserving original data and all actual holds. The
+current-only reporting baseline permits omitting old annotations/history for
+the requested report; automatic reminders remain off.
+
+Current admission: `schoology-current-report-once-delivery-source-20261012-v1`,
+ALEPH-383 / aleph#453 comment6119318015. The sole existing root writer owns the
+isolated `schoology-browser-selection-20261009` checkout. Previous admission,
+source releases and every old credential/provider count are preserved.
+
+Selected prerequisite: an optional exact-once operator sender. The existing
+sender retries any failure with alternate formatting and truncates summaries;
+the ordinary runtime starts scheduler tasks and uses old config/state. Prepare
+the pure fresh snapshot, bind the whole plaintext payload, expected bot and
+private recipient, reserve durable operation/payload claims, then permit one
+send with no fallback. Keep credentials inside the native process and return
+only metadata. A send timeout or uncertain receipt requires readback, not a
+replay. Input age is checked again after account metadata and before sending.
+
+Milestones:
+- Sender and synthetic operator/provider workflow implemented.
+- Actual affected tests and negative controls pass:26 sender cases and10
+  existing formatter cases. The full Windows suite passes273/279 with6 expected
+  platform/live skips, including the Linux namespace control.
+- Required source checks, exact-head CI, PR review/merge and main readback next.
+- Real Telegram account/recipient and report delivery remain pending FOCUS33;
+  this source admission allows zero live credential/provider/send effects.
+- Full original saved state, broader backend/conversation and phone acceptance
+  remain unaccepted; source/fixtures do not close the full goal.
+
+Rollback is a scoped source revert. Preserve originals, native token, old
+receipts, scheduler/poller state and all unrelated source. No new paid API,
+credential store, account, worker or schedule is introduced by this slice.
