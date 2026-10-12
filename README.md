@@ -35,6 +35,38 @@ Current reader, existing Telegram bot/chat qualification and actual phone
 delivery remain separate from source/CLI validation. The commands below describe
 the full runtime; they are not activation instructions for this recovery slice.
 
+## One-time current report delivery
+
+The optional operator script requires PowerShell 7.2 or later. Prepare the
+explicit current snapshot without reading a credential or contacting Telegram:
+
+```powershell
+pwsh -NoProfile -File scripts/send_current_schoology_report.ps1 -SnapshotPath <current-snapshot.json> -Prepare
+```
+
+Preparation returns only the report hash, character count and original ISO
+observation timestamp. Preview the report with `summary:current` above. The
+hash binds the entire plaintext report after removing its terminal CR/LF;
+reports exceeding Telegram's one-message limit are refused, not shortened.
+
+`-Send` is a separate, explicitly authorized operator effect. It requires the
+stable operation ID, verified private recipient ID, expected bot ID/username,
+expected Windows SID, reviewed report hash and existing receipt directory.
+Confirm the actual owner account and destination and record the bounded live
+tuple in the canonical issue first. These caller claims do not grant consent
+or discover the recipient. The recipient must differ from the bot's own ID.
+
+The script reads only the existing prod bot credential through the native
+Windows library, verifies `getMe` and `getChat`, and reserves the one send on
+disk before calling `sendMessage`. Both operation and payload claims survive
+process exit. Any existing, interrupted, refused or ambiguous receipt stops
+automatic replay; use authoritative readback to resolve it. Do not delete a
+receipt or change operation names to retry. Output and receipts contain only
+metadata, never the credential, report text or raw provider error. The snapshot
+must still be fresh immediately before the send. API acceptance leaves actual
+phone readback pending. Automatic reminders and original runtime recovery
+remain outside this command.
+
 ## What it does
 - Scrapes Schoology grades and detects missing or incomplete work.
 - Sends a daily summary via Telegram (SMS or email optional).
