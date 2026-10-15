@@ -12,10 +12,15 @@ errors and incomplete streams without fallback or automatic retry.
 The selected legacy route uses a controlled fake target before its real body
 can execute. Unselected legacy entry, model/Telegram construction, service
 imports/startup, private/original-store reads, writes outside synthetic storage,
-network and process launches are guarded. Negative controls exercise network,
-dotenv, `_FILE` and legacy-entry denials. Before the CLI-to-router correction,
+network and process launches are guarded. Unselected Playwright imports use a
+deny-only browser target so browser platform discovery does not run in the CLI.
+Negative controls exercise network, dotenv, `_FILE`, legacy and browser denials.
+Before the CLI-to-router correction,
 14 of the21 cases failed at the unselected legacy guard; the same21 passed
-afterward. This does not establish live authentication, legacy model behavior,
+afterward. The first Linux CI recorded18 guard failures with two denied private
+reads per subprocess; eager browser initialization was the candidate cause.
+The fixture now blocks that dependency before import and adds a browser control;
+the denied file permissions remain unchanged. This does not establish live authentication, legacy model behavior,
 provider acceptance, a running service or student-data access.
 
 ## Managed Agents stream contract

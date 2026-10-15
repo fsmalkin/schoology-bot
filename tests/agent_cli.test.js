@@ -129,7 +129,7 @@ for (const [name, expected] of [
   assert.equal(r.receipt.results.length, name === "after-tool-error" ? 1 : 0);
 });
 
-for (const [control, kind] of [["network", "network"], ["dotenv", "dotenv-file"], ["file-env", "protected-file"], ["legacy", "legacy-fallback"]]) {
+for (const [control, kind] of [["network", "network"], ["dotenv", "dotenv-file"], ["file-env", "protected-file"], ["legacy", "legacy-fallback"], ["browser", "browser-construction"]]) {
   test(`CLI guard negative control refuses ${control} before an external/local effect`, t => {
     const r = run(t, "guard-control", [control], { control: true });
     assert.equal(r.status, 95, r.stderr);

@@ -8,6 +8,10 @@ const sandbox = process.env.SCHOOLOGY_ROUTER_SANDBOX;
 if (name === "network") await assert.rejects(() => fetch("https://provider-fixture.invalid/denied"), /ROUTER-GUARD-BLOCKED:network/);
 else if (name === "file-env") assert.equal(readEnvValue("ANTHROPIC_API_KEY", "", { ANTHROPIC_API_KEY_FILE: path.join(sandbox, "forbidden/key") }), "");
 else if (name === "dotenv") assert.throws(() => fs.readFileSync(path.join(sandbox, "forbidden/.env")), /ROUTER-GUARD-BLOCKED:dotenv-file/);
+else if (name === "browser") {
+  const { chromium } = await import("playwright");
+  await assert.rejects(() => chromium.launch(), /ROUTER-GUARD-BLOCKED:browser-construction/);
+}
 else if (name === "legacy") {
   const { runAgentMessage } = await import("../../src/agent.js");
   await assert.rejects(() => runAgentMessage({ chatId: "forbidden", text: "ping" }), /ROUTER-GUARD-BLOCKED:legacy-fallback/);

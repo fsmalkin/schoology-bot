@@ -11,6 +11,11 @@ const legacyUrl = asUrl("src/agent.js");
 const toolsUrl = asUrl("src/tool_runner.js");
 
 export async function resolve(specifier, context, nextResolve) {
+  if (specifier === "playwright" || specifier === "playwright-core") {
+    // The CLI list path needs no browser, including eager OS discovery at import.
+    const source = 'const browser = { launch: async () => globalThis.__schoologyRouterGuard.deny("browser-construction") }; export const chromium = browser; export const firefox = browser; export const webkit = browser;';
+    return { url: `data:text/javascript,${encodeURIComponent(source)}`, shortCircuit: true };
+  }
   if (specifier === "openai" || specifier === "node-telegram-bot-api") {
     const kind = specifier === "openai" ? "model-construction" : "telegram-construction";
     const source = `export default class ForbiddenClient { constructor() { globalThis.__schoologyRouterGuard.deny(${JSON.stringify(kind)}); } }`;
