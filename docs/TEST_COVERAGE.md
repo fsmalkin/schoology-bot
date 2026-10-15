@@ -1,5 +1,21 @@
 # Test Coverage and Gaps
 
+## Docker context environment exclusions
+
+`.dockerignore` excludes `.env` and `.env.*`, with exact exceptions for the
+tracked `.env.example` and `.env.beta.example` setup templates. All prior
+rules, including `data/`, remain unchanged; the Dockerfile is unchanged.
+
+A one-time source check used 10 fabricated root environment filenames. It
+covered the four names declared by `Get-DefaultSourceFiles`, four additional
+variant/backup names, and both template exceptions. The old rules missed the
+three declared variants; the new rules matched all 10 expected outcomes.
+The check modeled only literal root names, `.env.*` and exact negation order,
+using the documented [Docker ignore syntax](https://docs.docker.com/build/concepts/context/#dockerignore-files).
+It did not read environment files or run Docker/BuildKit, and does not prove
+full matching-engine behavior, a built image or the presence/absence of any
+real secret file. Required offline repository CI remains separate evidence.
+
 ## CLI configured runtime
 
 `tests/agent_cli.test.js` launches the actual `src/agent_cli.js` subprocess with
