@@ -1,5 +1,23 @@
 # Test Coverage and Gaps
 
+## CLI configured runtime
+
+`tests/agent_cli.test.js` launches the actual `src/agent_cli.js` subprocess with
+minimal environment variables, an empty selected dotenv, fabricated responses,
+synthetic state and in-memory SQLite. It checks both managed selectors, joined
+positional arguments, `local-cli` identity, stdout, usage/error exit1, one exact
+tool-result correlation, refusal bookkeeping, provider limits, transport/JSON
+errors and incomplete streams without fallback or automatic retry.
+
+The selected legacy route uses a controlled fake target before its real body
+can execute. Unselected legacy entry, model/Telegram construction, service
+imports/startup, private/original-store reads, writes outside synthetic storage,
+network and process launches are guarded. Negative controls exercise network,
+dotenv, `_FILE` and legacy-entry denials. Before the CLI-to-router correction,
+14 of the21 cases failed at the unselected legacy guard; the same21 passed
+afterward. This does not establish live authentication, legacy model behavior,
+provider acceptance, a running service or student-data access.
+
 ## Managed Agents stream contract
 
 `tests/managed_agent_client.test.js` exercises fabricated wire bytes through

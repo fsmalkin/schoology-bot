@@ -1,5 +1,15 @@
 # Codex Execution Plans (ExecPlans)
 
+## CLI uses the configured runtime (October 14, 2026)
+
+Actual CLI subprocesses under managed configuration hit the unselected legacy
+guard:14 of21 checks failed before a source change. Replacing only the CLI's
+import/call with existing `runChatMessage` passed the same21 checks, preserving
+positional arguments, local-cli identity, usage, stdout and error exit1. The
+selected legacy target is synthetic; no legacy runtime was invoked. Complete
+scope review, exact-source CI/tracking and reviewed integration with the
+existing holds unchanged. Rollback is a scoped source revert.
+
 ## Managed stream contract repair (October 14, 2026)
 
 The current official SDK wire crosswalk identified four source gaps: missing
