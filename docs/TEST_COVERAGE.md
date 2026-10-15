@@ -1,5 +1,19 @@
 # Test Coverage and Gaps
 
+## Offline Managed Agents rendering
+
+`tests/managed_agent_render.test.js` runs the actual admin CLI for agent and
+environment definitions in dev and prod. Import guards reject dotenv,
+configuration, database and service modules; a preload observes and refuses
+selected secret-file reads and blocks network calls. Separate negative
+controls prove the dotenv and file-read guards are connected. Pre-refactor
+definition hashes establish unchanged JSON output. A synthetic dotenv plus
+mocked transport checks that actual API commands still resolve their selected
+key/base URL/beta header, and a missing key still fails before transport.
+
+These checks do not establish current provider-schema compatibility, an
+installed key, original data access, a deployed agent or a functioning service.
+
 ## Claude-only native credential import
 
 `tests/claude_key_import.test.js` executes the actual PowerShell7 importer

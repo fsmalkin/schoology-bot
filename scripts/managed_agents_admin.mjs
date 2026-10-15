@@ -1,9 +1,6 @@
-import "dotenv/config";
 import fs from "node:fs";
 import { buildManagedAgentDefinition, buildManagedEnvironmentDefinition } from "../src/managed_agent_definitions.js";
 
-const BASE_URL = String(process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com").replace(/\/+$/, "");
-const BETA_HEADER = process.env.CLAUDE_MANAGED_AGENTS_BETA || "managed-agents-2026-04-01";
 const ANTHROPIC_VERSION = "2023-06-01";
 
 function envOrFile(name) {
@@ -20,14 +17,12 @@ function envOrFile(name) {
   }
 }
 
-const API_KEY = envOrFile("ANTHROPIC_API_KEY") || envOrFile("CLAUDE_API_KEY");
-
 function usage() {
   console.error(
     [
       "Usage:",
-      "  node -r dotenv/config scripts/managed_agents_admin.mjs render-agent [dev|prod]",
-      "  node -r dotenv/config scripts/managed_agents_admin.mjs render-environment [dev|prod]",
+      "  node scripts/managed_agents_admin.mjs render-agent [dev|prod]",
+      "  node scripts/managed_agents_admin.mjs render-environment [dev|prod]",
       "  node -r dotenv/config scripts/managed_agents_admin.mjs create-agent [dev|prod]",
       "  node -r dotenv/config scripts/managed_agents_admin.mjs update-agent <agent_id> <version> [dev|prod]",
       "  node -r dotenv/config scripts/managed_agents_admin.mjs retrieve-agent <agent_id>",
@@ -53,13 +48,18 @@ function printJson(value) {
 }
 
 function requireApiKey() {
-  if (!API_KEY) {
+  const apiKey = envOrFile("ANTHROPIC_API_KEY") || envOrFile("CLAUDE_API_KEY");
+  if (!apiKey) {
     throw new Error("ANTHROPIC_API_KEY or CLAUDE_API_KEY is required in the selected env file.");
   }
+  return apiKey;
 }
 
 async function apiRequest(method, path, body = null) {
-  requireApiKey();
+  await import("dotenv/config");
+  const API_KEY = requireApiKey();
+  const BASE_URL = String(process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com").replace(/\/+$/, "");
+  const BETA_HEADER = process.env.CLAUDE_MANAGED_AGENTS_BETA || "managed-agents-2026-04-01";
   const response = await fetch(`${BASE_URL}${path}`, {
     method,
     headers: {

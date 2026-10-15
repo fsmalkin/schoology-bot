@@ -20,6 +20,16 @@ reading and exact existing-bot phone delivery require their own task-bound
 evidence. This optional report is not restoration of the old conversational or
 scheduled runtime, and the service descriptions below do not activate it.
 
+## Offline setup definitions
+
+`scripts/managed_agents_admin.mjs render-agent prod` and `render-environment
+prod` render the existing provider definitions through pure JSON-schema
+modules. Rendering does not load dotenv, key files, configuration, the
+database or service clients. API request commands load their selected dotenv
+configuration and read the key only when making that request. This separates
+offline setup preparation from credential installation, preserved-history
+access and live provider/runtime verification.
+
 ## Services
 - schoology (scheduler)
   - Runs cron jobs for scrape, summary send, and reminders.

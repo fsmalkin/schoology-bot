@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildManagedAgentCustomToolDefinitions } from "../src/managed_agent_tools.js";
-import { TOOL_NAMES } from "../src/tool_runner.js";
+import { TOOL_NAMES } from "../src/tool_definitions.js";
 
 test("managed agent custom tool definitions mirror the Schoology tool surface", () => {
   const tools = buildManagedAgentCustomToolDefinitions({ namespace: "schoology" });
