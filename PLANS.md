@@ -1,5 +1,19 @@
 # Codex Execution Plans (ExecPlans)
 
+## Managed stream contract repair (October 14, 2026)
+
+The current official SDK wire crosswalk identified four source gaps: missing
+JSON discriminators, terminal disposition, stream errors/malformed JSON and
+CR-only framing. On a new branch from accepted main e29a9d8, fabricated
+parser/bridge fixtures reproduced 23 failures before source changes. The first
+repair passed all 50 affected checks; review added terminal and malformed-object
+controls, and all 65 affected/regression checks passed under offline guards.
+Publish only after affected checks, scope review, source CI and the
+existing tracking check. Preserve exact tool result IDs and healthy action
+rounds; add no retry/backoff/resume or runtime feature. Rollback is a scoped
+source revert. Credential transfer, original data and live provider/runtime
+acceptance remain separate; Source24 stays owner-deferred and reminders off.
+
 ## One Claude key through the native secure prompt (October 12, 2026)
 
 The original Aleph Schoology workspace, production environment, agent and

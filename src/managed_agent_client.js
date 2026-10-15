@@ -23,7 +23,7 @@ async function readJsonResponse(response) {
 }
 
 function parseSseBlock(block) {
-  const lines = String(block || "").split(/\r?\n/);
+  const lines = String(block || "").split(/\r\n|\r|\n/);
   const data = [];
   let eventType = "";
   for (const line of lines) {
@@ -34,18 +34,29 @@ function parseSseBlock(block) {
     if (field === "data") data.push(value);
     if (field === "event") eventType = value;
   }
-  if (data.length === 0) return null;
+  // Error bodies can contain private provider details or even invalid JSON.
+  if (eventType === "error") throw new Error("Claude Managed Agents stream error.");
+  const requiresJson = /^(?:agent|session|user|system|span|workflow_run)\./.test(eventType);
+  if (data.length === 0) {
+    if (requiresJson) throw new Error("Claude Managed Agents stream returned invalid JSON.");
+    return null;
+  }
   const raw = data.join("\n");
-  if (raw === "[DONE]") return null;
+  if (raw === "[DONE]" && !requiresJson) return null;
+  let parsed;
   try {
-    const parsed = JSON.parse(raw);
-    if (eventType && parsed && typeof parsed === "object" && !parsed.event) {
-      parsed.event = eventType;
-    }
-    return parsed;
+    parsed = JSON.parse(raw);
   } catch {
+    if (requiresJson) throw new Error("Claude Managed Agents stream returned invalid JSON.");
     return { type: eventType || "message", data: raw };
   }
+  const isObject = parsed && typeof parsed === "object" && !Array.isArray(parsed);
+  if (requiresJson && !isObject) throw new Error("Claude Managed Agents stream returned invalid JSON.");
+  if (eventType && isObject) {
+    if (!Object.hasOwn(parsed, "type")) parsed.type = eventType;
+    if (!parsed.event) parsed.event = eventType;
+  }
+  return parsed;
 }
 
 export async function* parseServerSentEvents(readable) {
@@ -58,7 +69,9 @@ export async function* parseServerSentEvents(readable) {
       const { value, done } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
-      const blocks = buffer.split(/\r?\n\r?\n/);
+      // A CRLF is one newline, including when its bytes arrive separately.
+      // The negative lookahead prevents backtracking into a false blank line.
+      const blocks = buffer.split(/(?:\r\n|\r(?!\n)|\n)(?:\r\n|\r(?!\n)|\n)/);
       buffer = blocks.pop() || "";
       for (const block of blocks) {
         const parsed = parseSseBlock(block);

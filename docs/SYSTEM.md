@@ -48,6 +48,8 @@ access and live provider/runtime verification.
   - Managed session metadata is not a transcript store. It carries only bounded local retry context for the last failed user request so `try again` can survive stream failures and forced session resets.
   - The bridge writes `managed-agent-bridge.heartbeat.json` plus sanitized `managed_agent_events` rows for session lifecycle, tool results, kid-safety blocks, turn completion, and turn errors. Secret-like keys and values are redacted before local event/heartbeat persistence.
   - Implemented entrypoints: `src/agent_runtime.js`, `src/managed_agent_bridge.js`, `src/managed_agent_client.js`.
+  - SSE event names supply a missing JSON discriminator; explicit JSON types and existing event metadata remain intact. LF, CRLF and CR framing support partial UTF-8 chunks. Stream error frames and malformed recognized JSON raise sanitized failures.
+  - A turn completes naturally only on `end_turn`. `refusal` returns safe refusal text and records `turn_refused`/blocked. Budget or retry exhaustion, unknown stop reasons, unconfirmed termination and EOF record errors; none trigger an automatic retry or report a successful `Done.`.
   - Tracking: [#25](https://github.com/fsmalkin/schoology-bot/issues/25), [Managed Agents migration doc](managed-agents/README.md), [FSM Engineering Board](https://github.com/users/fsmalkin/projects/3).
 
 ## Core flows

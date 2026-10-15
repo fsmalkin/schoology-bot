@@ -1,5 +1,29 @@
 # Test Coverage and Gaps
 
+## Managed Agents stream contract
+
+`tests/managed_agent_client.test.js` exercises fabricated wire bytes through
+the actual SSE parser. It covers missing versus explicit JSON discriminators,
+preserved event metadata, comments, trailing frames, multiline JSON and UTF-8
+across every chunk size for LF, CRLF and CR. Error frames and malformed known
+events fail without their raw payload appearing in the error; reader cleanup
+and the existing generic non-JSON fallback are also checked.
+
+`tests/managed_agent_bridge.test.js` distinguishes natural `end_turn`, refusal,
+budget and retry exhaustion, unknown reasons, termination and unconfirmed EOF.
+It verifies completion/error/refusal records and heartbeat states, and no
+automatic retry. A complete in-process wire fixture runs the real client,
+parser, bridge and deterministic tool with an in-memory database: a CR-framed
+custom tool request produces exactly one correlated result, then completes
+only on `end_turn`. Error and malformed frames fail before a later completion.
+Existing tool, safety, session reuse, deduplication and round-limit tests remain.
+
+Local execution uses a minimal environment, an empty selected dotenv file,
+synthetic storage, fake fetch responses and guards against network, original
+data and other dotenv reads. These checks do not establish live authentication,
+provider acceptance, original data recovery, unattended service health or new
+retry/resume behavior.
+
 ## Offline Managed Agents rendering
 
 `tests/managed_agent_render.test.js` runs the actual admin CLI for agent and
