@@ -106,6 +106,24 @@ must still be fresh immediately before the send. API acceptance leaves actual
 phone readback pending. Automatic reminders and original runtime recovery
 remain outside this command.
 
+## Offline Managed Agents setup previews
+
+Render the existing production definitions without credentials or saved state:
+
+```powershell
+node scripts/managed_agents_admin.mjs render-agent prod
+node scripts/managed_agents_admin.mjs render-environment prod
+```
+
+These commands print JSON without loading `.env`, reading API-key files,
+opening the database, importing the agent runtime or contacting a provider.
+Dev previews use `dev` instead of `prod`. API commands still load their selected
+environment and require a key when they make a request. Do not preload
+`dotenv/config` when an offline preview is intended.
+
+The output describes the repository's declared setup. It does not verify the
+current provider schema, installed resources, credentials or running service.
+
 ## What it does
 - Scrapes Schoology grades and detects missing or incomplete work.
 - Sends a daily summary via Telegram (SMS or email optional).

@@ -1,5 +1,4 @@
-import { toolDefinitions } from "./agent.js";
-import { TOOL_NAMES } from "./tool_runner.js";
+import { toolDefinitions, TOOL_NAMES } from "./tool_definitions.js";
 
 function normalizeNamespace(namespace) {
   const raw = String(namespace || "").trim();

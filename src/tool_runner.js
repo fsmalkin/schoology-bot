@@ -1,3 +1,5 @@
+import { TOOL_NAMES } from "./tool_definitions.js";
+export { TOOL_NAMES } from "./tool_definitions.js";
 import { getConfig } from "./config.js";
 import {
   addAssignmentNote,
@@ -36,29 +38,6 @@ import {
 } from "./time.js";
 import { applyReminderAssumptions } from "./reminder_assumptions.js";
 import { addLocalReminderFields, addLocalReminderFieldsToList } from "./reminder_view.js";
-
-export const TOOL_NAMES = [
-  "list_assignments",
-  "update_assignment_status",
-  "bulk_update_assignment_statuses",
-  "bulk_update_assignments_by_filter",
-  "apply_numbered_statuses",
-  "add_assignment_note",
-  "schedule_reminder",
-  "list_assignment_reminders",
-  "update_assignment_reminder",
-  "delete_assignment_reminder",
-  "refresh_schoology",
-  "build_daily_summary",
-  "drain_due_reminders",
-  "create_task",
-  "list_tasks",
-  "update_task_status",
-  "update_task",
-  "delete_task",
-  "open_bug_report",
-  "open_feature_request",
-];
 
 export function applyManualStatusPolicy(rows) {
   const cleared = [];

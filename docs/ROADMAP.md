@@ -4,6 +4,7 @@
 Run a reliable Schoology assistant on the local server that refreshes assignments, keeps actionable status clean, and delivers clear daily/reminder updates via Telegram while preserving the deterministic Schoology workflow through the Claude Managed Agents migration.
 
 ## Current Decisions
+- October 14, 2026 setup continuation: existing agent/environment definition previews run offline without dotenv, key files, database or service imports. Their JSON is unchanged. Current provider-contract compatibility and live resource/runtime acceptance remain separate setup work; the key and original-history boundaries remain independent.
 - October 11, 2026 recovery override: Fred approved "Use current data" for one requested current-only report. Preserve original files; saved exceptions, notes and reminder history may be omitted with an explicit report label. Keep automatic reminders off. The optional `summary:current` command does not load the old database, invoke an AI service or activate a scheduler. Current reader and existing-bot phone acceptance remain unverified until live evidence; the older full-runtime schedules below are not instructions to restart them during recovery.
 - Login uses Mayari username and password directly.
 - MFA is not expected.
