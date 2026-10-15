@@ -190,7 +190,7 @@ You can run this on a schedule via Windows Task Scheduler if desired.
 - `npm run send` sends the latest summary.
 - `npm run run-once` scrapes and sends immediately.
 - `npm run agent:telegram` starts the Telegram agent (chat).
-- `npm run agent:cli -- "What is missing today?"` runs a local chat query.
+- `npm run agent:cli -- "What is missing today?"` runs a local chat query through the configured runtime, using the same selector as Telegram and the story runner. Positional arguments form the message; no runtime flag or stdin mode is provided.
 - `npm run dashboard` starts the local dashboard.
 
 ## Dashboard (Bookmark This)

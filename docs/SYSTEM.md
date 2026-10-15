@@ -70,6 +70,7 @@ access and live provider/runtime verification.
    - Assignment-linked reminders with `auto_cancel_on_resolve=1` are auto-completed when the assignment resolves, is auto-ignored, or is submitted-awaiting-grade.
 4) Agent chat
    - `telegram-agent` calls `runChatMessage`, which selects legacy OpenAI Responses or Claude Managed Agents from config.
+   - `agent:cli` uses the same `runChatMessage` selector with chat ID `local-cli`. It joins positional arguments into the message, prints a returned reply to stdout, and retains usage/error exit1. A refusal reply remains blocked in bridge bookkeeping; it is printed like other handled replies. The CLI has no separate runtime flag or stdin mode.
    - Kid-safe guardrails block unsafe/adult/graphic/dangerous requests before agent calls and replace unsafe final text before Telegram delivery.
    - Capability gate checks for unsupported requests and proposes nearest supported fallback.
    - Planner selects tools, executes, then composes final message.

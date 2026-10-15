@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { runAgentMessage } from "./agent.js";
+import { runChatMessage } from "./agent_runtime.js";
 
 const text = process.argv.slice(2).join(" ").trim();
 if (!text) {
@@ -8,7 +8,7 @@ if (!text) {
 }
 
 try {
-  const reply = await runAgentMessage({ chatId: "local-cli", text });
+  const reply = await runChatMessage({ chatId: "local-cli", text });
   console.log(reply);
 } catch (err) {
   console.error(err?.message || err);
