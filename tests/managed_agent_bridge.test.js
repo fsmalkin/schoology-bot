@@ -15,6 +15,8 @@ import {
 import { readServiceHeartbeat } from "../src/health.js";
 import { MANAGED_AGENT_DEFINITION_REVISION } from "../src/managed_agent_definitions.js";
 import { runManagedAgentMessage } from "../src/managed_agent_bridge.js";
+import { ManagedAgentClient } from "../src/managed_agent_client.js";
+import { streamBytes, sseEvent } from "./helpers/managed_stream_fixture.js";
 
 function makeConfig() {
   return {
@@ -66,6 +68,154 @@ function makeMockClient({ sessionId = "sesn_test", streams = [], streamErrors = 
       }
     },
   };
+}
+
+function isolatedTurn(t) {
+  const parent = fs.realpathSync(os.tmpdir());
+  const dir = fs.mkdtempSync(path.join(parent, "schoology-stream-turn-"));
+  const db = createDb();
+  const config = makeConfig();
+  config.paths = { dataDir: dir, statePath: path.join(dir, "missing-state.json") };
+  t.after(() => {
+    db.close();
+    const resolved = fs.realpathSync(dir);
+    assert.equal(path.dirname(resolved), parent);
+    assert.ok(path.basename(resolved).startsWith("schoology-stream-turn-"));
+    fs.rmSync(resolved, { recursive: true, force: true });
+  });
+  return { db, config };
+}
+
+const failureCases = [
+  ["budget_reached", [{ type: "session.status_idle", stop_reason: { type: "budget_reached" } }], /budget_reached/],
+  ["retries_exhausted", [{ type: "session.status_idle", stop_reason: { type: "retries_exhausted" } }], /retries_exhausted/],
+  ["unknown idle reason", [{ type: "session.status_idle", stop_reason: { type: "private_fixture_marker" } }], /unrecognized stop reason/i],
+  ["missing idle reason", [{ type: "session.status_idle" }], /unrecognized stop reason/i],
+  ["termination", [{ type: "session.status_terminated" }], /terminated.*confirmed/i],
+  ["termination after partial text", [{ type: "agent.message", content: [{ type: "text", text: "Partial answer." }] }, { type: "session.status_terminated" }], /terminated.*confirmed/i],
+  ["empty EOF", [], /ended.*confirmed/i],
+  ["partial reply EOF", [{ type: "agent.message", content: [{ type: "text", text: "Partial answer." }] }], /ended.*confirmed/i],
+];
+for (const [name, events, expected] of failureCases) {
+  test(`managed bridge never completes on ${name} or starts an automatic retry`, async t => {
+    const { db, config } = isolatedTurn(t);
+    const client = makeMockClient({ streams: [events] });
+    await assert.rejects(() => runManagedAgentMessage({
+      chatId: "terminal-fixture", text: "ping", dbOverride: db, configOverride: config, clientOverride: client,
+    }), error => {
+      assert.match(error.message, expected);
+      assert.doesNotMatch(error.message, /private_fixture_marker/);
+      return true;
+    });
+    const log = listManagedAgentEvents(db, { environment: "schoology-dev", limit: 10 });
+    assert.equal(log.some(event => event.eventType === "turn_completed"), false);
+    assert.equal(log[0].eventType, "turn_error");
+    const heartbeat = readServiceHeartbeat(config, "managed-agent-bridge");
+    assert.equal(heartbeat.status, "error");
+    assert.equal(heartbeat.lastEventType, "turn_error");
+    assert.equal(client.calls.createSession.length, 1);
+    assert.equal(client.calls.sendEvents.length, 1);
+    assert.equal(client.calls.streamEvents.length, 1);
+  });
+}
+
+for (const refusalText of ["I cannot help with that request.", ""]) {
+  test(`managed bridge records refusal as blocked with ${refusalText ? "provider" : "fallback"} text`, async t => {
+    const { db, config } = isolatedTurn(t);
+    const client = makeMockClient({ streams: [[
+      { type: "agent.message", content: [{ type: "text", text: refusalText }] },
+      { type: "session.status_idle", stop_reason: { type: "refusal" } },
+    ]] });
+    const reply = await runManagedAgentMessage({
+      chatId: "refusal-fixture", text: "ping", dbOverride: db, configOverride: config, clientOverride: client,
+    });
+    assert.equal(reply, refusalText || "Claude declined this request.");
+    const log = listManagedAgentEvents(db, { environment: "schoology-dev", limit: 10 });
+    assert.equal(log.some(event => event.eventType === "turn_completed"), false);
+    assert.equal(log[0].eventType, "turn_refused");
+    assert.equal(log[0].status, "blocked");
+    const heartbeat = readServiceHeartbeat(config, "managed-agent-bridge");
+    assert.equal(heartbeat.lastEventType, "turn_refused");
+    assert.equal(heartbeat.status, "blocked");
+    assert.equal(client.calls.sendEvents.length, 1);
+    assert.equal(client.calls.streamEvents.length, 1);
+  });
+}
+
+test("natural end_turn keeps empty-reply completion even if session termination follows", async t => {
+  const { db, config } = isolatedTurn(t);
+  const client = makeMockClient({ streams: [[
+    { type: "session.status_idle", stop_reason: { type: "end_turn" } },
+    { type: "session.status_terminated" },
+  ]] });
+  const reply = await runManagedAgentMessage({
+    chatId: "complete-fixture", text: "ping", dbOverride: db, configOverride: config, clientOverride: client,
+  });
+  assert.equal(reply, "Done.");
+  const log = listManagedAgentEvents(db, { environment: "schoology-dev", limit: 10 });
+  assert.equal(log[0].eventType, "turn_completed");
+  assert.equal(log[0].status, "ok");
+  assert.equal(client.calls.streamEvents.length, 1);
+});
+
+function wireClient(config, streams) {
+  const calls = [];
+  return { calls, client: new ManagedAgentClient(config.managedAgents, {
+    fetchImpl: async (url, options) => {
+      calls.push({ url, method: options.method, body: options.body ? JSON.parse(options.body) : null });
+      if (url.endsWith("/events/stream")) {
+        assert.ok(streams.length, "unexpected extra stream");
+        return new Response(streamBytes(streams.shift()), { headers: { "content-type": "text/event-stream" } });
+      }
+      return new Response(JSON.stringify(url.endsWith("/v1/sessions") ? { id: "sesn_wire_fixture" } : { ok: true }));
+    },
+  }) };
+}
+
+test("actual client and bridge route header-discriminated CR frames through a tool result to natural completion", async t => {
+  const { db, config } = isolatedTurn(t);
+  const wire = wireClient(config, [
+    sseEvent("agent.custom_tool_use", { id: "tool_fixture", name: "list_assignments", input: { status: "missing" } }, "\r") +
+      sseEvent("session.status_idle", { stop_reason: { type: "requires_action", event_ids: ["tool_fixture"] } }, "\r"),
+    sseEvent("agent.message", { content: [{ type: "text", text: "No assignments in the fixture." }] }, "\r") +
+      sseEvent("session.status_idle", { stop_reason: { type: "end_turn" } }, "\r"),
+  ]);
+  const result = await runManagedAgentMessage({
+    chatId: "wire-fixture", text: "list missing", dbOverride: db, configOverride: config, clientOverride: wire.client, debug: true,
+  });
+  assert.equal(result.reply, "No assignments in the fixture.");
+  assert.equal(result.executedTools.length, 1);
+  assert.equal(result.streamPasses, 2);
+  const results = wire.calls.filter(call => call.body?.events?.[0]?.type === "user.custom_tool_result");
+  assert.equal(results.length, 1);
+  assert.equal(results[0].body.events[0].custom_tool_use_id, "tool_fixture");
+  assert.equal(JSON.parse(results[0].body.events[0].content[0].text).ok, true);
+  const log = listManagedAgentEvents(db, { environment: "schoology-dev", limit: 10 });
+  assert.equal(log[0].eventType, "turn_completed");
+  assert.equal(log[0].status, "ok");
+});
+
+for (const [name, badFrame] of [
+  ["error", 'event: error\ndata: {"error":{"message":"private_fixture_marker"}}\n\n'],
+  ["malformed JSON", "event: agent.message\ndata: {private_fixture_marker\n\n"],
+]) {
+  test(`actual client and bridge reject ${name} before a later success frame`, async t => {
+    const { db, config } = isolatedTurn(t);
+    const wire = wireClient(config, [badFrame + sseEvent("session.status_idle", { stop_reason: { type: "end_turn" } })]);
+    await assert.rejects(() => runManagedAgentMessage({
+      chatId: "wire-error-fixture", text: "ping", dbOverride: db, configOverride: config, clientOverride: wire.client,
+    }), error => {
+      assert.match(error.message, /stream error|invalid JSON/i);
+      assert.doesNotMatch(error.message, /private_fixture_marker/);
+      return true;
+    });
+    const log = listManagedAgentEvents(db, { environment: "schoology-dev", limit: 10 });
+    assert.equal(log[0].eventType, "turn_error");
+    assert.equal(log.some(event => event.eventType === "turn_completed"), false);
+    assert.doesNotMatch(JSON.stringify({ log, heartbeat: readServiceHeartbeat(config, "managed-agent-bridge") }), /private_fixture_marker/);
+    assert.equal(wire.calls.filter(call => call.url.endsWith("/events/stream")).length, 1);
+    assert.equal(wire.calls.filter(call => call.method === "POST").length, 2);
+  });
 }
 
 test("managed agent bridge creates a session, sends Telegram text, and returns agent message", async () => {

@@ -549,6 +549,7 @@ export async function runManagedAgentMessage({
     ]);
 
     let finished = false;
+    let terminalReason = "";
     const maxToolRounds = Number(config.managedAgents.maxToolRounds || 8);
     const timeoutMs = Number(config.managedAgents.streamTimeoutMs || 120000);
     const toolResultMaxChars = Number(config.managedAgents.toolResultMaxChars || 20000);
@@ -576,6 +577,10 @@ export async function runManagedAgentMessage({
 
           if (String(event?.type || "") === "session.error") {
             throw new Error(event?.error?.message || event?.message || "Claude Managed Agents session error.");
+          }
+
+          if (String(event?.type || "") === "session.status_terminated") {
+            throw new Error("Claude Managed Agents session terminated without confirmed turn completion.");
           }
 
           if (String(event?.type || "") === "session.status_idle") {
@@ -656,8 +661,15 @@ export async function runManagedAgentMessage({
               }
               continue;
             }
-            finished = true;
-            break;
+            if (reasonType === "end_turn" || reasonType === "refusal") {
+              terminalReason = reasonType;
+              finished = true;
+              break;
+            }
+            if (reasonType === "budget_reached" || reasonType === "retries_exhausted") {
+              throw new Error(`Claude Managed Agents stopped before completion (${reasonType}).`);
+            }
+            throw new Error("Claude Managed Agents returned an unrecognized stop reason.");
           }
         }
       } catch (err) {
@@ -668,14 +680,18 @@ export async function runManagedAgentMessage({
       } finally {
         clearTimeout(timer);
       }
-      if (!sentActions) break;
+      if (!finished && !sentActions) {
+        throw new Error("Claude Managed Agents stream ended without confirmed turn completion.");
+      }
     }
 
     if (!finished && streamPasses >= Math.max(1, maxToolRounds)) {
       throw new Error("Claude Managed Agents exceeded the local tool round limit.");
     }
 
-    let reply = normalizeAscii(sanitizeRepeatedText(replyParts.join("\n").trim())) || "Done.";
+    const refused = terminalReason === "refusal";
+    let reply = normalizeAscii(sanitizeRepeatedText(replyParts.join("\n").trim())) ||
+      (refused ? "Claude declined this request." : "Done.");
     recordDisplayedAssignmentListContext(db, {
       chatId,
       executed: executedTools.map((entry) => ({
@@ -722,13 +738,15 @@ export async function runManagedAgentMessage({
         lastFailedSessionId: null,
       },
     });
+    const turnEventType = refused ? "turn_refused" : "turn_completed";
     safeRecordManagedEvent(db, {
       chatId,
       config,
       sessionId,
-      eventType: "turn_completed",
-      status: safety ? "blocked" : "ok",
-      summary: safety ? "Managed turn completed with kid-safe output replacement." : "Managed turn completed.",
+      eventType: turnEventType,
+      status: safety || refused ? "blocked" : "ok",
+      summary: refused ? "Managed turn refused." :
+        safety ? "Managed turn completed with kid-safe output replacement." : "Managed turn completed.",
       metadata: {
         streamPasses,
         executedToolCount: executedTools.length,
@@ -739,9 +757,9 @@ export async function runManagedAgentMessage({
       createdAt: completedAt,
     });
     safeWriteBridgeHeartbeat(config, {
-      status: safety ? "blocked" : "running",
+      status: safety || refused ? "blocked" : "running",
       sessionId,
-      lastEventType: "turn_completed",
+      lastEventType: turnEventType,
       streamPasses,
       executedToolCount: executedTools.length,
       durationMs: Date.now() - startedMs,
