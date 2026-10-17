@@ -1,5 +1,9 @@
 # Schoology current-term adapter source
 
+The parent outcome remains a usable assignment conversation on the agreed
+consumer surface. A manual summary, this source package or the independent
+weekly calendar is not completion of that outcome.
+
 This private whole-checkout source package contains one read-only tool,
 `get_current_term_summary`, and a stateless Web API MCP handler. Its `adapter.js` imports the accepted pure
 `src/current_summary.js` from this checkout. Keep the whole checkout available;
@@ -122,7 +126,48 @@ request deadlines and per-principal rate limiting. Sites manages connection
 sign-in; the approved Schoology connection and per-user record permissions
 remain separate, as described in the official
 [Sites connection guidance](https://learn.chatgpt.com/docs/extend/mcp#2-connect-your-system).
-No OAuth/app/host configuration or reader implementation is supplied here.
+No OAuth/app/host configuration or live observer binding is supplied here.
+
+## Trusted current-gradebook reader
+
+The package subpath ./gradebook-reader exports
+createCurrentTermGradebookReader. It joins a host-owned document observer to
+the existing request-owned MCP grant. The observer receives the fixed
+projectCurrentGradebook function and an immutable scope containing the
+authenticated principalId, approved studentId, actual currentTermId
+and currentTermLabel. These values come from the trusted host; none are
+model arguments. Construct the reader inside each authorized request and
+return it as that grant's readCurrentTermSnapshot.
+
+The observer must execute the fixed projector in its sanctioned read-only
+document context and supply document, observed origin/pathname, the
+actual source observedAt, and the supplied scope as expectedScope.
+This constructor creates no browser connection, remote-access permission,
+session, login, navigation, source refresh or background worker. An opaque
+function or matching metadata does not independently prove source access.
+The existing host authorization and actual observer admission remain required.
+
+The projector accepts only the official Grades view, an unambiguous own-account
+Your Profile menu item and the expected original profile. Each course needs
+one expanded current period matching both the host-qualified ID and label.
+Assignment ancestry must terminate in an actual period through unique row IDs.
+Other periods are excluded; orphan/cyclic/duplicate bindings refuse the input.
+Only title-column title/due/link and official exception/submission markers are
+read. Numeric grades, comments and full row text are never inputs.
+
+Layout evidence, hidden current rows, loading and pagination determine honest
+complete/partial coverage. Missing layout support yields partial coverage,
+not invented completeness. Source observation time is preserved; the existing
+adapter checks its age after the observer returns. The browser-side function
+uses plain ECMAScript for its conservative size bound and does not need
+TextEncoder or a Node API. The Web MCP host still supplies its standard Web
+APIs separately.
+
+npm run test:current-gradebook exercises the actual new reader through MCP
+initialize/list/call and a later changed-source call. Fabricated DOM fixtures
+also cover subject/period mismatches, row ancestry, stale observations,
+submitted precedence, private-field refusal and interleaved callers. They do
+not prove a live browser bridge, hosted endpoint, intended account or phone.
 
 ## DOM projection source seam
 

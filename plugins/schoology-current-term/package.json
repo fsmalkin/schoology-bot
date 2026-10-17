@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./adapter.js",
-    "./mcp": "./mcp_handler.js"
+    "./mcp": "./mcp_handler.js",
+    "./gradebook-reader": "./gradebook_reader.js"
   }
 }

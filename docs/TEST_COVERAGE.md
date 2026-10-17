@@ -1,5 +1,28 @@
 # Test Coverage and Gaps
 
+## Current-gradebook reader joined to MCP
+
+tests/current_gradebook_reader.test.js adds 34 passing cases for the actual
+self-contained projector and request-owned observer reader. A new-source
+MCP initialize/list/call/follow-up sequence reflects changed fabricated
+source state, and interleaved subjects remain separate. Negative cases cover
+missing/wrong/ambiguous account menus, current period ID/label, duplicate,
+orphan and cyclic ancestry, invalid fields, stale observations and source
+exceptions. Submitted markers override stale missing markers. Grade-column,
+numeric-score and comment text getters throw if accessed.
+
+The actual serialized function runs without TextEncoder, process, fetch or
+require. New source/reader imports pass under the existing no-I/O guard.
+Observation time is not regenerated; a slow reader can become stale before
+the adapter responds. Hidden rows/reports, loading, pagination or unavailable
+layout evidence retain an explicit partial-coverage result.
+
+The tree/selector/layout double is limited and is not browser/CSS conformance
+or evidence of live source authorization, a native observer bridge, OAuth,
+host deployment, target-account/phone availability or an ongoing chatbot.
+The earlier accepted handler/adapter/DOM checks remain scoped to their
+unchanged source; no spent Builder bundle/VM trial was repeated.
+
 ## DOM projection separation and assignment field minimization
 
 `npm run test:schoology-dom` passes14 cases for the factored pure DOM callback

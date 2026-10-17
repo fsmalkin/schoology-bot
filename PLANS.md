@@ -1,5 +1,38 @@
 # Codex Execution Plans (ExecPlans)
 
+## Usable conversational Schoology parent (October 17, 2026)
+
+Goal: restore the agreed current-semester conversational consumer workflow.
+The completed login/manual report and separate Sunday calendar are useful
+components; the parent still needs a usable conversation and follow-up on
+its intended surface, with honest source age and caller/student binding.
+
+Implemented next integration: a self-contained minimal current-Gradebook
+projector plus a request-owned reader for the existing MCP handler. It checks
+the source account menu, actual current period and row ancestry, preserves
+observation time, and returns six fields without grade/comment access.
+The trusted observer is injected by the authorized host; no source grant,
+browser connection or public endpoint is invented by this module.
+
+Evidence: 34 new fabricated-source checks passed, including an actual
+initialize/list/call/follow-up sequence, interleaved callers, stale-source
+refusal and serialization without TextEncoder or I/O. The DOM double is
+limited; this is not live account/host/phone or unattended acceptance.
+
+Account metadata observation completed once: the available Chrome session
+belongs to the operator's Pro account; the intended student's ChatGPT
+account/session is not established. The temporary probe was closed without
+switching accounts, reading conversations or sending student data.
+
+Next owned action: resolve the intended account/session reference through
+the existing chase and exact owner-action queue, qualify its supported
+connection surface, then bind an admitted observer and host. The original
+Windows service separately retains its actual launch/terms/key boundaries.
+Execute available integration work rather than waiting for the independent
+weekly calendar. Preserve original target-user/interface direction and every
+actual private-data, runtime, provider, account, release and spend boundary.
+Rollback is a scoped source revert; no old data, report, login or send is replayed.
+
 ## CLI uses the configured runtime (October 14, 2026)
 
 Actual CLI subprocesses under managed configuration hit the unselected legacy
