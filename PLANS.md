@@ -1,5 +1,77 @@
 # Codex Execution Plans (ExecPlans)
 
+## Usable conversational Schoology parent (October 17, 2026)
+
+Source publication continues independently through the existing PR54. Its
+initial two-document head is retained as history; the same PR now receives the
+connected implementation and corrected repository overlay. Planning alignment
+is part of that coherent source/docs review, not a required preliminary merge.
+The correction updates the obsolete global reference, removes retired
+docs-hub/default-restart instructions and preserves actual effect-specific
+runtime, test and rollback constraints. It changes no account or source grant.
+
+Goal: restore the agreed current-semester conversational consumer workflow.
+The completed login/manual report and separate Sunday calendar are useful
+components; the parent still needs a usable conversation and follow-up on
+its intended surface, with honest source age and caller/student binding.
+
+Implemented next integration: a self-contained minimal current-Gradebook
+projector plus a request-owned reader for the existing MCP handler. It checks
+the source account menu, actual current period and row ancestry, preserves
+observation time, and returns six fields without grade/comment access.
+The trusted observer is injected by the authorized host; no source grant,
+browser connection or public endpoint is invented by this module.
+
+Evidence: 34 new fabricated-source checks passed, including an actual
+initialize/list/call/follow-up sequence, interleaved callers, stale-source
+refusal and serialization without TextEncoder or I/O. The DOM double is
+limited; this is not live account/host/phone or unattended acceptance.
+
+Account metadata observation completed once: the available Chrome session
+belongs to the operator's Pro account; the intended student's ChatGPT
+account/session is not established. The temporary probe was closed without
+switching accounts, reading conversations or sending student data.
+
+Independent host/source follow-through completed without waiting for that
+reference. The original Schoology account's official API page explicitly
+refuses permission to generate an API key. No key value, token, student record
+or grant was read or created. Native plugin discovery found no Schoology
+result; connected-service discovery returned unrelated Canvas tools, which
+were rejected. Those bounded catalog results are not exhaustive.
+
+The connected source at c3d6f2f passed a new offline Web API module-context
+qualification: nine production modules plus 198 actual chrono-node ESM
+modules, six MCP requests, two fabricated document observations and a changed
+follow-up result. Missing identity and forged identity headers both returned
+401. The first harness stopped at its incomplete import list; the corrected
+harness used the actual dependency files. This is not a Sites build, live
+Worker, approved source bridge, deployment or consumer acceptance.
+
+Architect's same-chase answer is consumed. Hosted Sites calls require each
+visitor's connection/consent, request-scoped connector bindings, an allowed
+eligibility result and an actual native action schema. The required eligibility
+discovery is not exposed here. The owning-agent local-preview relay is excluded
+from production and cannot be used as a source bridge.
+
+The next concrete native candidate is Local computer access with Work Cloud.
+After the existing account-reference Task is answered, Schoology will inspect
+the intended account's actual Work/local-access availability and an already
+admitted account/computer/source binding using metadata only. Current official
+guidance describes eligible new conversations, an appropriate signed-in
+account/workspace and an online connected computer; its enterprise/rollout
+documentation does not prove personal/Free or Maya eligibility. Ordinary
+cloud browsing cannot use the signed-in PC browser. This is a qualification
+candidate, not an adopted carrier or permission to pair/share a computer,
+switch accounts, create a conversation, install/connect a provider or read
+student records. The source-binding wake remains an actual authorized
+request-bound source capability, not an email or a bundle pass. Schoology
+retains delivery custody. The original Windows service separately retains
+its launch/terms/key boundaries. No new generic permission Task is required.
+Execute available integration work rather than waiting for the independent
+weekly calendar. Preserve original target-user/interface direction and every
+actual private-data, runtime, provider, account, release and spend boundary.
+Rollback is a scoped source revert; no old data, report, login or send is replayed.
+
 ## CLI uses the configured runtime (October 14, 2026)
 
 Actual CLI subprocesses under managed configuration hit the unselected legacy

@@ -1,0 +1,11 @@
+{
+  "name": "schoology-current-term-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./adapter.js",
+    "./mcp": "./mcp_handler.js",
+    "./gradebook-reader": "./gradebook_reader.js"
+  }
+}
