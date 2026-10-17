@@ -1,5 +1,26 @@
 # Test Coverage and Gaps
 
+## Connected source under a Web API module context
+
+A finite offline qualification loaded the actual c3d6f2f source graph into
+Node's experimental SourceTextModule context: nine production modules and
+198 real chrono-node 2.9.0 ESM modules. The production context had standard
+Web request/response APIs and no process, require, Buffer, fetch, document or
+layout globals. Six requests covered initialization/discovery, an actual
+reader call and changed-source follow-up, missing trusted identity and forged
+Sites identity headers. Both identity refusals returned 401. Two fabricated
+documents exercised the serialized projector in a separate minimal DOM
+context; no real browser/provider or source record was read by this check.
+
+The first harness failed before execution because its explicit import list
+omitted existing summary/parser dependencies. The corrected run included
+their actual ESM files and passed. No production patch or stub parser was
+used. Exact graph SHA-256:
+9b6c9fbf57fdc3f11c6f426d06089a72a9b57cb0b776ac1eee4de8dbd4b11b4d.
+This qualifies that source/context combination, not a build/archive, actual
+Cloudflare isolate, Sites identity boundary, source grant, deployment or phone.
+It does not replay Builder's earlier unchanged-adapter bundle qualification.
+
 ## Current-gradebook reader joined to MCP
 
 tests/current_gradebook_reader.test.js adds 34 passing cases for the actual

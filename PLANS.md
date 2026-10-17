@@ -24,10 +24,28 @@ belongs to the operator's Pro account; the intended student's ChatGPT
 account/session is not established. The temporary probe was closed without
 switching accounts, reading conversations or sending student data.
 
-Next owned action: resolve the intended account/session reference through
-the existing chase and exact owner-action queue, qualify its supported
-connection surface, then bind an admitted observer and host. The original
-Windows service separately retains its actual launch/terms/key boundaries.
+Independent host/source follow-through completed without waiting for that
+reference. The original Schoology account's official API page explicitly
+refuses permission to generate an API key. No key value, token, student record
+or grant was read or created. Native plugin discovery found no Schoology
+result; connected-service discovery returned unrelated Canvas tools, which
+were rejected. Those bounded catalog results are not exhaustive.
+
+The connected source at c3d6f2f passed a new offline Web API module-context
+qualification: nine production modules plus 198 actual chrono-node ESM
+modules, six MCP requests, two fabricated document observations and a changed
+follow-up result. Missing identity and forged identity headers both returned
+401. The first harness stopped at its incomplete import list; the corrected
+harness used the actual dependency files. This is not a Sites build, live
+Worker, approved source bridge, deployment or consumer acceptance.
+
+Next owned actions are separate: resolve the intended account reference via
+the same saved FOCUS Task, and coalesce the verified source-permission cause
+into Architect's existing source/host chase. A supported approved API grant
+or documented request-owned browser-observer interface can wake source
+binding; an account reference alone cannot supply it. Schoology retains
+delivery custody. The original Windows service separately retains its actual
+launch/terms/key boundaries. No new generic permission Task is required.
 Execute available integration work rather than waiting for the independent
 weekly calendar. Preserve original target-user/interface direction and every
 actual private-data, runtime, provider, account, release and spend boundary.
