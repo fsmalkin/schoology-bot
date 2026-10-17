@@ -3,5 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": "./adapter.js"
+  "exports": {
+    ".": "./adapter.js",
+    "./mcp": "./mcp_handler.js"
+  }
 }

@@ -1,5 +1,30 @@
 # Test Coverage and Gaps
 
+## Current-term MCP request/response source
+
+`npm run test:chatgpt-mcp` exercises the actual Web API handler and accepted
+summary adapter using fabricated requests and snapshots. It covers the pinned
+MCP2025-11-25 initialization/profile, discovery, ping, tool calls, notification
+acknowledgments, JSON-RPC errors, missing/denied host grants, forged identity
+headers/metadata, invalid arguments, stale/unqualified/error sources, exact
+Origin checks, methods/media types, malformed UTF-8 and JSON, bounded streams,
+stream cleanup and bounded result envelopes. A provider declaring another
+caller, student or period is refused, and principal/boolean-only grants never
+access a provider. Two concurrent synthetic callers
+receive distinct readers; a later denial cannot reuse a previous grant.
+
+The fixtures supply Request, Response, Headers, URL, text encoders/decoders,
+ReadableStream and Uint8Array explicitly. A child imports and calls the actual
+handler under the existing no-I/O/service guard. No listener is opened, and
+no original student data, session, real token or provider is used. All22
+handler tests and17 adapter tests pass together (39/39, zero skipped); the ten unchanged current-summary
+regressions retain their earlier passing evidence.
+
+These tests establish Node request/response behavior, not complete protocol
+certification, observed Schoology subject/period binding, actual Sites identity/OAuth, Worker/browser build compatibility,
+rate limiting, request deadlines, a qualified live reader or phone delivery.
+The separate Builder bundle/VM qualification is not replayed by these checks.
+
 ## Current-term ChatGPT adapter source
 
 `npm run test:chatgpt-adapter` passes 17 fabricated-input tests for the actual

@@ -1,11 +1,11 @@
 # Schoology current-term adapter source
 
-This private Node source package exposes one transport-neutral tool,
-`get_current_term_summary`. Its `adapter.js` imports the accepted pure
+This private whole-checkout source package contains one read-only tool,
+`get_current_term_summary`, and a stateless Web API MCP handler. Its `adapter.js` imports the accepted pure
 `src/current_summary.js` from this checkout. Keep the whole checkout available;
 this directory is not a self-contained distributable ZIP or installable
-ChatGPT plugin. There is no plugin manifest, MCP endpoint, server launcher,
-account binding or deployment in this increment.
+ChatGPT plugin. There is no plugin manifest, published MCP endpoint, server
+launcher, account binding or deployment in this increment.
 
 ## Host integration contract
 
@@ -56,11 +56,87 @@ omissions, separately from source completeness. Text and structured output use
 the same selected items; omitted titles do not leak through the text summary.
 The adapter writes no state.
 
+## MCP request/response handler
+
+`mcp_handler.js` exports `createCurrentTermMcpHandler`. The returned function
+accepts `(request, trustedHostContext)` and returns a standard Web `Response`;
+it opens no listener. The package's `./mcp` export points to this module.
+
+Supply a server-owned `authorizeRequest(trustedHostContext)` callback. It is
+called separately for every supported request, including discovery, and must
+return either no grant or `{ principalId, authorizedScope, readCurrentTermSnapshot }`.
+The server-owned `authorizedScope` contains the exact `studentId` and
+`currentTermId` authorized for that caller. A valid grant needs these bounded,
+nonempty identifiers and a no-argument reader closure already bound to that
+caller, student and current term. A principal ID or qualification booleans
+without this capability are refused before any provider access.
+The handler captures that reader and scope for
+only this invocation and constructs a fresh adapter. It stores no principal,
+grant, reader or session between requests. Principal IDs are not returned.
+
+For the MCP handler, the provider's qualified envelope also declares
+`sourceScope: { principalId, studentId, currentTermId }`. The handler compares
+all three against the independently obtained host grant and also compares the
+envelope's `currentTerm.id`. A missing or mismatched declaration produces the
+same fixed unavailable result, before assignment data is returned. These
+internal scope fields are omitted from the result. This is a consistency
+check between trusted declarations, not observed Schoology binding proof.
+The actual host/provider must verify caller authorization, selected student,
+current period and row membership; a matching declaration cannot replace that
+verification. Existing scraper/DB/history APIs are not qualified readers.
+
+The context must come from the host's validated identity/permission boundary.
+Do not construct it from the JSON body, model arguments, raw identity headers,
+session IDs, or qualification flags. This module deliberately does not read
+authentication tokens or infer identity from request headers. No callback or
+no grant produces HTTP401; malformed/denied grants and authorization failures
+produce HTTP403. A valid grant whose reader lacks qualified data produces the
+adapter's fixed unavailable tool result. Grant declarations in fixtures are
+not live authentication proof.
+
+The implemented compatibility profile is MCP `2025-11-25`, with `initialize`,
+`tools/list`, `tools/call` and `ping`. Initialization returns the supported
+version; operations require its `MCP-Protocol-Version` header. Clients still
+perform initialization; the handler keeps no lifecycle/session cache. This
+does not claim support for other protocol revisions. See the official
+[MCP lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle).
+
+The route is JSON `POST /mcp`. Clients send an Accept header containing both
+`application/json` and `text/event-stream`; responses use JSON. GET and DELETE
+return405 because SSE/session termination is not implemented. Validly shaped
+notifications return an empty202 and never execute a tool. Unknown methods,
+unknown tools and malformed calls return fixed JSON-RPC errors; refused tool
+arguments and unavailable source data remain tool errors. See the official
+[HTTP transport](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)
+and [tool error contract](https://modelcontextprotocol.io/specification/2025-11-25/server/tools#error-handling).
+
+UTF-8 request bodies are capped at16 KiB while reading, including streams
+without a declared length; oversized streams are cancelled. The adapter's
+48 KiB/50-item result limit is preserved inside a49 KiB JSON-RPC envelope
+budget. Request IDs are bounded, private exceptions are not echoed, and
+responses use `Cache-Control: no-store`. A present Origin header must match an
+explicit, exact HTTPS `allowedOrigins` entry; the default list is empty.
+
+The actual host still owns validated ingress identity, OAuth challenges,
+request deadlines and per-principal rate limiting. Sites manages connection
+sign-in; the approved Schoology connection and per-user record permissions
+remain separate, as described in the official
+[Sites connection guidance](https://learn.chatgpt.com/docs/extend/mcp#2-connect-your-system).
+No OAuth/app/host configuration or reader implementation is supplied here.
+
 ## Checks and remaining boundary
 
 Run `npm run test:chatgpt-adapter` from the repository root. Tests use only
 fabricated in-memory snapshots and guarded subprocess imports. They do not
 read Schoology, credentials or original stores, or start a server.
+
+Run `npm run test:chatgpt-mcp` for fabricated Web request/response cases. The
+fixtures explicitly supply the standard Web APIs they use. They cover protocol
+and authorization errors, actual adapter calls, mismatched caller/student/period
+providers, two concurrent synthetic subjects and later grant refusal, malformed/bounded streams, response limits,
+and a guarded no-I/O import path. These are Node request/response checks;
+they do not establish browser/Worker bundle compatibility or replay the
+separate, already-spent Builder qualification.
 
 Builder has identified a candidate Sites-hosted private MCP transport with
 managed OAuth and per-user authorization. No endpoint or account binding was

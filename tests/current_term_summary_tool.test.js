@@ -282,7 +282,8 @@ test("private source package resolves to the actual adapter, without claiming a 
   assert.equal(manifest.name, "schoology-current-term-adapter");
   assert.equal(manifest.private, true);
   assert.equal(manifest.type, "module");
-  assert.equal(manifest.exports, "./adapter.js");
+  assert.equal(manifest.exports["."], "./adapter.js");
+  assert.equal(manifest.exports["./mcp"], "./mcp_handler.js");
 });
 
 function guardedImport(code) {
