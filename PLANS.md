@@ -2,6 +2,14 @@
 
 ## Usable conversational Schoology parent (October 17, 2026)
 
+Source publication continues independently through the existing PR54. Its
+initial two-document head is retained as history; the same PR now receives the
+connected implementation and corrected repository overlay. Planning alignment
+is part of that coherent source/docs review, not a required preliminary merge.
+The correction updates the obsolete global reference, removes retired
+docs-hub/default-restart instructions and preserves actual effect-specific
+runtime, test and rollback constraints. It changes no account or source grant.
+
 Goal: restore the agreed current-semester conversational consumer workflow.
 The completed login/manual report and separate Sunday calendar are useful
 components; the parent still needs a usable conversation and follow-up on
