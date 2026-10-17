@@ -39,13 +39,26 @@ follow-up result. Missing identity and forged identity headers both returned
 harness used the actual dependency files. This is not a Sites build, live
 Worker, approved source bridge, deployment or consumer acceptance.
 
-Next owned actions are separate: resolve the intended account reference via
-the same saved FOCUS Task, and coalesce the verified source-permission cause
-into Architect's existing source/host chase. A supported approved API grant
-or documented request-owned browser-observer interface can wake source
-binding; an account reference alone cannot supply it. Schoology retains
-delivery custody. The original Windows service separately retains its actual
-launch/terms/key boundaries. No new generic permission Task is required.
+Architect's same-chase answer is consumed. Hosted Sites calls require each
+visitor's connection/consent, request-scoped connector bindings, an allowed
+eligibility result and an actual native action schema. The required eligibility
+discovery is not exposed here. The owning-agent local-preview relay is excluded
+from production and cannot be used as a source bridge.
+
+The next concrete native candidate is Local computer access with Work Cloud.
+After the existing account-reference Task is answered, Schoology will inspect
+the intended account's actual Work/local-access availability and an already
+admitted account/computer/source binding using metadata only. Current official
+guidance describes eligible new conversations, an appropriate signed-in
+account/workspace and an online connected computer; its enterprise/rollout
+documentation does not prove personal/Free or Maya eligibility. Ordinary
+cloud browsing cannot use the signed-in PC browser. This is a qualification
+candidate, not an adopted carrier or permission to pair/share a computer,
+switch accounts, create a conversation, install/connect a provider or read
+student records. The source-binding wake remains an actual authorized
+request-bound source capability, not an email or a bundle pass. Schoology
+retains delivery custody. The original Windows service separately retains
+its launch/terms/key boundaries. No new generic permission Task is required.
 Execute available integration work rather than waiting for the independent
 weekly calendar. Preserve original target-user/interface direction and every
 actual private-data, runtime, provider, account, release and spend boundary.
