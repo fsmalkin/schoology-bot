@@ -1,5 +1,128 @@
 # Test Coverage and Gaps
 
+The October 17 current-term qualification below is bound to implementation
+branch schoology/chatgpt-current-term-adapter-20261017 and the recorded source
+commits. These are source/fixture results. Live source access, account/phone,
+hosting and ongoing service acceptance remain unverified.
+
+## Connected source under a Web API module context
+
+A finite offline qualification loaded the actual c3d6f2f source graph into
+Node's experimental SourceTextModule context: nine production modules and
+198 real chrono-node 2.9.0 ESM modules. The production context had standard
+Web request/response APIs and no process, require, Buffer, fetch, document or
+layout globals. Six requests covered initialization/discovery, an actual
+reader call and changed-source follow-up, missing trusted identity and forged
+Sites identity headers. Both identity refusals returned 401. Two fabricated
+documents exercised the serialized projector in a separate minimal DOM
+context; no real browser/provider or source record was read by this check.
+
+The first harness failed before execution because its explicit import list
+omitted existing summary/parser dependencies. The corrected run included
+their actual ESM files and passed. No production patch or stub parser was
+used. Exact graph SHA-256:
+9b6c9fbf57fdc3f11c6f426d06089a72a9b57cb0b776ac1eee4de8dbd4b11b4d.
+This qualifies that source/context combination, not a build/archive, actual
+Cloudflare isolate, Sites identity boundary, source grant, deployment or phone.
+It does not replay Builder's earlier unchanged-adapter bundle qualification.
+
+## Current-gradebook reader joined to MCP
+
+tests/current_gradebook_reader.test.js adds 34 passing cases for the actual
+self-contained projector and request-owned observer reader. A new-source
+MCP initialize/list/call/follow-up sequence reflects changed fabricated
+source state, and interleaved subjects remain separate. Negative cases cover
+missing/wrong/ambiguous account menus, current period ID/label, duplicate,
+orphan and cyclic ancestry, invalid fields, stale observations and source
+exceptions. Submitted markers override stale missing markers. Grade-column,
+numeric-score and comment text getters throw if accessed.
+
+The actual serialized function runs without TextEncoder, process, fetch or
+require. New source/reader imports pass under the existing no-I/O guard.
+Observation time is not regenerated; a slow reader can become stale before
+the adapter responds. Hidden rows/reports, loading, pagination or unavailable
+layout evidence retain an explicit partial-coverage result.
+
+The tree/selector/layout double is limited and is not browser/CSS conformance
+or evidence of live source authorization, a native observer bridge, OAuth,
+host deployment, target-account/phone availability or an ongoing chatbot.
+The earlier accepted handler/adapter/DOM checks remain scoped to their
+unchanged source; no spent Builder bundle/VM trial was repeated.
+
+## DOM projection separation and assignment field minimization
+
+`npm run test:schoology-dom` passes14 cases for the factored pure DOM callback
+and the six-field projection. The actual callback serializes into a fresh VM
+with an in-memory DOM double and explicit URL/Web globals, without module
+closures. Existing missing/submitted/exempt row signals, BCPS fallback,
+canonical status labels, same-origin link cleanup, fixed invalid-input errors
+and unchanged frozen rows are covered. The new projection drops scores,
+comments, raw text, internal scope and manual annotations.
+
+The DOM double is a small selector subset, not an HTML parser or browser.
+Label-only, wrong/ambiguous-student and mixed Current/Past/incomplete fixtures
+cannot produce a qualified source envelope. This tests refusal to promote
+unverified rows; it does not verify a real DOM student selector, term boundary,
+pagination or complete coverage. A separately scoped synthetic fixture runs
+through the real MCP tool and excludes submitted work without exposing private
+fixture markers. The new module also runs under the no-I/O/service import guard.
+
+All14 DOM,22 MCP and17 adapter cases pass together (53/53, zero skipped).
+A one-time source comparison confirms the moved DOM body is unchanged except
+for explicit origin parameterization; `node --check src/schoology.js` passes.
+The actual legacy scraper/browser/session path was not executed. No original
+data, live capture, credentials or browser bundle qualification was used;
+actual acquisition, runtime/Worker and intended-account/mobile proof remain
+separate. This new callback VM test does not replay Builder's spent bundle test.
+
+## Current-term MCP request/response source
+
+`npm run test:chatgpt-mcp` exercises the actual Web API handler and accepted
+summary adapter using fabricated requests and snapshots. It covers the pinned
+MCP2025-11-25 initialization/profile, discovery, ping, tool calls, notification
+acknowledgments, JSON-RPC errors, missing/denied host grants, forged identity
+headers/metadata, invalid arguments, stale/unqualified/error sources, exact
+Origin checks, methods/media types, malformed UTF-8 and JSON, bounded streams,
+stream cleanup and bounded result envelopes. A provider declaring another
+caller, student or period is refused, and principal/boolean-only grants never
+access a provider. Two concurrent synthetic callers
+receive distinct readers; a later denial cannot reuse a previous grant.
+
+The fixtures supply Request, Response, Headers, URL, text encoders/decoders,
+ReadableStream and Uint8Array explicitly. A child imports and calls the actual
+handler under the existing no-I/O/service guard. No listener is opened, and
+no original student data, session, real token or provider is used. All22
+handler tests and17 adapter tests pass together (39/39, zero skipped); the ten unchanged current-summary
+regressions retain their earlier passing evidence.
+
+These tests establish Node request/response behavior, not complete protocol
+certification, observed Schoology subject/period binding, actual Sites identity/OAuth, Worker/browser build compatibility,
+rate limiting, request deadlines, a qualified live reader or phone delivery.
+The separate Builder bundle/VM qualification is not replayed by these checks.
+
+## Current-term ChatGPT adapter source
+
+`npm run test:chatgpt-adapter` passes 17 fabricated-input tests for the actual
+`get_current_term_summary` adapter. The cases cover no-argument enforcement
+before reader invocation, absent/unqualified input, freshness after an async
+read, malformed/oversized fields, submitted-work exclusion, duplicates,
+complete versus partial empty results, approved-field projection, link cleanup
+and unchanged frozen input. Responses stay within 50 rows and 48 KiB; text and
+structured output contain the same selected items and disclose omissions.
+
+Guarded child imports exercise both ready and unavailable calls, while 21
+negative controls refuse file, network, process, model, database and service
+imports. This is an import-graph check, not a sandbox for arbitrary injected
+readers. The first run passed 15 cases and failed two guard setups because the
+Windows loader argument was a drive path; using its file URL fixed those cases
+without changing the denials. Existing current-summary regression tests also
+pass 10/10. No original data, Schoology session, credential or server is used.
+
+The private source package depends on this whole checkout. It is not an
+installable plugin or standalone archive. Trusted subject/term declarations in
+fixtures do not prove current-semester membership, live authorization, hosted
+compatibility, target account/mobile access or actual consumer delivery.
+
 ## Docker context environment exclusions
 
 `.dockerignore` excludes `.env` and `.env.*`, with exact exceptions for the
