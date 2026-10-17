@@ -1,5 +1,10 @@
 # Test Coverage and Gaps
 
+The October 17 current-term qualification below is bound to implementation
+branch schoology/chatgpt-current-term-adapter-20261017 and the recorded source
+commits. These are source/fixture results. Live source access, account/phone,
+hosting and ongoing service acceptance remain unverified.
+
 ## Connected source under a Web API module context
 
 A finite offline qualification loaded the actual c3d6f2f source graph into
