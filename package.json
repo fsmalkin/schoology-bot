@@ -26,6 +26,7 @@
     "managed:create-env:dev": "node scripts/with_env.js .env.managed-dev node -r dotenv/config scripts/managed_agents_admin.mjs create-environment dev",
     "managed:create-agent:dev": "node scripts/with_env.js .env.managed-dev node -r dotenv/config scripts/managed_agents_admin.mjs create-agent dev",
     "secrets:scan": "node scripts/scan_secrets.mjs",
+    "test:chatgpt-adapter": "node --test --test-concurrency=1 tests/current_term_summary_tool.test.js",
     "test": "node --test --test-concurrency=1 \"tests/**/*.test.js\"",
     "test:agent": "node tests/agent_conversation.js"
   },

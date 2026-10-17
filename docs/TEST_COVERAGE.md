@@ -1,5 +1,28 @@
 # Test Coverage and Gaps
 
+## Current-term ChatGPT adapter source
+
+`npm run test:chatgpt-adapter` passes 17 fabricated-input tests for the actual
+`get_current_term_summary` adapter. The cases cover no-argument enforcement
+before reader invocation, absent/unqualified input, freshness after an async
+read, malformed/oversized fields, submitted-work exclusion, duplicates,
+complete versus partial empty results, approved-field projection, link cleanup
+and unchanged frozen input. Responses stay within 50 rows and 48 KiB; text and
+structured output contain the same selected items and disclose omissions.
+
+Guarded child imports exercise both ready and unavailable calls, while 21
+negative controls refuse file, network, process, model, database and service
+imports. This is an import-graph check, not a sandbox for arbitrary injected
+readers. The first run passed 15 cases and failed two guard setups because the
+Windows loader argument was a drive path; using its file URL fixed those cases
+without changing the denials. Existing current-summary regression tests also
+pass 10/10. No original data, Schoology session, credential or server is used.
+
+The private source package depends on this whole checkout. It is not an
+installable plugin or standalone archive. Trusted subject/term declarations in
+fixtures do not prove current-semester membership, live authorization, hosted
+compatibility, target account/mobile access or actual consumer delivery.
+
 ## Docker context environment exclusions
 
 `.dockerignore` excludes `.env` and `.env.*`, with exact exceptions for the
