@@ -1,5 +1,31 @@
 # Test Coverage and Gaps
 
+## DOM projection separation and assignment field minimization
+
+`npm run test:schoology-dom` passes14 cases for the factored pure DOM callback
+and the six-field projection. The actual callback serializes into a fresh VM
+with an in-memory DOM double and explicit URL/Web globals, without module
+closures. Existing missing/submitted/exempt row signals, BCPS fallback,
+canonical status labels, same-origin link cleanup, fixed invalid-input errors
+and unchanged frozen rows are covered. The new projection drops scores,
+comments, raw text, internal scope and manual annotations.
+
+The DOM double is a small selector subset, not an HTML parser or browser.
+Label-only, wrong/ambiguous-student and mixed Current/Past/incomplete fixtures
+cannot produce a qualified source envelope. This tests refusal to promote
+unverified rows; it does not verify a real DOM student selector, term boundary,
+pagination or complete coverage. A separately scoped synthetic fixture runs
+through the real MCP tool and excludes submitted work without exposing private
+fixture markers. The new module also runs under the no-I/O/service import guard.
+
+All14 DOM,22 MCP and17 adapter cases pass together (53/53, zero skipped).
+A one-time source comparison confirms the moved DOM body is unchanged except
+for explicit origin parameterization; `node --check src/schoology.js` passes.
+The actual legacy scraper/browser/session path was not executed. No original
+data, live capture, credentials or browser bundle qualification was used;
+actual acquisition, runtime/Worker and intended-account/mobile proof remain
+separate. This new callback VM test does not replay Builder's spent bundle test.
+
 ## Current-term MCP request/response source
 
 `npm run test:chatgpt-mcp` exercises the actual Web API handler and accepted

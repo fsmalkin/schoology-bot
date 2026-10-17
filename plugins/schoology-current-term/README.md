@@ -124,6 +124,35 @@ remain separate, as described in the official
 [Sites connection guidance](https://learn.chatgpt.com/docs/extend/mcp#2-connect-your-system).
 No OAuth/app/host configuration or reader implementation is supplied here.
 
+## DOM projection source seam
+
+`src/schoology_dom_rows.js` separates the existing `readGradebookRows` callback
+from the browser/session module. The existing scraper serializes that function
+with `page.evaluate`; the DOM body is retained, with origin passed explicitly
+and the same BCPS fallback. The callback still produces the legacy internal
+row shape, including grade/comment/raw signals needed by that existing path.
+
+`projectGradebookAssignmentFields(rows)` reduces those rows to the six allowed
+assignment fields. Statuses become canonical missing/incomplete/submitted or
+unmarked labels; freeform feedback, grades, raw text, manual annotations and
+internal scope fields are omitted. Links are restricted to the BCPS HTTPS
+origin and lose query/fragment data. The function preserves input rows and
+refuses malformed or oversized fields.
+
+This projection returns only an array. It does not acquire data, select a
+student/period, create observation/coverage declarations or qualify a snapshot.
+Current/Past labels and a recent timestamp do not establish row membership.
+A DOM-based provider must establish scope/coverage independently, minimize its
+rows, then satisfy the handler's host/provider contract. The old HTML wrappers
+still launch a browser and remain unsuitable as a no-side-effect reader.
+
+Run `npm run test:schoology-dom`. Its small in-memory DOM double tests row
+semantics and actual function serialization with explicit Web globals; it is
+not a real browser, HTML parser or CSS conformance test. A fabricated source
+flows through the real MCP tool only after separately supplied matching fixture
+scope, while missing/wrong/ambiguous labels and mixed/incomplete views remain
+unqualified. This supplies no actual student/term or account eligibility proof.
+
 ## Checks and remaining boundary
 
 Run `npm run test:chatgpt-adapter` from the repository root. Tests use only

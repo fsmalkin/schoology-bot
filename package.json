@@ -28,6 +28,7 @@
     "secrets:scan": "node scripts/scan_secrets.mjs",
     "test:chatgpt-adapter": "node --test --test-concurrency=1 tests/current_term_summary_tool.test.js",
     "test:chatgpt-mcp": "node --test --test-concurrency=1 tests/current_term_mcp_handler.test.js",
+    "test:schoology-dom": "node --test --test-concurrency=1 tests/schoology_dom_rows.test.js",
     "test": "node --test --test-concurrency=1 \"tests/**/*.test.js\"",
     "test:agent": "node tests/agent_conversation.js"
   },
