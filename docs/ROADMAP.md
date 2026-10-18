@@ -5,6 +5,16 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 
 ## Current Decisions
 
+- October 18, 2026: Telegram conversation is the immediate delivery target;
+  further ChatGPT qualification waits until that path is settled. An optional
+  personal Windows subscription reader now provides outbound polling and a
+  dedicated read-only Codex/browser worker without new paid-model APIs. The
+  live source component and polling are qualified; real incoming-question,
+  useful-answer and refresh acceptance remain separate. Earlier account/source
+  consent waits do not block ordinary authorized reads. Reminders stay OFF,
+  original data is preserved, and the daughter's own-account rollout remains
+  deferred. This does not reactivate the retired general Telegram control plane.
+
 - October 17, 2026 implementation alignment: the current-term components and qualification below describe implementation branch schoology/chatgpt-current-term-adapter-20261017 and its recorded source commits. They establish no installed runtime, live source grant or completed chatbot. Review the source and intentional planning improvements together in the existing PR; the stale preliminary planning-only merge rule has been removed from the repository overlay.
 
 - October 17, 2026 Architect source-route answer consumed: no sanctioned Sites-to-source channel is established, and local-preview authority is excluded from production. Before custom bridge work, qualify the documented native Local computer access with Work Cloud candidate after the existing target-account reference is supplied. Inspect actual eligibility and an already admitted account/computer/source binding only; personal/Free and Maya availability are unverified. This is a candidate, not an adopted carrier or new pairing/provider/data authority. Schoology retains delivery ownership; the exact source capability remains an OpenAI Work/Sites dependency or a deliberately qualified original-subject API grant.

@@ -21,6 +21,12 @@ $bad=New-Message;$bad.message.from.is_bot=$true;Assert-Refused {Get-RelayMessage
 $bad=New-Message;$bad.message.text='x'*8001;Assert-Refused {Get-RelayMessage $bad '-10001' $members}
 $bad=New-Message;$bad.message.photo=@('photo');Assert-Refused {Get-RelayMessage $bad '-10001' $members}
 $bad=[pscustomobject]@{callback_query=@{data='test'}};Assert-Refused {Get-RelayMessage $bad '-10001' $members}
+$poll=New-RelayPollParameters $null
+if($poll.allowed_updates.Count -ne 1 -or $poll.allowed_updates[0] -cne 'message' -or $poll.ContainsKey('offset')){throw 'Initial message subscription or offset changed'}
+$passed++
+$poll=New-RelayPollParameters 123
+if($poll.offset -ne 123 -or $poll.allowed_updates[0] -cne 'message'){throw 'Confirmed offset or message subscription lost'}
+$passed++
 
 # Existing durable state must fail before opening a credential or changing it.
 $temporary=Join-Path ([IO.Path]::GetTempPath()) ('schoology-relay-test-'+[guid]::NewGuid().ToString())

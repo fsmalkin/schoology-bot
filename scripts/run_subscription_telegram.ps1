@@ -51,6 +51,13 @@ function Get-RelayMessage($Update, $ChatId, $MemberIds) {
   return $message
 }
 
+function New-RelayPollParameters($NextOffset) {
+  # Omitting this field inherits Telegram's previous update subscription.
+  $parameters=@{timeout=20;limit=1;allowed_updates=@('message')}
+  if($null -ne $NextOffset){$parameters.offset=[long]$NextOffset}
+  return $parameters
+}
+
 function Invoke-RelayWorker($Executable, $ThreadId, $WorkingDirectory, $Question, $OutputPath, $StudentProfileId, $CurrentTerm) {
   if([IO.File]::Exists($OutputPath)) { throw 'Existing worker result; do not replay' }
   $start = [Diagnostics.ProcessStartInfo]::new()
@@ -122,7 +129,7 @@ function Start-SubscriptionRelay {
     $executable=(Get-Command codex -CommandType Application | Select-Object -First 1).Source
     while($state.requests -lt $MaximumRequests -and -not [IO.File]::Exists((Join-Path $DataDirectory 'stop'))){
       $state.state='POLLING';$state.polls++;$state.heartbeat=[DateTimeOffset]::UtcNow.ToString('o');Write-RelayJson $statePath $state
-      $parameters=@{timeout=20;limit=1}; if($null -ne $state.nextOffset){$parameters.offset=$state.nextOffset}
+      $parameters=New-RelayPollParameters $state.nextOffset
       $updates=@(Invoke-RelayApi $client $token 'getUpdates' $parameters)
       if($updates.Count -eq 0){continue}
       $update=$updates[0]; $message=Get-RelayMessage $update $ChatId $MemberIds
