@@ -1,5 +1,16 @@
 # Test Coverage and Gaps
 
+## Private local MCP connector
+
+The plugin adds provider-free fixtures for actual stdio initialization and tool
+discovery, one real original CLI/SQLite read, local Unicode note/status/clear
+flows, an interleaved Telegram connection, disjoint operation namespaces,
+duplicate and uncertain-effect refusal across a server restart, changed-binding
+refusal, the known-auth gate, invalid/bulk/unsupported requests, and contained
+package references. CI runs these checks; no local shell tests are requested.
+Fixture records and mock source-session status are not live sign-in, installed
+plugin discovery, host consumption, mobile or unattended acceptance.
+
 ## Original tools with subscription-only planning
 
 The October 18 Telegram UI exercised a saved missing-assignment read, an
