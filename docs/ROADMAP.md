@@ -5,6 +5,15 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 
 ## Current Decisions
 
+- October 18 local-annotation delivery: explicit note/status editing passed the
+  actual Telegram UI, including fresh-source persistence and both reversible
+  clears. Runtime v8 uses source bfb934e and the same read-only worker, audience
+  and carried-forward counters. Three earlier no-change replies and the v4
+  read-only polling failure remain recorded; prior processes are stopped.
+  Local data has zero active test annotations and four retained history effects.
+  There is no old-store import, new worker, scheduler or Schoology write.
+  Existing startup hooks are Docker-only; no reader startup task is installed.
+
 - October 18, 2026: Telegram conversation is the immediate delivery target;
   further ChatGPT qualification waits until that path is settled. An optional
   personal Windows subscription reader now provides outbound polling and a

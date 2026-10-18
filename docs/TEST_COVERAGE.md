@@ -1,5 +1,26 @@
 # Test Coverage and Gaps
 
+## Subscription reader local annotations
+
+The PowerShell CI fixture now also covers explicit request parsing, unchanged
+A-F mapping, foreign-link and mismatched-target rejection, student binding,
+atomic note/status readback, duplicate-update refusal, and reversible clears.
+These are fabricated local records with no credential, network, worker or send
+effects. CI also checks ISO timestamp decoding through ConvertFrom-Json,
+timezone preservation, stale/future refusals and zone-less timestamp refusal.
+
+On October 18, the actual Telegram browser UI passed a local note, local status,
+fresh-source answer retaining both, and separate note/status clears. The answer
+distinguished Schoology's unknown submission status from the local status. The
+private journal readback contained zero active annotations and four retained
+effects after cleanup. Three earlier requests returned safe no-change replies;
+their receipts were retained. Eight test requests/replies and four local writes
+were used in total. Runtime source bfb934e passed CI run 39101600730, and the
+assignment's source fields had also been independently observed in Schoology.
+The worker-provided catalog is not an independent cryptographic source proof.
+This covers those manual paths, not unattended availability, automatic startup,
+phone acceptance, reminders, old-history import or a separate student account.
+
 The October 17 current-term qualification below is bound to implementation
 branch schoology/chatgpt-current-term-adapter-20261017 and the recorded source
 commits. These are source/fixture results. Live source access, account/phone,

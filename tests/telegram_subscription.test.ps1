@@ -37,6 +37,67 @@ try {
   Assert-Refused {Start-SubscriptionRelay}
   if([IO.File]::ReadAllText($statePath) -cne '{"state":"SENT","replyId":829}' -or [IO.File]::Exists((Join-Path $temporary 'relay.lock'))){throw 'Existing state was changed'}
   $passed++
+  if($null -ne (Get-LocalAnnotationRequest 'What is missing?')){throw 'A question became a local mutation'}
+  $passed++
+  $request=Get-LocalAnnotationRequest 'Add a note to "Geometry practice": Bring ruler'
+  if($request.operation -cne 'note' -or $request.target -cne 'Geometry practice' -or $request.value -cne 'Bring ruler'){throw 'Natural note parse changed'}
+  $passed++
+  $statusRequest=Get-LocalAnnotationRequest '/status Geometry practice :: F'
+  if($statusRequest.value -cne 'Will complete in class'){throw 'Existing status F lost'}
+  $passed++
+  Assert-Refused {Get-LocalAnnotationRequest '/note https://example.com/assignment/1 :: text'}
+  Assert-Refused {Get-LocalAnnotationRequest ('/note Geometry practice :: '+('x'*2001))}
+  $assignment=[pscustomobject]@{url='https://bcps.schoology.com/assignment/123';title='Geometry practice';course='Geometry'}
+  $snapshot=[pscustomobject]@{profileId='123';term='MP1 2026-2027';assignments=@($assignment)}
+  Assert-Refused {Confirm-LocalAnnotationTarget (Get-LocalAnnotationRequest '/status Other title :: E') $assignment $snapshot '123' 'MP1 2026-2027'}
+  Assert-Refused {Confirm-LocalAnnotationTarget (Get-LocalAnnotationRequest '/status https://bcps.schoology.com/assignment/456 :: E') $assignment $snapshot '123' 'MP1 2026-2027'}
+  $invented=[pscustomobject]@{url='https://bcps.schoology.com/assignment/456';title='Invented';course='Geometry'}
+  Assert-Refused {Confirm-LocalAnnotationTarget (Get-LocalAnnotationRequest '/note Invented :: text') $invented $snapshot '123' 'MP1 2026-2027'}
+  $duplicate=[pscustomobject]@{profileId='123';term='MP1 2026-2027';assignments=@($assignment,[pscustomobject]@{url='https://bcps.schoology.com/assignment/456';title='Geometry practice';course='Other course'})}
+  Assert-Refused {Confirm-LocalAnnotationTarget $request $assignment $duplicate '123' 'MP1 2026-2027'}
+  Assert-Refused {Confirm-LocalAnnotationTarget $request $assignment $snapshot '123' 'MP2 2026-2027'}
+  $withUnlinked=[pscustomobject]@{profileId='123';term='MP1 2026-2027';assignments=@($assignment,[pscustomobject]@{url='';title='Unlinked item';course='Science'})}
+  Confirm-LocalAnnotationTarget $request $assignment $withUnlinked '123' 'MP1 2026-2027'
+  $passed++
+  Confirm-LocalAnnotationTarget (Get-LocalAnnotationRequest '/note https://bcps.schoology.com/assignment/123 :: text') $assignment $withUnlinked '123' 'MP1 2026-2027'
+  $passed++
+  Confirm-LocalAnnotationFreshness '2026-10-18T05:37:10.37Z' 'source-tab' ([DateTimeOffset]::Parse('2026-10-18T05:37:39Z'))
+  $passed++
+  $decodedObservation='{"observedAt":"2026-10-18T05:37:10.37Z"}'|ConvertFrom-Json
+  Confirm-LocalAnnotationFreshness $decodedObservation.observedAt 'source-tab' ([DateTimeOffset]::Parse('2026-10-18T05:37:39Z'))
+  $passed++
+  Confirm-LocalAnnotationFreshness ([DateTime]::new(2026,10,18,5,37,10,[DateTimeKind]::Utc)) 'source-tab' ([DateTimeOffset]::Parse('2026-10-18T05:37:39Z'))
+  $passed++
+  Confirm-LocalAnnotationFreshness '2026-10-18T01:37:10.37-04:00' 'source-tab' ([DateTimeOffset]::Parse('2026-10-18T05:37:39Z'))
+  $passed++
+  Assert-Refused {Confirm-LocalAnnotationFreshness ([DateTime]::new(2026,10,18,5,37,10,[DateTimeKind]::Unspecified)) 'source-tab' ([DateTimeOffset]::Parse('2026-10-18T05:37:39Z'))}
+  Assert-Refused {Confirm-LocalAnnotationFreshness '2026-10-18T05:37:10.37' 'source-tab' ([DateTimeOffset]::Parse('2026-10-18T05:37:39Z'))}
+  Assert-Refused {Confirm-LocalAnnotationFreshness '2026-10-18T05:30:00Z' 'source-tab' ([DateTimeOffset]::Parse('2026-10-18T05:37:39Z'))}
+  Assert-Refused {Confirm-LocalAnnotationFreshness '2026-10-18T05:40:00Z' 'source-tab' ([DateTimeOffset]::Parse('2026-10-18T05:37:39Z'))}
+  Assert-Refused {Confirm-LocalAnnotationTarget (Get-LocalAnnotationRequest '/note Unlinked item :: text') ([pscustomobject]@{url='https://bcps.schoology.com/assignment/999';title='Unlinked item';course='Science'}) $withUnlinked '123' 'MP1 2026-2027'}
+  $annotationPath=Join-Path $temporary 'annotations.json'
+  $annotations=Read-LocalAnnotations $annotationPath '123' 'MP1 2026-2027'
+  $reply=Save-LocalAnnotation $annotations $annotationPath $request $assignment 'telegram-update-1' $snapshot
+  $reread=Read-LocalAnnotations $annotationPath '123' 'MP1 2026-2027'
+  if($reply -notlike '*local note*' -or $reread.records[$assignment.url].notes[0].text -cne 'Bring ruler'){throw 'Note save/readback failed'}
+  $passed++
+  $beforeReplay=[IO.File]::ReadAllText($annotationPath)
+  Assert-Refused {Save-LocalAnnotation $reread $annotationPath $request $assignment 'telegram-update-1' $snapshot}
+  if([IO.File]::ReadAllText($annotationPath) -cne $beforeReplay){throw 'Duplicate local effect changed data'}
+  $passed++
+  Assert-Refused {Read-LocalAnnotations $annotationPath '456' 'MP1 2026-2027'}
+  [void](Save-LocalAnnotation $reread $annotationPath $statusRequest $assignment 'telegram-update-2' $snapshot)
+  $reread=Read-LocalAnnotations $annotationPath '123' 'MP1 2026-2027'
+  if($reread.records[$assignment.url].manualStatus -cne 'Will complete in class' -or $reread.records[$assignment.url].notes.Count -ne 1){throw 'Status edit lost the note'}
+  $passed++
+  [void](Save-LocalAnnotation $reread $annotationPath (Get-LocalAnnotationRequest '/clear-status Geometry practice') $assignment 'telegram-update-3' $snapshot)
+  $reread=Read-LocalAnnotations $annotationPath '123' 'MP1 2026-2027'
+  if($reread.records[$assignment.url].manualStatus -or $reread.records[$assignment.url].notes.Count -ne 1 -or -not $reread.effects['telegram-update-3'].before.manualStatus){throw 'Status clear lost history or notes'}
+  $passed++
+  [void](Save-LocalAnnotation $reread $annotationPath (Get-LocalAnnotationRequest '/clear-notes Geometry practice') $assignment 'telegram-update-4' $snapshot)
+  $reread=Read-LocalAnnotations $annotationPath '123' 'MP1 2026-2027'
+  if($reread.records[$assignment.url].notes.Count -ne 0 -or $reread.effects['telegram-update-4'].before.notes.Count -ne 1){throw 'Note clear lost reversible history'}
+  $passed++
 } finally {
   $resolvedTemporary=[IO.Path]::GetFullPath($temporary)
   $resolvedRoot=[IO.Path]::GetFullPath([IO.Path]::GetTempPath())

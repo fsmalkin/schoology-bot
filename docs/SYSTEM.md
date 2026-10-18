@@ -20,6 +20,18 @@ the reply sent. Existing or ambiguous state fails closed. The service cannot
 claim the previous report's phone acceptance as a new conversational test.
 See README for startup, limitations and stop/reconciliation behavior.
 
+The transport also handles explicit local note/status requests. A read-only
+worker supplies the current-period source catalog and a proposed assignment;
+deterministic app code requires exactly one matching title/link in that catalog,
+the same bound subject/term and a fresh observation before a local JSON write. The fixed student
+and term bind that file; an update-id journal prevents duplicate local effects
+and retains prior values. A local write is reserved before execution and read
+back before any confirmation. Neither notes nor manual statuses change
+Schoology. The worker receives current local annotations as untrusted context;
+it cannot read their file or execute writes. A controlled stopped-process
+upgrade can carry the previous offset and counts into a new runtime directory.
+The existing Docker startup hooks do not start this reader.
+
 ## Current report during recovery
 
 The October 11, 2026 owner-approved baseline permits a current-only report while
