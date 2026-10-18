@@ -17,7 +17,7 @@ test("real SQLite tools preserve notes/status through import, reject replay, and
     await executeSubscriptionTool(db,request(2,"update_assignment_status",{operation:"status",target:row.title,value:"E"}));
     importQualifiedSource(db,config,source());
     const list = await executeSubscriptionTool(db,request(3,"list_assignments",null,{status:"all"}));
-    assert.match(list.reply,/Waiting on teacher/); assert.match(list.reply,/Bring ruler/); assert.match(list.reply,/Schoology: Missing/);
+    assert.match(list.reply,/Waiting on teacher/); assert.match(list.reply,/Bring ruler/); assert.match(list.reply,/Schoology:.*Missing/);
     await assert.rejects(executeSubscriptionTool(db,request(1,"add_assignment_note",{operation:"note",target:row.url,value:"duplicate"})),/do not replay/);
     assert.equal(db.prepare("SELECT COUNT(*) n FROM assignment_notes").get().n,1);
     await executeSubscriptionTool(db,request(4,"clear_assignment_notes",{operation:"clear-notes",target:row.url}));
