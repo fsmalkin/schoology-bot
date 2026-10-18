@@ -427,3 +427,7 @@ Performance and reliability
 - Add a Telegram E2E test harness that runs against a test bot and test chat.
 - Add a reminder delivery integration test using a fake clock.
 - Add a live scrape smoke test behind a feature flag.
+
+## Local subscription Telegram reader (October 18)
+
+pwsh -NoProfile -File tests/telegram_subscription.test.ps1: 11 offline checks passed for allowed text, foreign chat/sender, bot input, oversized/attachment/unsupported input and preservation of existing state before any credential/provider effect, plus explicit message-update subscription and offset retention. Parse and whitespace checks passed. The dedicated subscription worker separately read the live current term (8 courses, 80 assignments, 7 Missing, 2 Incomplete); that is a browser-reader component result. Actual computer-use acceptance then passed in the existing Telegram group: a fresh missing/incomplete question produced the current 7/2 answer, and a separate contextual refresh returned the one Geometry missing item. A separate live Schoology interface check matched its status, due date and current period. Earlier unavailable replies and the stale-tab correction remain in the receipts. No paid-model/API-key, reminder or scheduler test was run.

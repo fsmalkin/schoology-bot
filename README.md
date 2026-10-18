@@ -4,6 +4,54 @@ A friendly, local-first Schoology assistant that logs in, finds missing assignme
 
 It runs on your machine today and is ready to move to a server later.
 
+## Local subscription Telegram reader (October 18 recovery)
+
+`scripts/run_subscription_telegram.ps1` connects the existing private Schoology
+group to a dedicated, already-qualified local Codex worker using the signed-in
+ChatGPT subscription. The worker reads the existing signed-in Schoology browser
+through the supported connected-browser API. This route uses no OpenAI or
+Anthropic API key, opens no HTTP listener, and starts no reminder or scheduler.
+It is separate from the older Docker/API-backed service described below.
+
+The operator first qualifies the worker's exact student, current term, browser
+profile, source reader and local Codex authentication. Then create a private
+JSON configuration outside the repository with `dataDirectory` (an existing
+absolute directory), `workerDirectory`, `workerThreadId`, `botId`, `botUsername`,
+`chatId`, exactly two `memberIds`, `studentProfileId`, `currentTerm` (for example
+`MP 1 2026-2027`), and `maximumRequests` (0 for normal human-triggered use,
+or a positive ceiling up to 10000 for a bounded pilot). Do not put secrets in that file.
+The script obtains only the existing `schoology-bot/prod/TELEGRAM_BOT_TOKEN`
+through Windows Credential Manager, keeps it in process memory, verifies the
+exact bot and three-member audience, and refuses an existing webhook.
+
+```powershell
+pwsh -NoProfile -File scripts/run_subscription_telegram.ps1 -ConfigPath <private-config.json>
+```
+
+The service answers incoming text questions about current assignments and can
+refresh its source. It does not restore manual notes/status changes, reminders,
+original database history, or a daughter's separate ChatGPT account. Codex runs
+with an explicit read-only sandbox, a fixed Schoology-only developer scope and
+a structured reply schema. Questions never become shell arguments or commands.
+Other chats/senders, attachments, historical pending updates and changed group
+membership stop the service without acknowledging those updates.
+
+Each accepted update reserves one worker call and one reply attempt durably.
+Only a verified send advances its update offset. Failed or ambiguous operations
+are retained for owner reconciliation, with no automatic resend or new worker.
+The state file and lock are preserved after exit. An existing state directory
+cannot be reused without reconciling its operations. Creating a `stop` file in
+the private data directory stops the loop after its current operation.
+
+This is a local personal runtime: the PC, Chrome, signed-in source and ChatGPT
+subscription must remain available. It has no automatic boot registration and
+stops at a positive configured request ceiling. Normal operation invokes the
+worker only for an allowed incoming human message, with one call and one reply
+attempt per update; it never runs inference on a timer. `POLLING` and a successful browser
+read are component evidence; acceptance still requires a real Telegram
+question, useful current answer and separate refresh. Offline checks:
+`pwsh -NoProfile -File tests/telegram_subscription.test.ps1`.
+
 ## Current assignment report (approved October 11, 2026)
 
 For the current recovery slice, Fred approved using current Schoology records

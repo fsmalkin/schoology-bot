@@ -2,6 +2,24 @@
 
 Purpose: single-page reference for how the Schoology bot works, how it runs, and where data lives.
 
+## Local subscription reader during Telegram recovery
+
+The optional Windows `run_subscription_telegram.ps1` launcher uses outbound
+Telegram polling, one dedicated subscription-authenticated Codex worker and a
+supported signed-in browser reader. It does not launch the legacy scheduler,
+dashboard, Docker stack, paid-model adapter, reminder worker or database.
+Private operator configuration binds the bot, exact three-member group, two
+human senders, worker, student and term. Telegram secrets remain opaque in the
+existing native credential broker and transport process.
+
+`state.json` records heartbeat, poll/request counts, the configured request
+ceiling (zero means no lifetime cap) and the next update offset. Per-update
+receipts reserve a worker invocation and a
+single reply attempt before their effects; only exact Telegram readback marks
+the reply sent. Existing or ambiguous state fails closed. The service cannot
+claim the previous report's phone acceptance as a new conversational test.
+See README for startup, limitations and stop/reconciliation behavior.
+
 ## Current report during recovery
 
 The October 11, 2026 owner-approved baseline permits a current-only report while
