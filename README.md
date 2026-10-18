@@ -79,8 +79,10 @@ subscription must remain available. It has no automatic boot registration and
 stops at a positive configured request ceiling. Normal operation invokes the
 worker only for an allowed incoming human message, with one call and one reply
 attempt per update; it never runs inference on a timer. `POLLING` and a successful browser
-read are component evidence; acceptance still requires a real Telegram
-question, useful current answer and separate refresh. Offline checks:
+read are component evidence. The October 18 actual Telegram UI checks passed
+current questions, separate refresh, local note/status persistence and both
+clears; this is manual-path evidence, not an unattended availability guarantee.
+Offline checks:
 `pwsh -NoProfile -File tests/telegram_subscription.test.ps1`.
 
 ## Current assignment report (approved October 11, 2026)

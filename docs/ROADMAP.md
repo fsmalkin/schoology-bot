@@ -5,11 +5,13 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 
 ## Current Decisions
 
-- October 18 local-annotation continuation: restore explicit local note/status
-  editing while keeping the Schoology worker read-only. The candidate uses
-  exact current assignment matching and an update-id journal, with no old-store
-  import, new worker, scheduler or Schoology write. Current Telegram v4 remains
-  running until the candidate passes CI and a controlled same-worker upgrade.
+- October 18 local-annotation delivery: explicit note/status editing passed the
+  actual Telegram UI, including fresh-source persistence and both reversible
+  clears. Runtime v8 uses source bfb934e and the same read-only worker, audience
+  and carried-forward counters. Three earlier no-change replies and the v4
+  read-only polling failure remain recorded; prior processes are stopped.
+  Local data has zero active test annotations and four retained history effects.
+  There is no old-store import, new worker, scheduler or Schoology write.
   Existing startup hooks are Docker-only; no reader startup task is installed.
 
 - October 18, 2026: Telegram conversation is the immediate delivery target;
