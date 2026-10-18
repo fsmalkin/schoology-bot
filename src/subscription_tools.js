@@ -14,9 +14,9 @@ const clean = value => String(value || "").replace(/\s+/g, " ").trim();
 export function openSubscriptionToolStore(config) {
   if (!config || !/^\d+$/.test(config.studentProfileId) || !/^MP ?[1-4] 20\d\d-20\d\d$/.test(config.currentTerm)) throw Error("Exact subject and term required");
   const db = createDb(config.databasePath);
-  db.exec("CREATE TABLE IF NOT EXISTS subscription_source (id INTEGER PRIMARY KEY CHECK(id=1), profile TEXT NOT NULL, term TEXT NOT NULL, observed_at TEXT NOT NULL); CREATE TABLE IF NOT EXISTS subscription_effects (id TEXT PRIMARY KEY, tool TEXT NOT NULL, before_json TEXT NOT NULL, result_json TEXT NOT NULL)");
+  db.exec("CREATE TABLE IF NOT EXISTS subscription_source (id INTEGER PRIMARY KEY CHECK(id=1), profile TEXT NOT NULL, term TEXT NOT NULL, principal TEXT NOT NULL, term_id TEXT NOT NULL, observed_at TEXT NOT NULL); CREATE TABLE IF NOT EXISTS subscription_current_keys (key TEXT PRIMARY KEY); CREATE TABLE IF NOT EXISTS subscription_effects (id TEXT PRIMARY KEY, tool TEXT NOT NULL, before_json TEXT NOT NULL, result_json TEXT NOT NULL)");
   const binding = db.prepare("SELECT * FROM subscription_source WHERE id=1").get();
-  if (binding && (binding.profile !== config.studentProfileId || binding.term !== config.currentTerm)) { db.close(); throw Error("Stored subject or term mismatch"); }
+  if (binding && (binding.profile !== config.studentProfileId || binding.term !== config.currentTerm || binding.principal !== config.principalId || binding.term_id !== config.currentTermId)) { db.close(); throw Error("Stored subject or term mismatch"); }
   return db;
 }
 
@@ -28,11 +28,14 @@ export function importQualifiedSource(db, config, source, now = new Date()) {
   for (const row of snapshot.assignments) {
     if (!clean(row.course) || !clean(row.title) || typeof row.isMissing !== "boolean" || (row.url && !assignmentUrl.test(row.url)) || Object.keys(row).some(key => !["course", "title", "dueDate", "status", "isMissing", "url"].includes(key))) throw Error("Invalid source fields");
   }
-  const state = { assignments: {}, lastScrapeAt: null };
+  const existing = db.prepare("SELECT key, course, title, due_date AS dueDate, status, url, first_seen_at AS firstSeenAt, last_seen_at AS lastSeenAt, last_missing_at AS lastMissingAt, resolved_at AS resolvedAt, is_missing AS isMissing FROM assignments").all();
+  const state = { assignments: Object.fromEntries(existing.map(row => [row.key, { ...row, isMissing: Boolean(row.isMissing) }])), lastScrapeAt: null };
   updateStateWithScrape(state, snapshot.observedAt, snapshot.assignments);
   db.transaction(() => {
     syncAssignmentsFromState(db, state);
-    db.prepare("INSERT INTO subscription_source VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET observed_at=excluded.observed_at").run(config.studentProfileId, config.currentTerm, snapshot.observedAt);
+    db.prepare("INSERT INTO subscription_source VALUES(1,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET observed_at=excluded.observed_at").run(config.studentProfileId, config.currentTerm, config.principalId, config.currentTermId, snapshot.observedAt);
+    db.exec("DELETE FROM subscription_current_keys");
+    db.prepare("INSERT INTO subscription_current_keys SELECT key FROM assignments WHERE last_seen_at=?").run(snapshot.observedAt);
   })();
   return { ok: true, assignments: snapshot.assignments.length, observedAt: snapshot.observedAt };
 }
@@ -40,7 +43,8 @@ export function importQualifiedSource(db, config, source, now = new Date()) {
 export function subscriptionToolCatalog(db) {
   const source = db.prepare("SELECT * FROM subscription_source WHERE id=1").get();
   if (!source) throw Error("Current source has not been imported");
-  return { source, assignments: listAssignments(db, { status: "all", includeIgnored: true, includePending: true, limit: 1000 }).map(({ key, course, title, url, status, manualStatus, dueDate }) => ({ key, course, title, url, status, manualStatus, dueDate })) };
+  const current = new Set(db.prepare("SELECT key FROM subscription_current_keys").all().map(row => row.key));
+  return { source, assignments: listAssignments(db, { status: "all", includeIgnored: true, includePending: true, limit: 1000 }).filter(row=>current.has(row.key)).map(({ key, course, title, url, status, manualStatus, dueDate }) => ({ key, course, title, url, status, manualStatus, dueDate })) };
 }
 
 function exactTarget(db, target) {
@@ -77,6 +81,8 @@ export async function executeSubscriptionTool(db, request, config = {}) {
     if (Object.keys(args).some(key => !allowed.includes(key))) throw Error("Unexpected tool arguments");
     args = name === "list_assignments" ? { ...args, limit: Math.min(Number(args.limit) || 30, 100), bucketed: false } : { state: { lastScrapeAt: source.observed_at, assignments: {} } };
   } else {
+    const age = Date.now() - Date.parse(source.observed_at);
+    if (!Number.isFinite(age) || age < -30000 || age > 900000) return { ok: false, reply: "Refresh the saved Schoology data before changing a local note or status. No change was saved." };
     if (!request.localRequest || !["note", "status", "clear-notes", "clear-status"].includes(request.localRequest.operation)) throw Error("Explicit local edit required");
     const operationTool = { note: "add_assignment_note", status: "update_assignment_status", "clear-notes": "clear_assignment_notes", "clear-status": "clear_assignment_status" };
     if (operationTool[request.localRequest.operation] !== name) throw Error("Local operation mismatch");

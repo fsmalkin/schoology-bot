@@ -175,7 +175,11 @@ function Start-SubscriptionRelay {
     if($priorConfig.studentProfileId -cne $StudentProfileId -or $priorConfig.currentTerm -cne $CurrentTerm -or (($priorConfig.memberIds|Sort-Object)-join ',') -cne (($MemberIds|Sort-Object)-join ',') -or [IO.Path]::GetFullPath($priorConfig.dataDirectory) -cne [IO.Path]::GetFullPath([IO.Path]::GetDirectoryName($ResumeStatePath))){throw 'Prior subject, audience or runtime binding changed'}
   }
   $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-  if($ToolConfigPath -and (-not [IO.Path]::IsPathFullyQualified($ToolConfigPath) -or -not [IO.File]::Exists($ToolConfigPath))){throw 'Fixed original-tool config required'}
+  if($ToolConfigPath){
+    if(-not [IO.Path]::IsPathFullyQualified($ToolConfigPath) -or -not [IO.File]::Exists($ToolConfigPath)){throw 'Fixed original-tool config required'}
+    $toolBinding=[IO.File]::ReadAllText($ToolConfigPath)|ConvertFrom-Json
+    if($toolBinding.studentProfileId -cne $StudentProfileId -or $toolBinding.currentTerm -cne $CurrentTerm -or $toolBinding.principalId -cne "telegram:$ChatId"){throw 'Original tool subject, term or caller mismatch'}
+  }
   $lockPath=Join-Path $DataDirectory 'relay.lock'
   $lock=[IO.FileStream]::new($lockPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
   $token=$null; $client=$null; $handler=$null
@@ -235,7 +239,7 @@ function Start-SubscriptionRelay {
         $catalog=Invoke-OriginalSchoologyTool $node $ToolConfigPath @{command='catalog'}
         $toolName=$null;$toolArgs=@{}
         if($localRequest){$toolName=@{note='add_assignment_note';status='update_assignment_status';'clear-notes'='clear_assignment_notes';'clear-status'='clear_assignment_status'}[$localRequest.operation]}
-        elseif($message.text -match '(?i)\brefresh\b'){$toolName='refresh_schoology'}
+        elseif($message.text.Trim() -match '(?i)^/?refresh(?: schoology)?[.!]?$'){$toolName='refresh_schoology'}
         else {
           $receipt.workerCalls=1;Write-RelayJson $receiptPath $receipt
           $plan=Invoke-RelayWorker $executable $WorkerThreadId $WorkerDirectory $message.text (Join-Path $DataDirectory "answer-$($update.update_id).json") $StudentProfileId $CurrentTerm $null $null $catalog

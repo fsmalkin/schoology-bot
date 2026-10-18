@@ -43,3 +43,27 @@ test("source binding, freshness, explicit edit and scope fail closed without mut
     assert.equal(db.prepare("SELECT COUNT(*) n FROM subscription_effects").get().n,0);
   } finally { db.close(); }
 });
+
+test("later complete source resolves absent missing rows and excludes them from edit targets", async () => {
+  const db=openSubscriptionToolStore(config);
+  try {
+    const first=source();first.snapshot.observedAt=new Date(Date.now()-1000).toISOString();
+    importQualifiedSource(db,config,first);
+    const second=source();second.snapshot.assignments=[];
+    importQualifiedSource(db,config,second);
+    assert.equal(db.prepare("SELECT is_missing FROM assignments").get().is_missing,0);
+    assert.equal(subscriptionToolCatalog(db).assignments.length,0);
+    await assert.rejects(executeSubscriptionTool(db,request(1,"add_assignment_note",{operation:"note",target:row.url,value:"text"})),/exact assignment/);
+  } finally {db.close();}
+});
+
+test("stale saved catalog refuses local edits without changing data", async () => {
+  const db=openSubscriptionToolStore(config);
+  try {
+    importQualifiedSource(db,config,source());
+    db.prepare("UPDATE subscription_source SET observed_at=?").run("2000-01-01T00:00:00Z");
+    const result=await executeSubscriptionTool(db,request(1,"add_assignment_note",{operation:"note",target:row.url,value:"text"}));
+    assert.equal(result.ok,false);assert.match(result.reply,/No change was saved/);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM assignment_notes").get().n,0);
+  } finally {db.close();}
+});
