@@ -56,6 +56,10 @@ try {
   $duplicate=[pscustomobject]@{profileId='123';term='MP1 2026-2027';assignments=@($assignment,[pscustomobject]@{url='https://bcps.schoology.com/assignment/456';title='Geometry practice';course='Other course'})}
   Assert-Refused {Confirm-LocalAnnotationTarget $request $assignment $duplicate '123' 'MP1 2026-2027'}
   Assert-Refused {Confirm-LocalAnnotationTarget $request $assignment $snapshot '123' 'MP2 2026-2027'}
+  $withUnlinked=[pscustomobject]@{profileId='123';term='MP1 2026-2027';assignments=@($assignment,[pscustomobject]@{url='';title='Unlinked item';course='Science'})}
+  Confirm-LocalAnnotationTarget $request $assignment $withUnlinked '123' 'MP1 2026-2027'
+  $passed++
+  Assert-Refused {Confirm-LocalAnnotationTarget (Get-LocalAnnotationRequest '/note Unlinked item :: text') ([pscustomobject]@{url='https://bcps.schoology.com/assignment/999';title='Unlinked item';course='Science'}) $withUnlinked '123' 'MP1 2026-2027'}
   $annotationPath=Join-Path $temporary 'annotations.json'
   $annotations=Read-LocalAnnotations $annotationPath '123' 'MP1 2026-2027'
   $reply=Save-LocalAnnotation $annotations $annotationPath $request $assignment 'telegram-update-1' $snapshot

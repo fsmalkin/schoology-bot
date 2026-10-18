@@ -36,7 +36,7 @@ function Confirm-LocalAnnotationTarget($Request,$Assignment,$Snapshot,[string]$P
   if(-not $Assignment -or $Assignment.url -cnotmatch '^https://bcps\.schoology\.com/assignment/[1-9][0-9]*$' -or -not $Assignment.title -or $Assignment.title.Length -gt 500 -or -not $Assignment.course -or $Assignment.course.Length -gt 500){throw 'No unique current assignment resolved; local data unchanged'}
   if(-not $Snapshot -or $Snapshot.profileId -cne $Profile -or $Snapshot.term -cne $Term -or @($Snapshot.assignments).Count -lt 1 -or @($Snapshot.assignments).Count -gt 1000){throw 'Bound current source catalog required'}
   $matches=@($Snapshot.assignments|Where-Object {
-    if($_.url -cnotmatch '^https://bcps\.schoology\.com/assignment/[1-9][0-9]*$' -or -not $_.title -or -not $_.course){throw 'Invalid current source catalog'}
+    if(($_.url -and $_.url -cnotmatch '^https://bcps\.schoology\.com/assignment/[1-9][0-9]*$') -or -not $_.title -or -not $_.course){throw 'Invalid current source catalog'}
     if($Request.target -match '^https://'){return $Request.target -ceq $_.url}
     $titleText=([string]$_.title -replace '\s+',' ').Trim()
     $targetText=($Request.target -replace '\s+',' ').Trim()
