@@ -70,7 +70,9 @@ function Confirm-RelayPlannerEvents([string]$Events) {
     $entry=$line|ConvertFrom-Json -ErrorAction Stop
     if($entry.type -in @('item.started','item.completed')){
       $types+=@([string]$entry.item.type)
-      if($entry.item.type -cnotin @('reasoning','agent_message','agentMessage')){throw 'Planner used a tool or unknown item; result refused'}
+      # CLI error items are non-executable notifications. A successful process
+      # and valid plan are still required below; actual tool/command items fail.
+      if($entry.item.type -cnotin @('reasoning','agent_message','agentMessage','error')){throw 'Planner used a tool or unknown item; result refused'}
     }
   }
   return [pscustomobject]@{itemTypes=$types;validated=$true}

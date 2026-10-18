@@ -11,7 +11,7 @@ function Assert-Refused([scriptblock]$Action) {
 function New-Message {
   return [pscustomobject]@{message=[pscustomobject]@{chat=[pscustomobject]@{id='-10001'};from=[pscustomobject]@{id='101';is_bot=$false};text='What is missing?';photo=$null;document=$null;voice=$null}}
 }
-foreach($kind in @('agent_message','agentMessage','reasoning')){
+foreach($kind in @('agent_message','agentMessage','reasoning','error')){
   $events=@{type='item.completed';item=@{type=$kind}}|ConvertTo-Json -Compress
   if(-not (Confirm-RelayPlannerEvents $events).validated){throw 'Valid text planner event refused'}
   $passed++
