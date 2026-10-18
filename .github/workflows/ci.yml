@@ -40,3 +40,6 @@ jobs:
           SCHOLOGY_BROWSER_CHANNEL: "chrome"
           TELEGRAM_PID_NAMESPACE_TEST: "1"
         run: npm test
+      - name: Test subscription Telegram isolation (offline)
+        shell: pwsh
+        run: ./tests/telegram_subscription.test.ps1

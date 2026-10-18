@@ -427,3 +427,7 @@ Performance and reliability
 - Add a Telegram E2E test harness that runs against a test bot and test chat.
 - Add a reminder delivery integration test using a fake clock.
 - Add a live scrape smoke test behind a feature flag.
+
+## Local subscription Telegram reader (October 18)
+
+pwsh -NoProfile -File tests/telegram_subscription.test.ps1: 9 offline checks passed for allowed text, foreign chat/sender, bot input, oversized/attachment/unsupported input and preservation of existing state before any credential/provider effect. Parse and whitespace checks passed. The dedicated subscription worker separately read the live current term (8 courses, 80 assignments, 7 Missing, 2 Incomplete); that is a browser-reader component result. Actual Telegram question/answer and refresh acceptance remain separate pending consumer evidence. No paid-model/API-key, reminder or scheduler test was run.

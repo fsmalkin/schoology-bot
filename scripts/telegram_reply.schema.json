@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["state", "conciseReply", "observedAt", "sourceTabId"],
+  "properties": {
+    "state": { "type": "string", "enum": ["ok", "unavailable"] },
+    "conciseReply": { "type": "string", "minLength": 1, "maxLength": 3500 },
+    "observedAt": { "type": ["string", "null"] },
+    "sourceTabId": { "type": ["string", "null"] }
+  }
+}
