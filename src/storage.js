@@ -221,7 +221,7 @@ export function updateStateWithScrape(state, scrapeAt, assignments) {
       if (assignmentId && candidate.assignmentId === assignmentId) {
         return { storageKey: candidateKey, record: candidate };
       }
-      if (!fallbackMatch && fallbackIdentity && assignmentIdentityKey(candidate) === fallbackIdentity) {
+      if (!fallbackMatch && fallbackIdentity && (!assignmentId || !candidate.assignmentId) && assignmentIdentityKey(candidate) === fallbackIdentity) {
         fallbackMatch = { storageKey: candidateKey, record: candidate };
       }
     }

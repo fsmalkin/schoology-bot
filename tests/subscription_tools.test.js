@@ -81,3 +81,17 @@ test("an exact assignment read excludes other rows and does not invent missing/s
     await assert.rejects(executeSubscriptionTool(db,request(2,"list_assignments",null,{target:"Absent"})),/exact assignment/);
   } finally {db.close();}
 });
+
+test("same-title same-date assignments with distinct Schoology IDs remain separate", () => {
+  const db=openSubscriptionToolStore(config);
+  try {
+    const s=source();s.snapshot.assignments.push({...row,status:"Submitted",isMissing:false,url:"https://bcps.schoology.com/assignment/999"});
+    importQualifiedSource(db,config,s);
+    const rows=subscriptionToolCatalog(db).assignments;
+    assert.equal(rows.length,2);
+    assert.equal(rows.find(r=>r.url===row.url).status,"Missing");
+    assert.equal(rows.find(r=>r.url.endsWith("/999")).status,"Submitted");
+    importQualifiedSource(db,config,s);
+    assert.equal(subscriptionToolCatalog(db).assignments.length,2);
+  } finally {db.close();}
+});
