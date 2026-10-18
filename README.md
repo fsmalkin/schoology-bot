@@ -64,7 +64,8 @@ The state file and lock are preserved after exit. An existing state directory
 cannot be reused without reconciling its operations. Creating a `stop` file in
 the private data directory stops the loop after its current operation.
 For a controlled upgrade, use a new runtime directory and `resumeStatePath`
-pointing to the prior stopped runtime's state. The prior process must be absent,
+pointing to the prior stopped runtime's state, with its original metadata-only
+configuration saved as sibling `config.json`. The prior process must be absent,
 with the same bot, audience, worker, student, term and request ceiling. The new
 process carries the exact offset and counters forward; this is not automatic
 restart or permission to replay an uncertain effect.

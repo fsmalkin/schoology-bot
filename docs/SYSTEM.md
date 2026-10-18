@@ -21,8 +21,9 @@ claim the previous report's phone acceptance as a new conversational test.
 See README for startup, limitations and stop/reconciliation behavior.
 
 The transport also handles explicit local note/status requests. A read-only
-worker resolves one exact current assignment, and deterministic app code checks
-the requested title/link before an atomic local JSON write. The fixed student
+worker supplies the current-period source catalog and a proposed assignment;
+deterministic app code requires exactly one matching title/link in that catalog,
+the same bound subject/term and a fresh observation before a local JSON write. The fixed student
 and term bind that file; an update-id journal prevents duplicate local effects
 and retains prior values. A local write is reserved before execution and read
 back before any confirmation. Neither notes nor manual statuses change

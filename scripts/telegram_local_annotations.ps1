@@ -32,8 +32,17 @@ function Read-LocalAnnotations([string]$Path,[string]$Profile,[string]$Term) {
   return $data
 }
 
-function Confirm-LocalAnnotationTarget($Request,$Assignment) {
+function Confirm-LocalAnnotationTarget($Request,$Assignment,$Snapshot,[string]$Profile,[string]$Term) {
   if(-not $Assignment -or $Assignment.url -cnotmatch '^https://bcps\.schoology\.com/assignment/[1-9][0-9]*$' -or -not $Assignment.title -or $Assignment.title.Length -gt 500 -or -not $Assignment.course -or $Assignment.course.Length -gt 500){throw 'No unique current assignment resolved; local data unchanged'}
+  if(-not $Snapshot -or $Snapshot.profileId -cne $Profile -or $Snapshot.term -cne $Term -or @($Snapshot.assignments).Count -lt 1 -or @($Snapshot.assignments).Count -gt 1000){throw 'Bound current source catalog required'}
+  $matches=@($Snapshot.assignments|Where-Object {
+    if($_.url -cnotmatch '^https://bcps\.schoology\.com/assignment/[1-9][0-9]*$' -or -not $_.title -or -not $_.course){throw 'Invalid current source catalog'}
+    if($Request.target -match '^https://'){return $Request.target -ceq $_.url}
+    $titleText=([string]$_.title -replace '\s+',' ').Trim()
+    $targetText=($Request.target -replace '\s+',' ').Trim()
+    return $targetText -ieq $titleText -or $targetText -ieq (([string]$_.course -replace '\s+',' ').Trim()+' / '+$titleText)
+  })
+  if($matches.Count -ne 1 -or $matches[0].url -cne $Assignment.url -or $matches[0].title -cne $Assignment.title -or $matches[0].course -cne $Assignment.course){throw 'Current source match is absent, ambiguous or inconsistent'}
   if($Request.target -match '^https://') {
     if($Request.target -cne $Assignment.url){throw 'Resolved assignment does not match requested URL'}
   } else {
@@ -44,8 +53,8 @@ function Confirm-LocalAnnotationTarget($Request,$Assignment) {
   }
 }
 
-function Save-LocalAnnotation($Data,[string]$Path,$Request,$Assignment,[string]$EffectId) {
-  Confirm-LocalAnnotationTarget $Request $Assignment
+function Save-LocalAnnotation($Data,[string]$Path,$Request,$Assignment,[string]$EffectId,$Snapshot) {
+  Confirm-LocalAnnotationTarget $Request $Assignment $Snapshot $Data.profile $Data.term
   if($EffectId -notmatch '^telegram-update-[0-9]+$' -or $Data.effects.Contains($EffectId)){throw 'Existing or invalid local effect; do not replay'}
   $key=[string]$Assignment.url
   if(-not $Data.records.Contains($key)){$Data.records[$key]=@{url=$key;course=[string]$Assignment.course;title=[string]$Assignment.title;manualStatus=$null;notes=@()}}
