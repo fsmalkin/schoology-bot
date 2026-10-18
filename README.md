@@ -18,7 +18,8 @@ profile, source reader and local Codex authentication. Then create a private
 JSON configuration outside the repository with `dataDirectory` (an existing
 absolute directory), `workerDirectory`, `workerThreadId`, `botId`, `botUsername`,
 `chatId`, exactly two `memberIds`, `studentProfileId`, `currentTerm` (for example
-`MP 1 2026-2027`), and `maximumRequests` (1-100). Do not put secrets in that file.
+`MP 1 2026-2027`), and `maximumRequests` (0 for normal human-triggered use,
+or a positive ceiling up to 10000 for a bounded pilot). Do not put secrets in that file.
 The script obtains only the existing `schoology-bot/prod/TELEGRAM_BOT_TOKEN`
 through Windows Credential Manager, keeps it in process memory, verifies the
 exact bot and three-member audience, and refuses an existing webhook.
@@ -44,7 +45,9 @@ the private data directory stops the loop after its current operation.
 
 This is a local personal runtime: the PC, Chrome, signed-in source and ChatGPT
 subscription must remain available. It has no automatic boot registration and
-stops at the configured request ceiling. `POLLING` and a successful browser
+stops at a positive configured request ceiling. Normal operation invokes the
+worker only for an allowed incoming human message, with one call and one reply
+attempt per update; it never runs inference on a timer. `POLLING` and a successful browser
 read are component evidence; acceptance still requires a real Telegram
 question, useful current answer and separate refresh. Offline checks:
 `pwsh -NoProfile -File tests/telegram_subscription.test.ps1`.
