@@ -589,6 +589,8 @@ export async function advanceSavedSessionSignIn(page, username) {
     await maybeEnterSsoSchool(page, config);
     await maybeStartSchoologySamlLogin(page, config);
   }
+  current = new URL(page.url());
+  if (!["https://bcps.schoology.com", "https://login.mybcps.org", "https://login.microsoftonline.com"].includes(current.origin)) return { state: "UNQUALIFIED_AUTH_ORIGIN", origin: current.origin, pathname: current.pathname };
   if (await hasSelector(page, "#AzureADBCPSOrgExchange")) await selectClaimsProvider(page, "azuread");
   current = new URL(page.url());
   if (!["https://bcps.schoology.com", "https://login.mybcps.org", "https://login.microsoftonline.com"].includes(current.origin)) return { state: "UNQUALIFIED_AUTH_ORIGIN", origin: current.origin, pathname: current.pathname };
