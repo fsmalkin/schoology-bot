@@ -5,6 +5,13 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 
 ## Current Decisions
 
+- October18 private-plugin continuation: expose the retained original tools to
+  ChatGPT desktop through a stdio MCP connector. Telegram remains on its tested
+  checkout, one poller and existing counters. Reuse the current-only store with
+  a separate plugin operation namespace. Package/startup/discovery/consumer
+  proof remain distinct; app-session Microsoft sign-in still gates live refresh.
+  No listener, new worker, API spend, schedule, reminders or phone claim.
+
 - October 18 acceptance correction: original deterministic code/tools are the
   goal, Telegram first. Current browser-per-question acceptance is fallback
   proof only. Restore the original SQLite/tool dispatcher with subscription

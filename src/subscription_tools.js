@@ -58,7 +58,8 @@ export async function executeSubscriptionTool(db, request, config = {}) {
   const source = subscriptionToolCatalog(db).source;
   const name = request?.toolName;
   if (!READ_TOOLS.has(name) && !LOCAL_TOOLS.has(name) && name !== "refresh_schoology") throw Error("Tool is outside the enabled scope; reminders remain off");
-  if (!/^telegram-update-\d+$/.test(request.operationId || "")) throw Error("Stable Telegram update identity required");
+  const operationPattern = config.allowedOperationNamespace === "schoology-plugin" ? /^schoology-plugin-[A-Za-z0-9][A-Za-z0-9_-]{8,95}$/ : /^telegram-update-\d+$/;
+  if (!operationPattern.test(request.operationId || "")) throw Error("Stable bound operation identity required");
   if (db.prepare("SELECT id FROM subscription_effects WHERE id=?").get(request.operationId)) throw Error("Completed tool effect; do not replay");
   if (name === "refresh_schoology") {
     let fresh;

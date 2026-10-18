@@ -1,5 +1,22 @@
 # Codex Execution Plans (ExecPlans)
 
+## Private local plugin connection (October18 continuation)
+
+Package the retained original tools as a private stdio MCP connector for the
+ChatGPT desktop interface Fred requested by analogy with Messages. Root remains
+the source/runtime owner. Plugin work uses its own isolated source checkout so
+the already-running Telegram source and counters stay unchanged. The connector
+uses the same bound current-only SQLite store, original allowlist and app-owned
+browser profile. It adds no listener, model worker, poller, API spend or schedule.
+
+Affected checks run in CI against retained fabricated records, including actual
+stdio/CLI/SQLite interactions, separate operation namespaces, durable refusal
+and restart recovery. Then package and qualify the supported private install
+and actual host consumer path. A source/ZIP result is not installed acceptance.
+Live refresh still needs the exact existing Microsoft sign-in; preserve that
+same Task and all old operation counts. Desktop proof does not establish phone
+availability, unattended refresh or old-history recovery.
+
 ## Restore the original tool-driven path (October 18 acceptance correction)
 
 Fred explicitly identified the original scraper/SQLite/deterministic tools as
