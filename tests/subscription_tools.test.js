@@ -67,3 +67,17 @@ test("stale saved catalog refuses local edits without changing data", async () =
     assert.equal(db.prepare("SELECT COUNT(*) n FROM assignment_notes").get().n,0);
   } finally {db.close();}
 });
+
+test("an exact assignment read excludes other rows and does not invent missing/submission status", async () => {
+  const db=openSubscriptionToolStore(config);
+  try {
+    const s=source();s.snapshot.assignments[0]={...row,status:"Not marked missing",isMissing:false};
+    s.snapshot.assignments.push({...row,title:"Other missing assignment",url:"https://bcps.schoology.com/assignment/999"});
+    importQualifiedSource(db,config,s);
+    const result=await executeSubscriptionTool(db,request(1,"list_assignments",null,{target:row.url}));
+    assert.match(result.reply,/Geometry practice/);
+    assert.match(result.reply,/Not marked missing \(submission status unknown\)/);
+    assert.doesNotMatch(result.reply,/Other missing assignment|Needs action/);
+    await assert.rejects(executeSubscriptionTool(db,request(2,"list_assignments",null,{target:"Absent"})),/exact assignment/);
+  } finally {db.close();}
+});

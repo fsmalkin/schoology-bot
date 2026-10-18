@@ -76,10 +76,17 @@ export async function executeSubscriptionTool(db, request, config = {}) {
     })();
   }
   let args = request.arguments || {};
+  let targetKey = null;
   if (READ_TOOLS.has(name)) {
-    const allowed = name === "list_assignments" ? ["status", "course", "limit", "includeIgnored", "includePending", "bucketed"] : [];
+    const allowed = name === "list_assignments" ? ["status", "course", "limit", "includeIgnored", "includePending", "bucketed", "target"] : [];
     if (Object.keys(args).some(key => !allowed.includes(key))) throw Error("Unexpected tool arguments");
-    args = name === "list_assignments" ? { ...args, limit: Math.min(Number(args.limit) || 30, 100), bucketed: false } : { state: { lastScrapeAt: source.observed_at, assignments: {} } };
+    if (name === "list_assignments" && args.target) {
+      targetKey = exactTarget(db, args.target).key;
+      args = { status: "all", includeIgnored: true, includePending: true, limit: 1000, bucketed: false };
+    } else {
+      args = name === "list_assignments" ? { ...args, limit: Math.min(Number(args.limit) || 30, 100), bucketed: false } : { state: { lastScrapeAt: source.observed_at, assignments: {} } };
+      delete args.target;
+    }
   } else {
     const age = Date.now() - Date.parse(source.observed_at);
     if (!Number.isFinite(age) || age < -30000 || age > 900000) return { ok: false, reply: "Refresh the saved Schoology data before changing a local note or status. No change was saved." };
@@ -99,6 +106,7 @@ export async function executeSubscriptionTool(db, request, config = {}) {
     else if (name === "clear_assignment_status") output = await runToolByName(db, "update_assignment_status", { key: args.key, status: "" });
     else output = await runToolByName(db, name, args);
     if (!output?.ok) throw Error(output?.error || "Original tool refused request");
+    if (targetKey) output = { ...output, assignments: output.assignments.filter(row => row.key === targetKey) };
     const reply = toolReply(db, name, args, output, source);
     const result = { ok: true, toolName: name, observedAt: source.observed_at, reply };
     db.prepare("INSERT INTO subscription_effects VALUES(?,?,?,?)").run(request.operationId, name, JSON.stringify(before), JSON.stringify(result));
@@ -113,7 +121,8 @@ function toolReply(db, name, args, output, source) {
     const rows = Array.isArray(output.assignments) ? output.assignments : [];
     const lines = rows.map(row => {
       const notes = db.prepare("SELECT note FROM assignment_notes WHERE assignment_key=? ORDER BY id").all(row.key);
-      return `${row.title} — ${simplifyCourseName(row.course)}\nSchoology: ${formatFriendlyStatus(row.status || "Unknown")}${row.manualStatus ? `\nLocal status: ${row.manualStatus}` : ""}${row.dueDate ? `\nDue: ${row.dueDate}` : ""}${notes.map(n => `\nNote: ${n.note}`).join("")}${row.url ? `\n${row.url}` : ""}`;
+      const sourceStatus = row.status === "Not marked missing" ? "Not marked missing (submission status unknown)" : formatFriendlyStatus(row.status || "Unknown");
+      return `${row.title} — ${simplifyCourseName(row.course)}\nSchoology: ${sourceStatus}${row.manualStatus ? `\nLocal status: ${row.manualStatus}` : ""}${row.dueDate ? `\nDue: ${row.dueDate}` : ""}${notes.map(n => `\nNote: ${n.note}`).join("")}${row.url ? `\n${row.url}` : ""}`;
     });
     return `Saved Schoology data observed ${source.observed_at}\n\n${lines.length ? lines.join("\n\n") : "No matching assignments."}`.slice(0, 3500);
   }
