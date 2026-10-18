@@ -4,7 +4,36 @@ A friendly, local-first Schoology assistant that logs in, finds missing assignme
 
 It runs on your machine today and is ready to move to a server later.
 
-## Local subscription Telegram reader (October 18 recovery)
+## Original deterministic tools with subscription planning (October 18 restoration)
+
+The accepted goal is the original code-driven Schoology workflow. The browser
+reader below is a recovery fallback, not its replacement. The candidate tool
+route reuses `storage.js`, SQLite `db.js`, `tool_runner.js`, status semantics and
+readable summary code. The existing Telegram carrier remains the only poller.
+Its subscription model selects a typed read tool; a tool-use event in that
+planner is refused. Explicit local edits are resolved and executed by code.
+No paid-provider agent, dashboard listener or reminder scheduler is started.
+
+An optional private `toolConfigPath` selects this route. Its JSON binds
+`databasePath`, `principalId`, `studentProfileId`, `currentTermId`, `currentTerm`
+and `browserProfileDirectory`. The browser profile must be the separate
+`schoology-app-profile` child of the database directory. It never attaches to
+or copies the user's normal Chrome profile. The deterministic Playwright driver
+uses the existing current-term field projector and validates the source account,
+period and coverage before importing through the original storage/SQLite code.
+Refresh has no login-alert or reminder side effects. Saved answers display the
+actual source observation time. Original history is not silently replaced.
+
+`scripts/signin_schoology_profile.mjs <private-config> <status-file>` opens the
+official Schoology sign-in in that app profile. The user completes any required
+authentication there; no password or storageState/cookie export is performed.
+`scripts/subscription_tools_cli.mjs <private-config>` accepts one JSON command
+on stdin and returns one JSON result. It opens no listener and cannot poll or
+send Telegram. Local edits use a SQLite effect journal and preserve before-values
+for reversible clears. Setup, source tests and a saved-data import alone are not
+live scraper/Telegram acceptance; see the current worklog for the actual state.
+
+## Local subscription browser fallback (October 18 recovery)
 
 `scripts/run_subscription_telegram.ps1` connects the existing private Schoology
 group to a dedicated, already-qualified local Codex worker using the signed-in

@@ -5,6 +5,15 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 
 ## Current Decisions
 
+- October 18 acceptance correction: original deterministic code/tools are the
+  goal, Telegram first. Current browser-per-question acceptance is fallback
+  proof only. Restore the original SQLite/tool dispatcher with subscription
+  planning and a deterministic session-first Playwright source; qualify actual
+  source/consumer behavior before calling the tool path delivered. Plain
+  ChatGPT carrier/tunnel work follows this outcome. Preserve the exact dashboard
+  listener denial and Docker terms boundary without broadening them to a Node
+  module or stdio ban. No new paid API, poller, schedule or reminders.
+
 - October 18 local-annotation delivery: explicit note/status editing passed the
   actual Telegram UI, including fresh-source persistence and both reversible
   clears. Runtime v8 uses source bfb934e and the same read-only worker, audience
