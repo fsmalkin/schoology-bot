@@ -63,6 +63,19 @@ function New-RelayPollParameters($NextOffset) {
   return $parameters
 }
 
+function Confirm-RelayPlannerEvents([string]$Events) {
+  $types=@()
+  foreach($line in ($Events -split "`n")){
+    if(-not $line.Trim()){continue}
+    $entry=$line|ConvertFrom-Json -ErrorAction Stop
+    if($entry.type -in @('item.started','item.completed')){
+      $types+=@([string]$entry.item.type)
+      if($entry.item.type -cnotin @('reasoning','agent_message','agentMessage')){throw 'Planner used a tool or unknown item; result refused'}
+    }
+  }
+  return [pscustomobject]@{itemTypes=$types;validated=$true}
+}
+
 function Invoke-RelayWorker($Executable, $ThreadId, $WorkingDirectory, $Question, $OutputPath, $StudentProfileId, $CurrentTerm, $LocalRequest, $LocalContext, $ToolCatalog=$null) {
   if([IO.File]::Exists($OutputPath)) { throw 'Existing worker result; do not replay' }
   $start = [Diagnostics.ProcessStartInfo]::new()
@@ -115,9 +128,9 @@ $Question
         $event=$line|ConvertFrom-Json -ErrorAction Stop
         if($event.type -in @('item.started','item.completed')){$plannerMetadata.itemTypes+=@([string]$event.item.type)}
         Write-RelayJson "$OutputPath.metadata.json" $plannerMetadata
-        if($event.type -in @('item.started','item.completed') -and $event.item.type -cnotin @('reasoning','agent_message')){throw 'Planner used a tool; result refused'}
       }
-      $plannerMetadata.validated=$true;Write-RelayJson "$OutputPath.metadata.json" $plannerMetadata
+      $validation=Confirm-RelayPlannerEvents $events
+      $plannerMetadata.validated=$validation.validated;Write-RelayJson "$OutputPath.metadata.json" $plannerMetadata
     }
     if($process.ExitCode -ne 0 -or -not [IO.File]::Exists($OutputPath)) { throw 'Worker failed; do not replay' }
     $result = [IO.File]::ReadAllText($OutputPath) | ConvertFrom-Json -Depth 12
