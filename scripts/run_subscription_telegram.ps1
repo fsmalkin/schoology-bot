@@ -109,11 +109,15 @@ $Question
     if(-not $process.WaitForExit(300000)) { $process.Kill($true); $process.WaitForExit(); throw 'Worker timed out; do not replay' }
     $events=$stdout.GetAwaiter().GetResult(); [void]$stderr.GetAwaiter().GetResult()
     if($null -ne $ToolCatalog){
+      $plannerMetadata=[ordered]@{exitCode=$process.ExitCode;itemTypes=@();validated=$false}
       foreach($line in ($events -split "`n")){
         if(-not $line.Trim()){continue}
         $event=$line|ConvertFrom-Json -ErrorAction Stop
+        if($event.type -in @('item.started','item.completed')){$plannerMetadata.itemTypes+=@([string]$event.item.type)}
+        Write-RelayJson "$OutputPath.metadata.json" $plannerMetadata
         if($event.type -in @('item.started','item.completed') -and $event.item.type -cnotin @('reasoning','agent_message')){throw 'Planner used a tool; result refused'}
       }
+      $plannerMetadata.validated=$true;Write-RelayJson "$OutputPath.metadata.json" $plannerMetadata
     }
     if($process.ExitCode -ne 0 -or -not [IO.File]::Exists($OutputPath)) { throw 'Worker failed; do not replay' }
     $result = [IO.File]::ReadAllText($OutputPath) | ConvertFrom-Json -Depth 12

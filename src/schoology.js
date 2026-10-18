@@ -589,9 +589,13 @@ export async function advanceSavedSessionSignIn(page, username) {
     await maybeEnterSsoSchool(page, config);
     await maybeStartSchoologySamlLogin(page, config);
   }
+  await waitForRenderedLoginControls(page);
   current = new URL(page.url());
   if (!["https://bcps.schoology.com", "https://login.mybcps.org", "https://login.microsoftonline.com"].includes(current.origin)) return { state: "UNQUALIFIED_AUTH_ORIGIN", origin: current.origin, pathname: current.pathname };
-  if (await hasSelector(page, "#AzureADBCPSOrgExchange")) await selectClaimsProvider(page, "azuread");
+  if (await hasSelector(page, "#AzureADBCPSOrgExchange")) {
+    await selectClaimsProvider(page, "azuread");
+    await waitForMicrosoftCredentialControls(page, 15000);
+  }
   current = new URL(page.url());
   if (!["https://bcps.schoology.com", "https://login.mybcps.org", "https://login.microsoftonline.com"].includes(current.origin)) return { state: "UNQUALIFIED_AUTH_ORIGIN", origin: current.origin, pathname: current.pathname };
   let identifierSubmitted = false, passwordSubmitted = false;
@@ -599,7 +603,7 @@ export async function advanceSavedSessionSignIn(page, username) {
   if (current.origin === "https://login.microsoftonline.com" && await isVisible(identifier)) {
     await identifier.fill(username);
     const next = page.locator("#idSIButton9").first();
-    if (await isVisible(next)) { await next.click(); identifierSubmitted = true; await page.waitForTimeout(1000); }
+    if (await isVisible(next)) { await next.click(); identifierSubmitted = true; await waitForMicrosoftCredentialControls(page, 15000); }
   }
   current = new URL(page.url());
   const password = page.locator("input[name='passwd'],input#i0118").first();
@@ -617,7 +621,7 @@ export async function advanceSavedSessionSignIn(page, username) {
     }
   }
   current = new URL(page.url());
-  return { state: "OFFICIAL_SESSION_ROUTING_COMPLETED", origin: current.origin, pathname: current.pathname, identifierSubmitted, passwordAutofilled, passwordSubmitted, passwordFieldPresent: await page.locator("input[type='password']").count() > 0 };
+  return { state: "OFFICIAL_SESSION_ROUTING_COMPLETED", origin: current.origin, pathname: current.pathname, identifierSubmitted, passwordAutofilled, passwordSubmitted, passwordFieldPresent: await page.locator("input[type='password']").count() > 0, bcpsAccountChoicePresent: await hasSelector(page, "#AzureADBCPSOrgExchange"), bcpsIdentifierPresent: await hasSelector(page, "#signInName") };
 }
 
 async function isLoginRequired(page) {
