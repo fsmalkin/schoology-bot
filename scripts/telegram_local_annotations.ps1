@@ -53,8 +53,16 @@ function Confirm-LocalAnnotationTarget($Request,$Assignment,$Snapshot,[string]$P
   }
 }
 
-function Confirm-LocalAnnotationFreshness([string]$ObservedAt,[string]$SourceTabId,[DateTimeOffset]$Now) {
-  $sourceTime=[DateTimeOffset]::Parse($ObservedAt)
+function Confirm-LocalAnnotationFreshness($ObservedAt,[string]$SourceTabId,[DateTimeOffset]$Now) {
+  # Newer PowerShell JSON readers return DateTime for ISO timestamps. Casting
+  # that value to string first loses its timezone and can shift it by hours.
+  if($ObservedAt -is [DateTimeOffset]) {$sourceTime=$ObservedAt}
+  elseif($ObservedAt -is [DateTime]) {
+    if($ObservedAt.Kind -eq [DateTimeKind]::Unspecified){throw 'Source timestamp timezone required'}
+    $sourceTime=[DateTimeOffset]::new($ObservedAt)
+  } elseif($ObservedAt -is [string] -and $ObservedAt -match '(?:Z|[+-][0-9]{2}:[0-9]{2})$') {
+    $sourceTime=[DateTimeOffset]::Parse($ObservedAt,[Globalization.CultureInfo]::InvariantCulture)
+  } else {throw 'Source timestamp timezone required'}
   $sourceAge=($Now - $sourceTime).TotalSeconds
   if($sourceAge -lt -30 -or $sourceAge -gt 300 -or -not $SourceTabId){throw 'Fresh source observation required'}
 }

@@ -63,6 +63,15 @@ try {
   $passed++
   Confirm-LocalAnnotationFreshness '2026-10-18T05:37:10.37Z' 'source-tab' ([DateTimeOffset]::Parse('2026-10-18T05:37:39Z'))
   $passed++
+  $decodedObservation='{"observedAt":"2026-10-18T05:37:10.37Z"}'|ConvertFrom-Json
+  Confirm-LocalAnnotationFreshness $decodedObservation.observedAt 'source-tab' ([DateTimeOffset]::Parse('2026-10-18T05:37:39Z'))
+  $passed++
+  Confirm-LocalAnnotationFreshness ([DateTime]::new(2026,10,18,5,37,10,[DateTimeKind]::Utc)) 'source-tab' ([DateTimeOffset]::Parse('2026-10-18T05:37:39Z'))
+  $passed++
+  Confirm-LocalAnnotationFreshness '2026-10-18T01:37:10.37-04:00' 'source-tab' ([DateTimeOffset]::Parse('2026-10-18T05:37:39Z'))
+  $passed++
+  Assert-Refused {Confirm-LocalAnnotationFreshness ([DateTime]::new(2026,10,18,5,37,10,[DateTimeKind]::Unspecified)) 'source-tab' ([DateTimeOffset]::Parse('2026-10-18T05:37:39Z'))}
+  Assert-Refused {Confirm-LocalAnnotationFreshness '2026-10-18T05:37:10.37' 'source-tab' ([DateTimeOffset]::Parse('2026-10-18T05:37:39Z'))}
   Assert-Refused {Confirm-LocalAnnotationFreshness '2026-10-18T05:30:00Z' 'source-tab' ([DateTimeOffset]::Parse('2026-10-18T05:37:39Z'))}
   Assert-Refused {Confirm-LocalAnnotationFreshness '2026-10-18T05:40:00Z' 'source-tab' ([DateTimeOffset]::Parse('2026-10-18T05:37:39Z'))}
   Assert-Refused {Confirm-LocalAnnotationTarget (Get-LocalAnnotationRequest '/note Unlinked item :: text') ([pscustomobject]@{url='https://bcps.schoology.com/assignment/999';title='Unlinked item';course='Science'}) $withUnlinked '123' 'MP1 2026-2027'}

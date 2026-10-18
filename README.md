@@ -41,8 +41,8 @@ membership stop the service without acknowledging those updates.
 
 Use an exact current assignment title or its Schoology link for a local edit:
 
-- `Add a note to "Ex7 Corresponding Parts": Bring the worksheet`
-- `Mark "Ex7 Corresponding Parts" as Waiting on teacher`
+- `Add a note to "Example assignment title": Bring the worksheet`
+- `Mark "Example assignment title" as Waiting on teacher`
 - `/note <assignment title or link> :: <note>`
 - `/status <assignment title or link> :: <status>`
 - `/clear-status <assignment title or link>`
