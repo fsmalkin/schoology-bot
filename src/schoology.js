@@ -584,15 +584,17 @@ export async function advanceSavedSessionSignIn(page, username) {
   if (!/^[a-z0-9._-]+@bcps\.org$/i.test(username || "")) throw Error("Exact BCPS identifier required");
   let current = new URL(page.url());
   if (!["https://bcps.schoology.com", "https://login.mybcps.org", "https://login.microsoftonline.com"].includes(current.origin)) return { state: "UNQUALIFIED_AUTH_ORIGIN", origin: current.origin, pathname: current.pathname };
-  const config = { schoology: { ssoSchool: "Baltimore County Public Schools" } };
+  const config = { schoology: { ssoSchool: "Baltimore County Public Schools", loginUrl: "https://bcps.schoology.com/login", gradesUrl: "https://bcps.schoology.com/grades/grades" } };
   if (current.origin === "https://bcps.schoology.com") {
     await maybeEnterSsoSchool(page, config);
     await maybeStartSchoologySamlLogin(page, config);
   }
   if (await hasSelector(page, "#AzureADBCPSOrgExchange")) await selectClaimsProvider(page, "azuread");
+  current = new URL(page.url());
+  if (!["https://bcps.schoology.com", "https://login.mybcps.org", "https://login.microsoftonline.com"].includes(current.origin)) return { state: "UNQUALIFIED_AUTH_ORIGIN", origin: current.origin, pathname: current.pathname };
   let identifierSubmitted = false, passwordSubmitted = false;
   const identifier = page.locator("input[name='loginfmt']").first();
-  if (await isVisible(identifier)) {
+  if (current.origin === "https://login.microsoftonline.com" && await isVisible(identifier)) {
     await identifier.fill(username);
     const next = page.locator("#idSIButton9").first();
     if (await isVisible(next)) { await next.click(); identifierSubmitted = true; await page.waitForTimeout(1000); }
