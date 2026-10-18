@@ -12,8 +12,9 @@ Private operator configuration binds the bot, exact three-member group, two
 human senders, worker, student and term. Telegram secrets remain opaque in the
 existing native credential broker and transport process.
 
-`state.json` records heartbeat, poll/request counts, bounded request ceiling and
-the next update offset. Per-update receipts reserve a worker invocation and a
+`state.json` records heartbeat, poll/request counts, the configured request
+ceiling (zero means no lifetime cap) and the next update offset. Per-update
+receipts reserve a worker invocation and a
 single reply attempt before their effects; only exact Telegram readback marks
 the reply sent. Existing or ambiguous state fails closed. The service cannot
 claim the previous report's phone acceptance as a new conversational test.
