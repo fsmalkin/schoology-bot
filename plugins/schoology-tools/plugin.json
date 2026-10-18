@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "schoology-tools",
+  "version": "0.1.0",
+  "description": "Use the existing local Schoology assignment tools and app-owned browser session.",
+  "author": { "name": "Fred Smalkin" },
+  "extensions": {
+    "com.openai": {
+      "requires_local_executor": true,
+      "interface": {
+        "displayName": "Schoology Tools",
+        "shortDescription": "Local Schoology assignments",
+        "longDescription": "Read saved current-term assignments, preserve local notes and statuses, and refresh through the existing signed-in headless browser. Requires the enrolled local backend and its Schoology session.",
+        "developerName": "Fred Smalkin",
+        "category": "Productivity",
+        "capabilities": ["Read", "Write"],
+        "defaultPrompt": "Show my current Schoology assignments and distinguish saved data from a fresh refresh."
+      }
+    }
+  }
+}
