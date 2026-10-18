@@ -9,7 +9,9 @@ It runs on your machine today and is ready to move to a server later.
 The accepted goal is the original code-driven Schoology workflow. The browser
 reader below is a recovery fallback, not its replacement. The candidate tool
 route reuses `storage.js`, SQLite `db.js`, `tool_runner.js`, status semantics and
-readable summary code. The existing Telegram carrier remains the only poller.
+readable summary code. This route has now served an actual Telegram read,
+note/status edits, persisted readback and reversible clears. The existing
+Telegram carrier remains the only poller.
 Its subscription model selects a typed read tool; a tool-use event in that
 planner is refused. Explicit local edits are resolved and executed by code.
 No paid-provider agent, dashboard listener or reminder scheduler is started.
@@ -25,8 +27,12 @@ Refresh has no login-alert or reminder side effects. Saved answers display the
 actual source observation time. Original history is not silently replaced.
 
 `scripts/signin_schoology_profile.mjs <private-config> <status-file>` opens the
-official Schoology sign-in in that app profile. The user completes any required
-authentication there; no password or storageState/cookie export is performed.
+official Schoology sign-in in that app profile and follows normal district SSO.
+It can use an already-filled opaque native credential only for the exact known
+account; it never reads or fills a password. The observed app session reached
+Microsoft's password screen with no autofill, so code-driven live refresh still
+requires that sign-in. Saved-data reads remain available; local edits require
+a source observation no older than 15 minutes. No cookie export is performed.
 `scripts/subscription_tools_cli.mjs <private-config>` accepts one JSON command
 on stdin and returns one JSON result. It opens no listener and cannot poll or
 send Telegram. Local edits use a SQLite effect journal and preserve before-values
