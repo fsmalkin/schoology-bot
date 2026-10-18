@@ -186,11 +186,11 @@ function Start-SubscriptionRelay {
       if($localRequest -and $answer.state -ceq 'ok' -and $answer.resolvedAssignment){
         $targetConfirmed=$true
         try {
-          $sourceTime=[DateTimeOffset]::Parse($answer.observedAt)
-          $sourceAge=([DateTimeOffset]::UtcNow-$sourceTime).TotalSeconds
-          if($sourceAge -lt -30 -or $sourceAge -gt 300 -or -not $answer.sourceTabId){throw 'Fresh source observation required'}
+          $receipt.localValidationStage='freshness'
+          Confirm-LocalAnnotationFreshness $answer.observedAt $answer.sourceTabId ([DateTimeOffset]::UtcNow)
+          $receipt.localValidationStage='target'
           Confirm-LocalAnnotationTarget $localRequest $answer.resolvedAssignment $answer.sourceSnapshot $StudentProfileId $CurrentTerm
-        } catch {$targetConfirmed=$false}
+        } catch {$targetConfirmed=$false;$receipt.localValidationErrorType=$_.Exception.GetType().Name}
         if($targetConfirmed){
           $receipt.state='LOCAL_WRITE_RESERVED';$receipt.localWriteAttempts=1;Write-RelayJson $receiptPath $receipt
           $answer.conciseReply=Save-LocalAnnotation $localData $AnnotationPath $localRequest $answer.resolvedAssignment "telegram-update-$($update.update_id)" $answer.sourceSnapshot

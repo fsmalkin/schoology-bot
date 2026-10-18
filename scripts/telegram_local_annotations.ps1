@@ -35,14 +35,14 @@ function Read-LocalAnnotations([string]$Path,[string]$Profile,[string]$Term) {
 function Confirm-LocalAnnotationTarget($Request,$Assignment,$Snapshot,[string]$Profile,[string]$Term) {
   if(-not $Assignment -or $Assignment.url -cnotmatch '^https://bcps\.schoology\.com/assignment/[1-9][0-9]*$' -or -not $Assignment.title -or $Assignment.title.Length -gt 500 -or -not $Assignment.course -or $Assignment.course.Length -gt 500){throw 'No unique current assignment resolved; local data unchanged'}
   if(-not $Snapshot -or $Snapshot.profileId -cne $Profile -or $Snapshot.term -cne $Term -or @($Snapshot.assignments).Count -lt 1 -or @($Snapshot.assignments).Count -gt 1000){throw 'Bound current source catalog required'}
-  $matches=@($Snapshot.assignments|Where-Object {
+  $candidates=@($Snapshot.assignments|Where-Object {
     if(($_.url -and $_.url -cnotmatch '^https://bcps\.schoology\.com/assignment/[1-9][0-9]*$') -or -not $_.title -or -not $_.course){throw 'Invalid current source catalog'}
     if($Request.target -match '^https://'){return $Request.target -ceq $_.url}
     $titleText=([string]$_.title -replace '\s+',' ').Trim()
     $targetText=($Request.target -replace '\s+',' ').Trim()
     return $targetText -ieq $titleText -or $targetText -ieq (([string]$_.course -replace '\s+',' ').Trim()+' / '+$titleText)
   })
-  if($matches.Count -ne 1 -or $matches[0].url -cne $Assignment.url -or $matches[0].title -cne $Assignment.title -or $matches[0].course -cne $Assignment.course){throw 'Current source match is absent, ambiguous or inconsistent'}
+  if($candidates.Count -ne 1 -or $candidates[0].url -cne $Assignment.url -or $candidates[0].title -cne $Assignment.title -or $candidates[0].course -cne $Assignment.course){throw 'Current source match is absent, ambiguous or inconsistent'}
   if($Request.target -match '^https://') {
     if($Request.target -cne $Assignment.url){throw 'Resolved assignment does not match requested URL'}
   } else {
@@ -51,6 +51,12 @@ function Confirm-LocalAnnotationTarget($Request,$Assignment,$Snapshot,[string]$P
     $qualified=(([string]$Assignment.course -replace '\s+',' ').Trim()+' / '+$normalizedTitle)
     if($normalizedTarget -ine $normalizedTitle -and $normalizedTarget -ine $qualified){throw 'Use the exact assignment title or link; local data unchanged'}
   }
+}
+
+function Confirm-LocalAnnotationFreshness([string]$ObservedAt,[string]$SourceTabId,[DateTimeOffset]$Now) {
+  $sourceTime=[DateTimeOffset]::Parse($ObservedAt)
+  $sourceAge=($Now - $sourceTime).TotalSeconds
+  if($sourceAge -lt -30 -or $sourceAge -gt 300 -or -not $SourceTabId){throw 'Fresh source observation required'}
 }
 
 function Save-LocalAnnotation($Data,[string]$Path,$Request,$Assignment,[string]$EffectId,$Snapshot) {

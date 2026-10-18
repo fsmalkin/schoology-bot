@@ -59,6 +59,12 @@ try {
   $withUnlinked=[pscustomobject]@{profileId='123';term='MP1 2026-2027';assignments=@($assignment,[pscustomobject]@{url='';title='Unlinked item';course='Science'})}
   Confirm-LocalAnnotationTarget $request $assignment $withUnlinked '123' 'MP1 2026-2027'
   $passed++
+  Confirm-LocalAnnotationTarget (Get-LocalAnnotationRequest '/note https://bcps.schoology.com/assignment/123 :: text') $assignment $withUnlinked '123' 'MP1 2026-2027'
+  $passed++
+  Confirm-LocalAnnotationFreshness '2026-10-18T05:37:10.37Z' 'source-tab' ([DateTimeOffset]::Parse('2026-10-18T05:37:39Z'))
+  $passed++
+  Assert-Refused {Confirm-LocalAnnotationFreshness '2026-10-18T05:30:00Z' 'source-tab' ([DateTimeOffset]::Parse('2026-10-18T05:37:39Z'))}
+  Assert-Refused {Confirm-LocalAnnotationFreshness '2026-10-18T05:40:00Z' 'source-tab' ([DateTimeOffset]::Parse('2026-10-18T05:37:39Z'))}
   Assert-Refused {Confirm-LocalAnnotationTarget (Get-LocalAnnotationRequest '/note Unlinked item :: text') ([pscustomobject]@{url='https://bcps.schoology.com/assignment/999';title='Unlinked item';course='Science'}) $withUnlinked '123' 'MP1 2026-2027'}
   $annotationPath=Join-Path $temporary 'annotations.json'
   $annotations=Read-LocalAnnotations $annotationPath '123' 'MP1 2026-2027'
