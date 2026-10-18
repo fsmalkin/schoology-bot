@@ -48,5 +48,12 @@ enrolled app on that machine; account upload does not deploy a backend or
 establish mobile access. The existing exact app-window sign-in Task remains
 the authentication action; this plugin creates no replacement Task.
 
+The repository marketplace is `.agents/plugins/marketplace.json`, named
+`schoology-private`, with this directory as its local source. Register the
+repository root with `codex plugin marketplace add <absolute-repository-root>`.
+The supported installed CLI can install `schoology-tools@schoology-private`;
+desktop discovery and an actual local consumer call still need verification.
+Edit the source directory and refresh through the host; never edit its cache.
+
 Protocol: https://modelcontextprotocol.io/specification/2025-11-25/basic/transports
 Packaging: https://developers.openai.com/plugins/build/plugins
