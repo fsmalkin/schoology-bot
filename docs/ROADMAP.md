@@ -9,8 +9,7 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
   further ChatGPT qualification waits until that path is settled. An optional
   personal Windows subscription reader now provides outbound polling and a
   dedicated read-only Codex/browser worker without new paid-model APIs. The
-  live source component and polling are qualified; real incoming-question,
-  useful-answer and refresh acceptance remain separate. Earlier account/source
+  Telegram question and contextual refresh passed through actual UI; a separate Schoology UI check matched the Geometry status and due date. Earlier account/source
   consent waits do not block ordinary authorized reads. Reminders stay OFF,
   original data is preserved, and the daughter's own-account rollout remains
   deferred. This does not reactivate the retired general Telegram control plane.
