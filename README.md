@@ -19,7 +19,9 @@ JSON configuration outside the repository with `dataDirectory` (an existing
 absolute directory), `workerDirectory`, `workerThreadId`, `botId`, `botUsername`,
 `chatId`, exactly two `memberIds`, `studentProfileId`, `currentTerm` (for example
 `MP 1 2026-2027`), and `maximumRequests` (0 for normal human-triggered use,
-or a positive ceiling up to 10000 for a bounded pilot). Do not put secrets in that file.
+or a positive ceiling up to 10000 for a bounded pilot). Optional `annotationPath`
+selects the private local-annotation JSON file; otherwise it is stored in the
+runtime directory. Do not put secrets in that file.
 The script obtains only the existing `schoology-bot/prod/TELEGRAM_BOT_TOKEN`
 through Windows Credential Manager, keeps it in process memory, verifies the
 exact bot and three-member audience, and refuses an existing webhook.
@@ -29,12 +31,31 @@ pwsh -NoProfile -File scripts/run_subscription_telegram.ps1 -ConfigPath <private
 ```
 
 The service answers incoming text questions about current assignments and can
-refresh its source. It does not restore manual notes/status changes, reminders,
-original database history, or a daughter's separate ChatGPT account. Codex runs
+refresh its source. Local notes and manual statuses are stored separately from
+Schoology. It does not restore reminders, original database history, or a
+daughter's separate ChatGPT account. Codex runs
 with an explicit read-only sandbox, a fixed Schoology-only developer scope and
 a structured reply schema. Questions never become shell arguments or commands.
 Other chats/senders, attachments, historical pending updates and changed group
 membership stop the service without acknowledging those updates.
+
+Use an exact current assignment title or its Schoology link for a local edit:
+
+- `Add a note to "Ex7 Corresponding Parts": Bring the worksheet`
+- `Mark "Ex7 Corresponding Parts" as Waiting on teacher`
+- `/note <assignment title or link> :: <note>`
+- `/status <assignment title or link> :: <status>`
+- `/clear-status <assignment title or link>`
+- `/clear-notes <assignment title or link>`
+
+If two courses share a title, use `course / title` or the assignment link.
+The reader must find one exact assignment in the current source before a local
+write. A-F status codes have their existing meanings; F means Will complete in
+class. Custom status text is also supported. Local ignored/pending status is
+shown separately from Schoology submission status; marking an item Submitted
+locally does not submit it to Schoology. Refresh preserves local annotations.
+Clears retain a local change history so they are recoverable. Old database
+history is not imported.
 
 Each accepted update reserves one worker call and one reply attempt durably.
 Only a verified send advances its update offset. Failed or ambiguous operations
@@ -42,6 +63,11 @@ are retained for owner reconciliation, with no automatic resend or new worker.
 The state file and lock are preserved after exit. An existing state directory
 cannot be reused without reconciling its operations. Creating a `stop` file in
 the private data directory stops the loop after its current operation.
+For a controlled upgrade, use a new runtime directory and `resumeStatePath`
+pointing to the prior stopped runtime's state. The prior process must be absent,
+with the same bot, audience, worker, student, term and request ceiling. The new
+process carries the exact offset and counters forward; this is not automatic
+restart or permission to replay an uncertain effect.
 
 This is a local personal runtime: the PC, Chrome, signed-in source and ChatGPT
 subscription must remain available. It has no automatic boot registration and

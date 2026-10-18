@@ -1,5 +1,14 @@
 # Test Coverage and Gaps
 
+## Subscription reader local annotations
+
+The PowerShell CI fixture now also covers explicit request parsing, unchanged
+A-F mapping, foreign-link and mismatched-target rejection, student binding,
+atomic note/status readback, duplicate-update refusal, and reversible clears.
+These are fabricated local records with no credential, network, worker or send
+effects. Live Telegram annotation acceptance is a separate pending check until
+the candidate is installed and exercised through the actual browser UI.
+
 The October 17 current-term qualification below is bound to implementation
 branch schoology/chatgpt-current-term-adapter-20261017 and the recorded source
 commits. These are source/fixture results. Live source access, account/phone,

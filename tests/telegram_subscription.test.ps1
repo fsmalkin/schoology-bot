@@ -37,6 +37,42 @@ try {
   Assert-Refused {Start-SubscriptionRelay}
   if([IO.File]::ReadAllText($statePath) -cne '{"state":"SENT","replyId":829}' -or [IO.File]::Exists((Join-Path $temporary 'relay.lock'))){throw 'Existing state was changed'}
   $passed++
+  if($null -ne (Get-LocalAnnotationRequest 'What is missing?')){throw 'A question became a local mutation'}
+  $passed++
+  $request=Get-LocalAnnotationRequest 'Add a note to "Geometry practice": Bring ruler'
+  if($request.operation -cne 'note' -or $request.target -cne 'Geometry practice' -or $request.value -cne 'Bring ruler'){throw 'Natural note parse changed'}
+  $passed++
+  $statusRequest=Get-LocalAnnotationRequest '/status Geometry practice :: F'
+  if($statusRequest.value -cne 'Will complete in class'){throw 'Existing status F lost'}
+  $passed++
+  Assert-Refused {Get-LocalAnnotationRequest '/note https://example.com/assignment/1 :: text'}
+  Assert-Refused {Get-LocalAnnotationRequest ('/note Geometry practice :: '+('x'*2001))}
+  $assignment=[pscustomobject]@{url='https://bcps.schoology.com/assignment/123';title='Geometry practice';course='Geometry'}
+  Assert-Refused {Confirm-LocalAnnotationTarget (Get-LocalAnnotationRequest '/status Other title :: E') $assignment}
+  Assert-Refused {Confirm-LocalAnnotationTarget (Get-LocalAnnotationRequest '/status https://bcps.schoology.com/assignment/456 :: E') $assignment}
+  $annotationPath=Join-Path $temporary 'annotations.json'
+  $annotations=Read-LocalAnnotations $annotationPath '123' 'MP1 2026-2027'
+  $reply=Save-LocalAnnotation $annotations $annotationPath $request $assignment 'telegram-update-1'
+  $reread=Read-LocalAnnotations $annotationPath '123' 'MP1 2026-2027'
+  if($reply -notlike '*local note*' -or $reread.records[$assignment.url].notes[0].text -cne 'Bring ruler'){throw 'Note save/readback failed'}
+  $passed++
+  $beforeReplay=[IO.File]::ReadAllText($annotationPath)
+  Assert-Refused {Save-LocalAnnotation $reread $annotationPath $request $assignment 'telegram-update-1'}
+  if([IO.File]::ReadAllText($annotationPath) -cne $beforeReplay){throw 'Duplicate local effect changed data'}
+  $passed++
+  Assert-Refused {Read-LocalAnnotations $annotationPath '456' 'MP1 2026-2027'}
+  [void](Save-LocalAnnotation $reread $annotationPath $statusRequest $assignment 'telegram-update-2')
+  $reread=Read-LocalAnnotations $annotationPath '123' 'MP1 2026-2027'
+  if($reread.records[$assignment.url].manualStatus -cne 'Will complete in class' -or $reread.records[$assignment.url].notes.Count -ne 1){throw 'Status edit lost the note'}
+  $passed++
+  [void](Save-LocalAnnotation $reread $annotationPath (Get-LocalAnnotationRequest '/clear-status Geometry practice') $assignment 'telegram-update-3')
+  $reread=Read-LocalAnnotations $annotationPath '123' 'MP1 2026-2027'
+  if($reread.records[$assignment.url].manualStatus -or $reread.records[$assignment.url].notes.Count -ne 1 -or -not $reread.effects['telegram-update-3'].before.manualStatus){throw 'Status clear lost history or notes'}
+  $passed++
+  [void](Save-LocalAnnotation $reread $annotationPath (Get-LocalAnnotationRequest '/clear-notes Geometry practice') $assignment 'telegram-update-4')
+  $reread=Read-LocalAnnotations $annotationPath '123' 'MP1 2026-2027'
+  if($reread.records[$assignment.url].notes.Count -ne 0 -or $reread.effects['telegram-update-4'].before.notes.Count -ne 1){throw 'Note clear lost reversible history'}
+  $passed++
 } finally {
   $resolvedTemporary=[IO.Path]::GetFullPath($temporary)
   $resolvedRoot=[IO.Path]::GetFullPath([IO.Path]::GetTempPath())
