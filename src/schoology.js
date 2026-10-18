@@ -578,6 +578,52 @@ async function ensureLoggedIn(page, config) {
   );
 }
 
+// Session setup only: reuse ordinary district SSO routing and an opaque native
+// autofill if one is actually present. Never read or manually fill a password.
+export async function advanceSavedSessionSignIn(page, username) {
+  if (!/^[a-z0-9._-]+@bcps\.org$/i.test(username || "")) throw Error("Exact BCPS identifier required");
+  let current = new URL(page.url());
+  if (!["https://bcps.schoology.com", "https://login.mybcps.org", "https://login.microsoftonline.com"].includes(current.origin)) return { state: "UNQUALIFIED_AUTH_ORIGIN", origin: current.origin, pathname: current.pathname };
+  const config = { schoology: { ssoSchool: "Baltimore County Public Schools", loginUrl: "https://bcps.schoology.com/login", gradesUrl: "https://bcps.schoology.com/grades/grades" } };
+  if (current.origin === "https://bcps.schoology.com") {
+    await maybeEnterSsoSchool(page, config);
+    await maybeStartSchoologySamlLogin(page, config);
+  }
+  await waitForRenderedLoginControls(page);
+  current = new URL(page.url());
+  if (!["https://bcps.schoology.com", "https://login.mybcps.org", "https://login.microsoftonline.com"].includes(current.origin)) return { state: "UNQUALIFIED_AUTH_ORIGIN", origin: current.origin, pathname: current.pathname };
+  if (await hasSelector(page, "#AzureADBCPSOrgExchange")) {
+    await selectClaimsProvider(page, "azuread");
+    await waitForMicrosoftCredentialControls(page, 15000);
+  }
+  current = new URL(page.url());
+  if (!["https://bcps.schoology.com", "https://login.mybcps.org", "https://login.microsoftonline.com"].includes(current.origin)) return { state: "UNQUALIFIED_AUTH_ORIGIN", origin: current.origin, pathname: current.pathname };
+  let identifierSubmitted = false, passwordSubmitted = false;
+  const identifier = page.locator("input[name='loginfmt']").first();
+  if (current.origin === "https://login.microsoftonline.com" && await isVisible(identifier)) {
+    await identifier.fill(username);
+    const next = page.locator("#idSIButton9").first();
+    if (await isVisible(next)) { await next.click(); identifierSubmitted = true; await waitForMicrosoftCredentialControls(page, 15000); }
+  }
+  current = new URL(page.url());
+  const password = page.locator("input[name='passwd'],input#i0118").first();
+  let passwordAutofilled = false;
+  if (current.origin === "https://login.microsoftonline.com" && await isVisible(password)) {
+    await password.focus();
+    await page.waitForTimeout(400);
+    passwordAutofilled = await password.evaluate(element => Boolean(element.value));
+    // The password stays inside Chrome. Only an exact known account and the
+    // official Microsoft tenant may use an already-filled native credential.
+    const account = page.locator("#displayName, #loginHeader").first();
+    const accountText = await account.textContent().catch(() => "");
+    if (passwordAutofilled && String(accountText || "").trim().toLowerCase() === username.toLowerCase()) {
+      await page.locator("#idSIButton9").click(); passwordSubmitted = true; await page.waitForTimeout(1000);
+    }
+  }
+  current = new URL(page.url());
+  return { state: "OFFICIAL_SESSION_ROUTING_COMPLETED", origin: current.origin, pathname: current.pathname, identifierSubmitted, passwordAutofilled, passwordSubmitted, passwordFieldPresent: await page.locator("input[type='password']").count() > 0, bcpsAccountChoicePresent: await hasSelector(page, "#AzureADBCPSOrgExchange"), bcpsIdentifierPresent: await hasSelector(page, "#signInName") };
+}
+
 async function isLoginRequired(page) {
   const url = page.url();
   if (url.includes("/login")) return true;

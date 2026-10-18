@@ -1,5 +1,35 @@
 # Test Coverage and Gaps
 
+## Original tools with subscription-only planning
+
+The October 18 Telegram UI exercised a saved missing-assignment read, an
+original SQLite note, status E (Waiting on teacher), readback retaining both,
+separate reversible clears, and the code-driven refresh sign-in response.
+Two early read plans were stopped by an over-strict CLI event check. Native
+retained turns proved zero tool calls and valid plans; root completed each
+saved plan once without another worker call. All original failure receipts
+remain preserved. The corrected automatic path then completed one worker,
+one original tool and one verified send. No model browser navigation occurs
+on this route. A Windows UTF8 display issue was also corrected.
+
+The real source contains 80 rows. The first import exposed the original
+storage fallback merging two different Schoology IDs with the same title/date.
+The matcher now preserves both IDs; a fresh source import stored all 80.
+Actual SQLite readback found zero active notes/statuses after four local
+test writes, with before-values retained in the effect journal. Source tests
+cover these identities, exact-target reads, truthful unknown submission status,
+binding/freshness, duplicate effects, clears, and password opacity. PowerShell
+fixtures distinguish non-executable CLI error notices from tool/command items.
+CI executes tests; local consumer acceptance uses the Telegram browser UI.
+
+Live unattended scraper refresh remains unproved: official SSO reached the
+exact Microsoft account's password screen without an opaque autofill. The
+app-owned profile requires sign-in; normal Chrome's session was not copied.
+Saved source reads, a setup window, CI success and the refresh refusal are
+separate evidence. Reminders, automatic startup, original-history import,
+phone acceptance and the separate student ChatGPT account remain outside
+these delivered checks. See GH453/ALEPH383 for exact final runtime receipts.
+
 ## Subscription reader local annotations
 
 The PowerShell CI fixture now also covers explicit request parsing, unchanged

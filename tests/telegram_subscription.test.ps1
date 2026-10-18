@@ -11,6 +11,15 @@ function Assert-Refused([scriptblock]$Action) {
 function New-Message {
   return [pscustomobject]@{message=[pscustomobject]@{chat=[pscustomobject]@{id='-10001'};from=[pscustomobject]@{id='101';is_bot=$false};text='What is missing?';photo=$null;document=$null;voice=$null}}
 }
+foreach($kind in @('agent_message','agentMessage','reasoning','error')){
+  $events=@{type='item.completed';item=@{type=$kind}}|ConvertTo-Json -Compress
+  if(-not (Confirm-RelayPlannerEvents $events).validated){throw 'Valid text planner event refused'}
+  $passed++
+}
+foreach($kind in @('mcp_tool_call','mcpToolCall','command_execution','unknown')){
+  $events=@{type='item.completed';item=@{type=$kind}}|ConvertTo-Json -Compress
+  Assert-Refused {Confirm-RelayPlannerEvents $events}
+}
 $members=@('101','102')
 $good=New-Message
 if((Get-RelayMessage $good '-10001' $members).text -cne 'What is missing?'){throw 'Valid message refused'}

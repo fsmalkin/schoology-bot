@@ -1,0 +1,10 @@
+{
+  "type":"object","additionalProperties":false,
+  "required":["state","conciseReply","toolName","argumentsJson"],
+  "properties":{
+    "state":{"type":"string","enum":["ok","unavailable"]},
+    "conciseReply":{"type":"string"},
+    "toolName":{"type":"string","enum":["list_assignments","build_daily_summary"]},
+    "argumentsJson":{"type":"string"}
+  }
+}

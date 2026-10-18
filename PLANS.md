@@ -1,5 +1,34 @@
 # Codex Execution Plans (ExecPlans)
 
+## Restore the original tool-driven path (October 18 acceptance correction)
+
+Fred explicitly identified the original scraper/SQLite/deterministic tools as
+the goal. The subscription browser-per-question path is partial fallback proof.
+Restore deterministic source refresh and tool execution before further plain
+ChatGPT tunnel work, preserving the one poller and every old offset/effect.
+
+Reuse: current-term projector + Playwright browser selection; storage identity
+and SQLite sync; original tool schemas/dispatcher; original status/note/summary
+logic; existing exact-audience Telegram transport. The subscription model only
+selects a read tool and never navigates Schoology on this route. Local edits are
+explicitly parsed and resolved by code. A new private current-term database is
+separate from retained original stores; no history-migration claim is made.
+
+Why fallback was chosen: Docker's legal boundary, a denied dashboard listener,
+unqualified paid-provider credentials and missing original data/session bindings
+were treated as broader runtime obstacles. They do not forbid module reuse.
+The listener denial remains exact; a stdio tool process opens no listener.
+No paid-provider key is required for subscription planning.
+
+Source-session next outcome: qualify a separate app-owned persistent Chrome
+profile with official sign-in, then exercise code-driven refresh and a real
+Telegram tool answer. Main Chrome's login is not automatically the app session.
+No profile/cookie export, password exposure, new API, competing poller, reminder
+or schedule. Only an observed authentication challenge creates an exact Fred
+action. Keep working fallback available during qualification. Current runtime
+evidence and any remaining boundary belong in GH453/ALEPH383, not a completion
+claim from source tests.
+
 ## Usable conversational Schoology parent (October 17, 2026)
 
 Source publication continues independently through the existing PR54. Its
