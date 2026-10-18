@@ -69,6 +69,10 @@ configuration saved as sibling `config.json`. The prior process must be absent,
 with the same bot, audience, worker, student, term and request ceiling. The new
 process carries the exact offset and counters forward; this is not automatic
 restart or permission to replay an uncertain effect.
+An operator may explicitly set `resumePollFailure=true` only after reconciling
+a stopped poller's read-only `POLLING` method-invocation failure. Every prior
+receipt must already be `SENT` below the confirmed next offset. This option
+never admits an uncertain worker, local write or send and is not automatic retry.
 
 This is a local personal runtime: the PC, Chrome, signed-in source and ChatGPT
 subscription must remain available. It has no automatic boot registration and

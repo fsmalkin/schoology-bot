@@ -12,6 +12,7 @@ param(
   [string]$CurrentTerm,
   [string]$AnnotationPath,
   [string]$ResumeStatePath,
+  [switch]$ResumePollFailure,
   [int]$MaximumRequests = 0
 )
 $ErrorActionPreference = 'Stop'
@@ -107,7 +108,7 @@ function Start-SubscriptionRelay {
     $WorkerDirectory=$configuration.workerDirectory; $BotId=$configuration.botId; $BotUsername=$configuration.botUsername
     $ChatId=$configuration.chatId; $MemberIds=@($configuration.memberIds)
     $StudentProfileId=$configuration.studentProfileId; $CurrentTerm=$configuration.currentTerm
-    $AnnotationPath=$configuration.annotationPath;$ResumeStatePath=$configuration.resumeStatePath
+    $AnnotationPath=$configuration.annotationPath;$ResumeStatePath=$configuration.resumeStatePath;$ResumePollFailure=[bool]$configuration.resumePollFailure
     $MaximumRequests=$configuration.maximumRequests
   }
   if(-not $DataDirectory -or -not [IO.Path]::IsPathFullyQualified($DataDirectory) -or -not [IO.Directory]::Exists($DataDirectory)) { throw 'Existing absolute data directory required' }
@@ -123,7 +124,12 @@ function Start-SubscriptionRelay {
     if(-not [IO.Path]::IsPathFullyQualified($ResumeStatePath) -or -not [IO.File]::Exists($ResumeStatePath)){throw 'Exact prior state required'}
     $resumeState=[IO.File]::ReadAllText($ResumeStatePath)|ConvertFrom-Json
     $priorConfig=[IO.File]::ReadAllText((Join-Path ([IO.Path]::GetDirectoryName($ResumeStatePath)) 'config.json'))|ConvertFrom-Json
-    if($resumeState.format -cne 'schoology-subscription-relay/v1' -or $resumeState.state -cne 'STOPPED' -or $resumeState.botId -cne $BotId -or $resumeState.chatId -cne $ChatId -or $resumeState.workerThreadId -cne $WorkerThreadId -or $resumeState.maximumRequests -ne $MaximumRequests -or $null -eq $resumeState.nextOffset -or (Get-Process -Id $resumeState.pid -ErrorAction SilentlyContinue)){throw 'Prior poller must be stopped and exactly bound'}
+    $readOnlyPollFailure=$ResumePollFailure -and $resumeState.state -ceq 'HELD_NO_AUTOMATIC_REPLAY' -and $resumeState.failedStage -ceq 'POLLING' -and $resumeState.errorType -ceq 'MethodInvocationException'
+    if($resumeState.format -cne 'schoology-subscription-relay/v1' -or ($resumeState.state -cne 'STOPPED' -and -not $readOnlyPollFailure) -or $resumeState.botId -cne $BotId -or $resumeState.chatId -cne $ChatId -or $resumeState.workerThreadId -cne $WorkerThreadId -or $resumeState.maximumRequests -ne $MaximumRequests -or $null -eq $resumeState.nextOffset -or (Get-Process -Id $resumeState.pid -ErrorAction SilentlyContinue)){throw 'Prior poller must be stopped and exactly bound'}
+    foreach($priorReceiptFile in [IO.Directory]::GetFiles([IO.Path]::GetDirectoryName($ResumeStatePath),'update-*.json')){
+      $priorReceipt=[IO.File]::ReadAllText($priorReceiptFile)|ConvertFrom-Json
+      if($priorReceipt.state -cne 'SENT' -or [long]$priorReceipt.updateId -ge [long]$resumeState.nextOffset){throw 'Unreconciled prior effect; do not resume'}
+    }
     if($priorConfig.studentProfileId -cne $StudentProfileId -or $priorConfig.currentTerm -cne $CurrentTerm -or (($priorConfig.memberIds|Sort-Object)-join ',') -cne (($MemberIds|Sort-Object)-join ',') -or [IO.Path]::GetFullPath($priorConfig.dataDirectory) -cne [IO.Path]::GetFullPath([IO.Path]::GetDirectoryName($ResumeStatePath))){throw 'Prior subject, audience or runtime binding changed'}
   }
   $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -200,6 +206,8 @@ function Start-SubscriptionRelay {
     $state.state='STOPPED'
   } catch {
     $state.failedStage=$state.state;$state.state='HELD_NO_AUTOMATIC_REPLAY';$state.errorType=$_.Exception.GetType().Name
+    $state.errorBaseType=$_.Exception.GetBaseException().GetType().FullName
+    $state.errorHResult=$_.Exception.GetBaseException().HResult
     # Never log exception text, URLs, token values, request content or stderr.
   } finally {
     $state.heartbeat=[DateTimeOffset]::UtcNow.ToString('o');Write-RelayJson $statePath $state
