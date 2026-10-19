@@ -56,6 +56,19 @@ test("serialized current-source projection works without TextEncoder or I/O and 
   assert.equal(JSON.stringify(result).includes("fixture-secret"), false);
 });
 
+test("official Exempt remains excused while preserving submission or draft evidence", () => {
+  const result=project({courses:[{items:[
+    {id:"exempt-1",status:"Exempt",submitted:true},
+    {id:"exempt-2",status:"Exempt",submissionClass:"dropbox-icon-inline-image-wrapper",submissionLabel:"This student has completed assignment submission"},
+    {id:"exempt-3",status:"Exempt"},
+    {id:"exempt-4",status:"Exempt",submissionLabel:"Draft not submitted"},
+  ]}]});
+  assert.deepEqual(result.snapshot.assignments.map(row=>[row.status,row.isMissing]),[
+    ["Submitted (Exempt; ungraded marker)",false],["Submitted (Exempt; grading status unknown)",false],
+    ["Exempt",false],["Exempt (draft not submitted)",false],
+  ]);
+});
+
 for (const [name, options, context] of [
   ["wrong subject", { studentId: "202" }],
   ["missing account menu", { menu: false }],

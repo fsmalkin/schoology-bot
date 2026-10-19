@@ -13,6 +13,13 @@ launch. The existing-browser driver verifies identity before roster access.
 Stable extension controls exercise changed runtime-local IDs and reject
 missing/ambiguous extension matches before opening a tab. Import independently
 requires the captured stable identity and a valid returned local browser ID.
+Driver controls now require the account menu to be visibly ready before identity
+inspection and restore it after course expansion before the original projector.
+The wrong-student control still refuses before roster access.
+Exempt controls retain submission/draft evidence, exclude excused work from
+missing and awaiting-grade selection, preserve its exact-target display and
+separate its counts from submissions with unknown grading. Semantics follow
+the official [exception types documentation](https://uc.powerschool-docs.com/en/schoology/latest/exception-types-and-grading-behavior).
 
 Progress controls cover initial/4-second native typing with no redundant bubble,
 one failure-bound fallback after10seconds, thread binding, direct final send

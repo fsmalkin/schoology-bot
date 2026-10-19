@@ -45,6 +45,23 @@ export async function openConnectedGradesTab(browser, preferredTabId = null) {
   return tab;
 }
 
+export async function verifyConnectedSourceIdentity(tab, expectedScope) {
+  if (await tab.url() !== sourceUrl) throw Error("Approved source account required before roster access: source URL changed");
+  const profile = tab.playwright.getByRole("menuitem", { name: "Your Profile", exact: true });
+  if (!(await profile.isVisible())) {
+    await tab.playwright.locator("button.Z_KgC").click();
+  }
+  // The click acknowledgement is not evidence that the menu has rendered.
+  await profile.waitFor({ state: "visible", timeoutMs: 10000 });
+  const identity = await tab.playwright.evaluate(() => ({ origin: location.origin, pathname: location.pathname,
+    profiles: Array.from(document.querySelectorAll('[role="menuitem"]'))
+      .filter(item => (item.textContent || "").trim() === "Your Profile")
+      .map(item => item.getAttribute("href") || item.querySelector("a[href]")?.getAttribute("href")) }));
+  if (identity.origin !== "https://bcps.schoology.com" || identity.pathname !== "/grades/grades") throw Error("Approved source account required before roster access: origin/path changed");
+  if (identity.profiles.length !== 1) throw Error("Approved source account required before roster access: profile menu missing or ambiguous");
+  if (new URL(identity.profiles[0], identity.origin).href !== `https://bcps.schoology.com/user/${expectedScope.studentId}/info`) throw Error("Approved source account required before roster access: profile mismatch");
+}
+
 export async function captureConnectedBrowserSource({ runtimeModule, extensionInstanceId, preferredTabId, readerSha256, expectedScope }) {
   const reader = projectCurrentGradebook.toString();
   if (createHash("sha256").update(reader).digest("hex") !== readerSha256 ||
@@ -60,15 +77,7 @@ export async function captureConnectedBrowserSource({ runtimeModule, extensionIn
   const browser = await sourceApi.browsers.get(browserId);
   await browser.nameSession("📚 Schoology source");
   const tab = await openConnectedGradesTab(browser, preferredTabId);
-  if (!(await tab.playwright.getByRole("menuitem", { name: "Your Profile", exact: true }).count())) {
-    await tab.playwright.locator("button.Z_KgC").click();
-  }
-  const identity = await tab.playwright.evaluate(() => ({ origin: location.origin, pathname: location.pathname,
-    profiles: Array.from(document.querySelectorAll('[role="menuitem"]'))
-      .filter(item => (item.textContent || "").trim() === "Your Profile")
-      .map(item => item.getAttribute("href") || item.querySelector("a[href]")?.getAttribute("href")) }));
-  if (identity.origin !== "https://bcps.schoology.com" || identity.pathname !== "/grades/grades" || identity.profiles.length !== 1 ||
-      new URL(identity.profiles[0], identity.origin).href !== `https://bcps.schoology.com/user/${expectedScope.studentId}/info`) throw Error("Approved source account required before roster access");
+  await verifyConnectedSourceIdentity(tab, expectedScope);
   const headings = await tab.playwright.locator(".gradebook-course-title").all();
   if (!headings.length || headings.length > 100) throw Error("Current official Grades page required");
   const closed = await tab.playwright.evaluate(() => Array.from(document.querySelectorAll("div.gradebook-course"))
@@ -81,6 +90,8 @@ export async function captureConnectedBrowserSource({ runtimeModule, extensionIn
     if (!headings[index]) throw Error("Course roster changed during observation");
     await headings[index].click();
   }
+  // Course expansion can dismiss the account menu required by the projector.
+  await verifyConnectedSourceIdentity(tab, expectedScope);
   const expression = `(${reader})({document,origin:location.origin,pathname:location.pathname,observedAt:new Date().toISOString(),expectedScope:${JSON.stringify(expectedScope)}})`;
   const source = await tab.playwright.evaluate(expression);
   nodeRepl.write("SCHOOLOGY_SOURCE_V1:" + JSON.stringify({ browserId, browserExtensionInstanceId: extensionInstanceId,
@@ -119,7 +130,8 @@ export function validateConnectedBrowserSource(config, envelope, now = new Date(
           "Submitted, awaiting grade (Schoology also marks Missing)", "Submitted, awaiting grade (Schoology also marks Incomplete)",
           "Submitted (grading status unknown)", "Submitted (grading status unknown; Schoology also marks Missing)",
           "Submitted (grading status unknown; Schoology also marks Incomplete)", "Draft (not submitted)",
-          "Missing (draft not submitted)", "Incomplete (draft not submitted)"].includes(row.status) ||
+          "Missing (draft not submitted)", "Incomplete (draft not submitted)", "Exempt", "Exempt (draft not submitted)",
+          "Submitted (Exempt; ungraded marker)", "Submitted (Exempt; grading status unknown)"].includes(row.status) ||
         row.isMissing !== (["Missing", "Incomplete"].includes(row.status) || /Schoology also marks (?:Missing|Incomplete)\)/.test(row.status) || /^(?:Missing|Incomplete) \(draft not submitted\)$/.test(row.status)) || typeof row.url !== "string" ||
         (row.url && !/^https:\/\/bcps\.schoology\.com\/assignment\/[1-9][0-9]*$/.test(row.url))) throw Error("Invalid browser assignment projection");
   }

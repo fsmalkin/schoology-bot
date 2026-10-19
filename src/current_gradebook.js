@@ -47,7 +47,7 @@ export function projectCurrentGradebook({
       node.getBoundingClientRect().height > 0;
   };
   const statuses = new Map([
-    ["missing", "Missing"], ["incomplete", "Incomplete"],
+    ["missing", "Missing"], ["incomplete", "Incomplete"], ["exempt", "Exempt"],
   ]);
 
   for (const courseNode of courses) {
@@ -103,7 +103,12 @@ export function projectCurrentGradebook({
         if (!status) refuse();
       }
       const isMissing = ["Missing", "Incomplete"].includes(status);
-      if (awaitingGrade) status = "Submitted, awaiting grade" + (isMissing ? ` (Schoology also marks ${status})` : "");
+      if (status === "Exempt") {
+        if (awaitingGrade) status = "Submitted (Exempt; ungraded marker)";
+        else if (completedSubmission || submittedLabel) status = "Submitted (Exempt; grading status unknown)";
+        else if (unsubmittedDraft) status = "Exempt (draft not submitted)";
+      }
+      else if (awaitingGrade) status = "Submitted, awaiting grade" + (isMissing ? ` (Schoology also marks ${status})` : "");
       else if (completedSubmission || submittedLabel) status = "Submitted (grading status unknown" + (isMissing ? `; Schoology also marks ${status}` : "") + ")";
       else if (unsubmittedDraft) status = isMissing ? `${status} (draft not submitted)` : "Draft (not submitted)";
       const anchor = row.querySelector(".title-column a[href]");

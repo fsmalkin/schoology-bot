@@ -1,5 +1,5 @@
 import { buildReadableDailySummary } from "./readable_messages.js";
-import { getSubmittedSchoologyStatusLabel, isSubmittedAwaitingGradeStatus } from "./statuses.js";
+import { getSubmittedSchoologyStatusLabel, isSubmittedAwaitingGradeStatus, isExemptSchoologyStatus } from "./statuses.js";
 import { classifySchoologyDueDate } from "./time.js";
 
 export const CURRENT_SNAPSHOT_FORMAT = "schoology-current-assignments/v1";
@@ -97,8 +97,15 @@ export function buildCurrentSummary(snapshot, { now = new Date(), timeZone = "Am
   }
   let submittedAwaitingGrade = 0;
   let submittedGradingUnknown = 0;
+  let exempt = 0;
+  let submittedExempt = 0;
   const missing = [];
   for (const row of unique.values()) {
+    if (isExemptSchoologyStatus(row)) {
+      exempt += 1;
+      if (getSubmittedSchoologyStatusLabel(row)) submittedExempt += 1;
+      continue;
+    }
     if (getSubmittedSchoologyStatusLabel(row)) {
       if (isSubmittedAwaitingGradeStatus(row)) submittedAwaitingGrade += 1;
       else submittedGradingUnknown += 1;
@@ -126,12 +133,13 @@ export function buildCurrentSummary(snapshot, { now = new Date(), timeZone = "Am
   const coverage = snapshot.complete ? "Current Schoology records" : "Partial Schoology view - other rows may be missing";
   const summaryText = [
     coverage,
-    `Missing: ${missing.length}. Submitted work: ${submittedAwaitingGrade + submittedGradingUnknown} (excluded from missing work).`,
+    `Missing: ${missing.length}. Submitted work: ${submittedAwaitingGrade + submittedGradingUnknown + submittedExempt} (excluded from missing work).`,
     `Awaiting grade: ${submittedAwaitingGrade}. Submission confirmed, grading status unknown: ${submittedGradingUnknown}.`,
+    `Exempt: ${exempt} (excused; excluded from missing and awaiting-grade work).`,
     "",
     text,
     "",
     "Saved exceptions, notes and reminder history are not included.",
   ].join("\n");
-  return { summaryText, missing, submittedAwaitingGrade, submittedGradingUnknown, observedAt: observed.toISOString(), complete: snapshot.complete };
+  return { summaryText, missing, submittedAwaitingGrade, submittedGradingUnknown, exempt, submittedExempt, observedAt: observed.toISOString(), complete: snapshot.complete };
 }

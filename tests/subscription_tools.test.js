@@ -69,17 +69,20 @@ test("submission evidence survives import, submitted filters and Telegram text w
       {...row,status:"Submitted, awaiting grade (Schoology also marks Missing)",isMissing:true},
       {...row,title:"Completed submission",url:"https://bcps.schoology.com/assignment/790",status:"Submitted (grading status unknown)",isMissing:false},
       {...row,title:"Unsubmitted draft",url:"https://bcps.schoology.com/assignment/791",status:"Missing (draft not submitted)",isMissing:true},
+      {...row,title:"Excused source work",url:"https://bcps.schoology.com/assignment/792",status:"Submitted (Exempt; ungraded marker)",isMissing:false},
     ];
     importQualifiedSource(db,config,snapshot);
     const target=await executeSubscriptionTool(db,request(301,"list_assignments",null,{target:row.url}));
     assert.match(target.reply,/Schoology: Submitted, awaiting grade \(Schoology also marks Missing\)/);
     assert.equal(db.prepare("SELECT is_missing FROM assignments WHERE url=?").get(row.url).is_missing,1);
     const waiting=await executeSubscriptionTool(db,request(302,"list_assignments",null,{status:"submitted_awaiting_grade"}));
-    assert.match(waiting.reply,/Geometry practice/);assert.doesNotMatch(waiting.reply,/Completed submission|Unsubmitted draft/);
+    assert.match(waiting.reply,/Geometry practice/);assert.doesNotMatch(waiting.reply,/Completed submission|Unsubmitted draft|Excused source work/);
     const missing=await executeSubscriptionTool(db,request(303,"list_assignments",null,{status:"missing"}));
     assert.match(missing.reply,/Unsubmitted draft/);assert.doesNotMatch(missing.reply,/Geometry practice|Completed submission/);
     const completed=await executeSubscriptionTool(db,request(304,"list_assignments",null,{target:"https://bcps.schoology.com/assignment/790"}));
     assert.match(completed.reply,/Submitted \(grading status unknown\)/);assert.doesNotMatch(completed.reply,/Needs action|awaiting grade/);
+    const exempt=await executeSubscriptionTool(db,request(305,"list_assignments",null,{target:"https://bcps.schoology.com/assignment/792"}));
+    assert.match(exempt.reply,/Exempt; submission recorded/);assert.doesNotMatch(exempt.reply,/Needs action|Waiting on teacher/);
   } finally {db.close();}
 });
 
