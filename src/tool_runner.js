@@ -411,15 +411,19 @@ export async function runToolByName(db, toolName, args, context = {}) {
   const config = getConfig();
   const timeZone = config?.schedule?.timezone || "America/New_York";
   switch (toolName) {
-    case "list_assignments":
+    case "list_assignments": {
+      const evaluatedAt = context?.now ? new Date(context.now) : new Date();
       return {
         ok: true,
+        evaluation: { evaluatedAt: evaluatedAt.toISOString(), timeZone },
         assignments: listAssignments(db, {
           ...(args || {}),
           timeZone,
-          now: context?.now,
+          now: evaluatedAt,
+          assignmentKeys: context?.assignmentKeys,
         }),
       };
+    }
     case "update_assignment_status":
       return updateAssignmentStatus(db, args);
     case "bulk_update_assignment_statuses":

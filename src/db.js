@@ -17,6 +17,7 @@ import {
 import { extractAssignmentId, loadState } from "./storage.js";
 import { deriveSchoologyAssignmentTitle } from "./text_utils.js";
 import { redactSensitiveString, sanitizeForLocalLog } from "./sensitive_redaction.js";
+import { deadlineEvidence, submissionEvidence } from "./overdue.js";
 
 let dbInstance = null;
 
@@ -1658,16 +1659,24 @@ function normalizeAssignmentListStatus(value) {
 
 export function listAssignments(db, options = {}) {
   const status = normalizeAssignmentListStatus(options.status);
+  if (!["missing", "resolved", "all", "submitted_awaiting_grade", "overdue", "overdue_all"].includes(status)) throw Error("Unsupported assignment list status");
+  const overdueOnly = status === "overdue" || status === "overdue_all";
   const course = options.course ? String(options.course).toLowerCase() : null;
   const limit = Number.isFinite(options.limit) ? Math.max(1, Math.min(options.limit, 1000)) : 50;
-  const includeIgnored = options.includeIgnored === true || status === "submitted_awaiting_grade";
+  const includeIgnored = options.includeIgnored === true || status === "submitted_awaiting_grade" || status === "overdue_all";
   const includePending = options.includePending !== false;
   const bucketed = options.bucketed === true;
   const timeZone = options.timeZone || "America/New_York";
   const nowDate = options.now ? new Date(options.now) : new Date();
 
   const filters = [];
-  const params = { limit };
+  const params = {};
+  if (!overdueOnly) params.limit = limit;
+  if (Array.isArray(options.assignmentKeys)) {
+    const keys = options.assignmentKeys;
+    if (keys.length > 1000 || keys.some(key => typeof key !== "string")) throw Error("Invalid assignment scope");
+    filters.push(keys.length ? `key IN (${keys.map((key, index) => { params[`scope${index}`] = key; return `@scope${index}`; }).join(",")})` : "0");
+  }
 
   if (status === "missing") filters.push("is_missing = 1");
   if (status === "resolved") filters.push("is_missing = 0");
@@ -1723,7 +1732,7 @@ export function listAssignments(db, options = {}) {
       FROM assignments
       ${where}
       ORDER BY LOWER(course), due_date, LOWER(title)
-      LIMIT @limit
+      ${overdueOnly ? "" : "LIMIT @limit"}
     `
     )
     .all(params);
@@ -1745,16 +1754,19 @@ export function listAssignments(db, options = {}) {
       isMissing: row.isMissing === 1,
       autoIgnored,
       ...classifySchoologyDueDate(row.dueDate, timeZone, nowDate),
+      ...(overdueOnly ? { deadlineEvidence: deadlineEvidence(row.dueDate, timeZone, nowDate), submissionEvidence: submissionEvidence(row), evaluatedAt: nowDate.toISOString(), timeZone } : {}),
       effectiveStatus: manualStatus || submittedStatusLabel || row.status || "",
       statusCategory,
     };
   });
 
   const filtered = mapped.filter((row) => {
+    if (overdueOnly && !row.deadlineEvidence.overdue) return false;
+    if (status === "overdue" && row.submissionEvidence !== "unsubmitted") return false;
     if (!includeIgnored && row.statusCategory === "ignored") return false;
     if (!includePending && row.statusCategory === "pending") return false;
     return true;
-  });
+  }).slice(0, limit);
 
   if (!bucketed) {
     return filtered;

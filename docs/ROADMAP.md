@@ -5,6 +5,13 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 
 ## Current Decisions
 
+- October18 direct overdue-default direction: ordinary overdue requests mean
+  past due AND evidenced unsubmitted. Submitted in every grading state, Exempt,
+  unknown and conflicting evidence are excluded; explicit broader requests
+  retain a separate labeled mode. Preserve source time, timezone and local
+  notes/statuses. This updates the already working existing-worker Telegram
+  path; it grants no new worker, schedule, model or API spend.
+
 - October18 private-plugin continuation: expose the retained original tools to
   ChatGPT desktop through a stdio MCP connector. Telegram remains on its tested
   checkout, one poller and existing counters. Reuse the current-only store with

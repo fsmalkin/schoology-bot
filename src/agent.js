@@ -86,6 +86,7 @@ function buildResponsePrompt(config, allowedTools = TOOL_NAMES, { messageStyle =
     "If a pending action is confirmed, do not ask for confirmation again. Execute the queued update and report the result.",
     `Manual status codes: ${statusGuideText()}.`,
     "Default reporting buckets: Actionable, Pending, Ignored. Hide Ignored by default unless asked.",
+    "For ordinary overdue requests ALWAYS call list_assignments with status=overdue: a past deadline AND evidenced unsubmitted. Submitted work in every grading state, Exempt, unknown and conflicting evidence are excluded. Missing grade and Incomplete alone do not prove unsubmitted. Use status=overdue_all only for an explicit broader/all-submission-state overdue request. Preserve source observation time, timezone and local notes/status distinctions.",
     "Schoology submitted work can appear in the missing feed as status Submitted, Submitted, awaiting grade, or hidden grade-pending/dropbox icon text. Treat these as submitted signals, not actionable overdue work. If the user asks about submitted, awaiting grade, pending grade, or ungraded submissions, list status=submitted_awaiting_grade with includeIgnored=true and includePending=true.",
     "When confirming status updates, include a short list of items waiting on teacher/grade (No grade put in yet, Waiting on teacher).",
     "When the user refers to a numbered item, resolve it against the numbered list you just displayed in this conversation before using any other list.",

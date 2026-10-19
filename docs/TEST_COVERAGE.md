@@ -1,5 +1,18 @@
 # Test Coverage and Gaps
 
+## Overdue defaults to evidenced unsubmitted
+
+`tests/overdue.test.js` exercises Missing, Incomplete, explicit unsubmitted
+drafts, submitted-ungraded, grading-unknown, Exempt, conflicting source/local
+claims and absent submission evidence. Deadline controls cover elapsed exact
+times today, date-only unknown-time semantics, timezone midnight, invalid dates,
+DST transitions and ambiguous/nonexistent wall times. Real SQLite/tool reply
+controls verify current source scope and evidence before limit, local preference
+preservation, explicit broad states, source/evaluation labeling and no replay.
+The affected overdue/SQLite/subscription suite passed60 checks. Exact-head full
+CI and the normal Telegram overdue consumer check remain separate acceptance
+steps; no fixture establishes deployed planner behavior or current source access.
+
 ## Connected-browser source, progress and submission labels
 
 Negative controls bind an exact app-driver invocation to its actual CLI result

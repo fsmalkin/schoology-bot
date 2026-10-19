@@ -1,5 +1,22 @@
 # Codex Execution Plans (ExecPlans)
 
+## Overdue means unsubmitted by default (October18 direct direction)
+
+Implement `fred-schoology-overdue-default-unsubmitted-20261018-v1:owner`
+in the original deterministic list tool and both existing subscription planner
+prompts. Strict overdue requires a past evidenced deadline and affirmative
+non-submission. Preserve explicit broader requests, source freshness/timezone,
+local overlays and unknown/conflicting distinctions. Use isolated branch
+`schoology/overdue-unsubmitted-default-20261018` from e8ca3a8.
+
+The prior signed-in-browser import and actual Telegram consumer path are now
+verified (updates471028435/436, replies884/885,81 current assignments). Their
+effects are closed. The old actionable Missing/Incomplete answer does not prove
+this new rule. Next: affected regression controls, exact-head CI, one clean
+same-worker service cutover and a separately bounded normal overdue Telegram
+question. Reuse native typing evidence; preserve all prior effects and offsets.
+No new worker, model, scheduler, API spend, authentication or Fred action.
+
 ## Existing signed-in browser to original tools (October18 continuation)
 
 The first changed-artifact consumer check verified typing, a visible placeholder

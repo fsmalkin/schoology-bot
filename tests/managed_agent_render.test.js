@@ -11,11 +11,11 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const cli = path.join(root, "scripts/managed_agents_admin.mjs");
 const loader = new URL("./helpers/managed_render_no_services_loader.mjs", import.meta.url).href;
 const preload = new URL("./helpers/managed_render_preload.mjs", import.meta.url).href;
-// Generated from the pre-refactor pure definition bodies, without importing the runtime.
+// Reviewed pure definition bodies, updated for the overdue default; no runtime import.
 const originalHashes = {
-  "agent/dev": "614afd48c8e92e0d8a0099236cef0a6f4d4abad3ebc0d67930c16a30c1026c62",
+  "agent/dev": "26c58cd0d2edeffcdc25f60622bf4e9c668db184214a29f70198815cd793244d",
   "environment/dev": "c6497756308ed86b484e6e48a5a76fe04b957e18120bc93e443d2af94d586fb6",
-  "agent/prod": "f5d96af516b64407e2563c4ee19670a54e0d2b1c22fc38a2a2b77d41292e55cd",
+  "agent/prod": "1d2371e40e1bcf9e574ee71150fb7a83baf6dfd1e9b816a55dfa1944b1f465f9",
   "environment/prod": "19fd78c9e1db98fc8a68c5011df067fffef3604e9b657b3f32db3dc52c731d5b"
 };
 function environment(extra = {}) {

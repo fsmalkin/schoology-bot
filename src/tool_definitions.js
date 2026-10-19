@@ -67,13 +67,13 @@ export function toolDefinitions() {
       type: "function",
       name: "list_assignments",
       description:
-        "List assignments with optional filters. Rows include dueCategory (overdue, today, upcoming, undated). Use status=submitted_awaiting_grade for Schoology rows marked Submitted, Submitted awaiting grade, submitted/ungraded icon, or hidden grade-pending text.",
+        "List assignments with optional filters. For ordinary overdue requests ALWAYS use status=overdue: a past deadline AND evidenced unsubmitted; excludes submitted, exempt, unknown and conflicting cases. Use overdue_all only when the user explicitly asks for overdue across all submission states. Missing grade is not unsubmitted. Date-only deadlines are past only after that local date. Use status=submitted_awaiting_grade for confirmed ungraded submissions.",
       strict: true,
       parameters: buildStrictParams({
         status: {
           type: "string",
-          enum: ["missing", "resolved", "all", "submitted_awaiting_grade"],
-          description: "Filter by missing/resolved/all/submitted-awaiting-grade.",
+          enum: ["missing", "resolved", "all", "submitted_awaiting_grade", "overdue", "overdue_all"],
+          description: "Overdue defaults to evidenced unsubmitted. overdue_all requires an explicit broader request; other filters retain their meaning.",
         },
         course: {
           type: "string",
