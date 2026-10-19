@@ -1,4 +1,4 @@
-# Ephemeral typing and one placeholder, bound to the original inbound request.
+# Native typing, with one fallback only after typing fails, on the original request.
 # Never stream planner JSON or source rows before application validation.
 function Get-RelayThreadParameters($Message) {
   $parameters=@{}
@@ -22,8 +22,9 @@ function Invoke-RelayProgressPulse($Client,$Token,$BotId,$ChatId,$Message,$Recei
     } catch {$Receipt.typingState='FAILED_OR_AMBIGUOUS_NO_RETRY';$Progress.typingDisabled=$true}
     Write-RelayJson $ReceiptPath $Receipt
   }
-  if(($Now-$Progress.startedAt).TotalSeconds -ge 10 -and $Receipt.progressSendAttempts -eq 0){
+  if($Progress.typingDisabled -and ($Now-$Progress.startedAt).TotalSeconds -ge 10 -and $Receipt.progressSendAttempts -eq 0){
     if($Receipt.sendAttempts -ne 0){throw 'An original message send is already consumed'}
+    $Receipt.progressFallbackReason=$Receipt.typingState
     $Receipt.progressSendAttempts=1;$Receipt.sendAttempts=1;$Receipt.progressState='SEND_RESERVED';Write-RelayJson $ReceiptPath $Receipt
     $parameters=@{chat_id=$ChatId;text='Working on it...';reply_parameters=@{message_id=$Message.message_id};link_preview_options=@{is_disabled=$true};allow_paid_broadcast=$false}
     foreach($key in $thread.Keys){$parameters[$key]=$thread[$key]}

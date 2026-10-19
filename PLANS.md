@@ -2,6 +2,17 @@
 
 ## Existing signed-in browser to original tools (October18 continuation)
 
+The first changed-artifact consumer check verified typing, a visible placeholder
+and the same-message final edit, but correctly fell back to dated saved data:
+the parent-local browser ID did not exist in the worker runtime. Resolve the
+retained sanctioned extension instance inside each capture, then use that
+runtime's returned local ID. Do not hardcode a new observed short ID. Keep the
+closed first check and all counters; qualify a distinct corrected artifact.
+Fred's subsequent UX direction prefers native typing and one direct final
+answer. A delayed interim bubble is retained only after native typing fails,
+with that failure recorded. The corrected consumer check must observe actual
+native typing; prior placeholder/edit evidence does not supply that proof.
+
 Architect adopted the existing worker/browser alternative after the separate
 app-profile native launch was refused. Root owns isolated branch
 `schoology/supported-browser-refresh-20261018` from main ef9e4bda. Keep the

@@ -141,7 +141,8 @@ export function importConnectedBrowserSource(db, config, input) {
   return db.transaction(() => {
     if (db.prepare("SELECT id FROM subscription_source_imports WHERE id=?").get(input.operationId)) throw Error("Source import already consumed; do not replay");
     const result = { ...importQualifiedSource(db, config, source), operationId: input.operationId,
-      sourceSha256, sourceTabId: input.browserSource.sourceTabId, browserId: input.browserSource.browserId };
+      sourceSha256, sourceTabId: input.browserSource.sourceTabId, browserId: input.browserSource.browserId,
+      browserExtensionInstanceId: input.browserSource.browserExtensionInstanceId };
     db.prepare("INSERT INTO subscription_source_imports VALUES(?,?,?)").run(input.operationId, sourceSha256, JSON.stringify(result));
     return result;
   })();

@@ -35,9 +35,9 @@ test("real SQLite tools preserve notes/status through import, reject replay, and
 
 test("browser import is atomic, source-bound, once-only and preserves existing notes/status", async () => {
   const db=openSubscriptionToolStore(config);
-  const browserConfig={...config,browserSourceBrowserId:"3",browserSourceRuntimeModule:path.resolve("fixtures/browser-client.mjs")};
+  const browserConfig={...config,browserSourceExtensionInstanceId:"11111111-1111-4111-8111-111111111111",browserSourceRuntimeModule:path.resolve("fixtures/browser-client.mjs")};
   const contract=connectedBrowserSourceContract(browserConfig);
-  const browserSource={browserId:"3",sourceTabId:"fixture-tab",sourceUrl:contract.sourceUrl,readerSha256:contract.readerSha256,source:source()};
+  const browserSource={browserId:"3",browserExtensionInstanceId:browserConfig.browserSourceExtensionInstanceId,sourceTabId:"fixture-tab",sourceUrl:contract.sourceUrl,readerSha256:contract.readerSha256,source:source()};
   try {
     importQualifiedSource(db,config,source());
     await executeSubscriptionTool(db,request(201,"add_assignment_note",{operation:"note",target:row.url,value:"Keep this note"}));
