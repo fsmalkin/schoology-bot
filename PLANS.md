@@ -12,6 +12,12 @@ Fred's subsequent UX direction prefers native typing and one direct final
 answer. A delayed interim bubble is retained only after native typing fails,
 with that failure recorded. The corrected consumer check must observe actual
 native typing; prior placeholder/edit evidence does not supply that proof.
+The corrected native typing lifecycle passed actual Telegram UI with one direct
+final reply and no interim bubble. Fresh capture still stopped at the identity
+guard. Separate worker metadata verified the expected official account without
+reading the roster; retain this distinction from an authentication wall. The
+host now awaits a visible account menu and restores it after course expansion
+before projection. Qualify this source component before another consumer send.
 
 Architect adopted the existing worker/browser alternative after the separate
 app-profile native launch was refused. Root owns isolated branch

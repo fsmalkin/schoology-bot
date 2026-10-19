@@ -13,6 +13,9 @@ launch. The existing-browser driver verifies identity before roster access.
 Stable extension controls exercise changed runtime-local IDs and reject
 missing/ambiguous extension matches before opening a tab. Import independently
 requires the captured stable identity and a valid returned local browser ID.
+Driver controls now require the account menu to be visibly ready before identity
+inspection and restore it after course expansion before the original projector.
+The wrong-student control still refuses before roster access.
 
 Progress controls cover initial/4-second native typing with no redundant bubble,
 one failure-bound fallback after10seconds, thread binding, direct final send
