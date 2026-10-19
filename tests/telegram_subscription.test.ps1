@@ -11,6 +11,24 @@ function Assert-Refused([scriptblock]$Action) {
 function New-Message {
   return [pscustomobject]@{message=[pscustomobject]@{chat=[pscustomobject]@{id='-10001'};from=[pscustomobject]@{id='101';is_bot=$false};text='What is missing?';photo=$null;document=$null;voice=$null}}
 }
+$displayRows=@([pscustomobject]@{key='assignment:789';title='Geometry practice';course='Geometry';url='https://bcps.schoology.com/assignment/789'})
+$contextReceipt=[pscustomobject]@{state='TOOL_CONFIRMED';updateId=50;replyMessageId=70;observedAt='2026-10-19T00:00:00Z'}
+$contextSent=[pscustomobject]@{message_id=70}
+$contextMessage=[pscustomobject]@{message_thread_id=$null}
+Assert-Refused {New-RelayDisplayedContext $displayRows $contextReceipt $contextSent $contextMessage '-10001' '123' 'MP 1 2026-2027'}
+$contextReceipt.state='SENT'
+$context=New-RelayDisplayedContext $displayRows $contextReceipt $contextSent $contextMessage '-10001' '123' 'MP 1 2026-2027'
+if($context.assignments[0].index -ne 1 -or $context.assignments[0].key -cne 'assignment:789' -or $context.replyMessageId -ne 70){throw 'Displayed order or final message identity lost'};$passed++
+$contextState=@{chatId='-10001';lastDisplayedList=$context}
+if($null -eq (Get-RelayDisplayedContext $contextState $contextMessage '123' 'MP 1 2026-2027')){throw 'Correct displayed context refused'};$passed++
+foreach($badProfile in @('124')){if($null -ne (Get-RelayDisplayedContext $contextState $contextMessage $badProfile 'MP 1 2026-2027')){throw 'Foreign profile context admitted'};$passed++}
+if($null -ne (Get-RelayDisplayedContext $contextState $contextMessage '123' 'MP 2 2026-2027')){throw 'Foreign term context admitted'};$passed++
+if($null -ne (Get-RelayDisplayedContext $contextState ([pscustomobject]@{message_thread_id=9}) '123' 'MP 1 2026-2027')){throw 'Foreign thread context admitted'};$passed++
+$contextState.chatId='-10002'
+if($null -ne (Get-RelayDisplayedContext $contextState $contextMessage '123' 'MP 1 2026-2027')){throw 'Foreign chat context admitted'};$passed++
+Assert-Refused {New-RelayDisplayedContext $displayRows $contextReceipt ([pscustomobject]@{message_id=71}) $contextMessage '-10001' '123' 'MP 1 2026-2027'}
+Assert-Refused {Confirm-RelayDisplayedAssignments @([pscustomobject]@{key='key';title='title';course='course';url='https://other.test/assignment/1'})}
+Assert-Refused {Confirm-RelayDisplayedAssignments @([pscustomobject]@{key='key';title='title';course='course';url='';score='private'})}
 foreach($kind in @('agent_message','agentMessage','reasoning','error')){
   $events=@{type='item.completed';item=@{type=$kind}}|ConvertTo-Json -Compress
   if(-not (Confirm-RelayPlannerEvents $events).validated){throw 'Valid text planner event refused'}

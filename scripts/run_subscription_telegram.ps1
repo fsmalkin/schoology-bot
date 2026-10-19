@@ -21,6 +21,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'telegram_local_annotations.ps1')
 . (Join-Path $PSScriptRoot 'telegram_connected_browser.ps1')
 . (Join-Path $PSScriptRoot 'telegram_progress.ps1')
+. (Join-Path $PSScriptRoot 'telegram_displayed_context.ps1')
 
 function Write-RelayJson($Path, $Value) {
   $temporary = "$Path.tmp"
@@ -124,6 +125,7 @@ $($ToolCatalog|ConvertTo-Json -Depth 12 -Compress)
 $Question
 </question>
 "@}
+  if($null -ne $ToolCatalog){$prompt+="`nIf stored_catalog_json.lastDisplayedList is present, it is the app's exact previously delivered assignment order for this group/thread/student/term. Resolve ordinal or contextual follow-ups against that list, then select its exact current assignment title or URL. Do not substitute an ordinal from the full catalog or infer a list from your prior plan. If the referent is absent or ambiguous, return unavailable with a short clarification; never guess."}
   if($null -ne $BrowserSourceContract){$prompt=Get-RelayConnectedBrowserPrompt $BrowserSourceContract $Question $ToolCatalog $LocalRequest}
   $process = [Diagnostics.Process]::new(); $process.StartInfo=$start;$processStarted=$false
   try {
@@ -231,6 +233,7 @@ function Start-SubscriptionRelay {
     $state.startedAt=$resumeState.startedAt;$state.resumedAt=[DateTimeOffset]::UtcNow.ToString('o')
     $state.nextOffset=[long]$resumeState.nextOffset;$state.polls=[int]$resumeState.polls;$state.requests=[int]$resumeState.requests
     $state.lastReplyId=$resumeState.lastReplyId;$state.resumedFrom=$ResumeStatePath
+    if($resumeState.lastDisplayedList){$state.lastDisplayedList=$resumeState.lastDisplayedList}
   }
   try {
     Write-RelayJson $statePath $state
@@ -280,7 +283,7 @@ function Start-SubscriptionRelay {
       if($ToolConfigPath -and -not $localRequestInvalid){
         $node=(Get-Command node -CommandType Application|Select-Object -First 1).Source
         $receipt.workerCalls=0;Write-RelayJson $receiptPath $receipt
-        $answer=Invoke-RelayOriginalToolRequest $node $ToolConfigPath $executable $WorkerThreadId $WorkerDirectory $message.text (Join-Path $DataDirectory "answer-$($update.update_id).json") $StudentProfileId $CurrentTerm $localRequest $receipt $receiptPath $browserSourceContract $progressPulse
+        $answer=Invoke-RelayOriginalToolRequest $node $ToolConfigPath $executable $WorkerThreadId $WorkerDirectory $message.text (Join-Path $DataDirectory "answer-$($update.update_id).json") $StudentProfileId $CurrentTerm $localRequest $receipt $receiptPath $browserSourceContract $progressPulse (Get-RelayDisplayedContext $state $message $StudentProfileId $CurrentTerm)
       } elseif($localRequestInvalid){
         $receipt.workerCalls=0;Write-RelayJson $receiptPath $receipt
         $answer=[pscustomobject]@{state='unavailable';conciseReply='Use an exact assignment title or Schoology assignment link. Local notes can contain up to 2000 characters and statuses up to 160. No change was saved.';observedAt=$null;resolvedAssignment=$null}
@@ -305,6 +308,7 @@ function Start-SubscriptionRelay {
       }
       $sent=Send-RelayFinalReply $client $token $BotId $ChatId $message $answer.conciseReply $receipt $receiptPath $progress
       $receipt.state='SENT';$receipt.replyMessageId=$sent.message_id;$receipt.observedAt=$answer.observedAt;Write-RelayJson $receiptPath $receipt
+      if($null -ne $answer.displayedAssignments){$state.lastDisplayedList=New-RelayDisplayedContext $answer.displayedAssignments $receipt $sent $message $ChatId $StudentProfileId $CurrentTerm}
       $state.nextOffset=[long]$update.update_id+1;$state.lastReplyId=$sent.message_id;Write-RelayJson $statePath $state
     }
     $state.state='STOPPED'

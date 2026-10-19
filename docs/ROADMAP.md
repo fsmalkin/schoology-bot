@@ -5,6 +5,11 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 
 ## Current Decisions
 
+- Current-version interactive follow-through: supply the original tool's exact
+  delivered list as scoped follow-up context only after native send readback.
+  Expected clarification is a normal reply, not a fatal service condition.
+  Preserve partial consumer outcomes and all failed/spent operation identities.
+
 - October18 direct overdue-default direction: ordinary overdue requests mean
   past due AND evidenced unsubmitted. Submitted in every grading state, Exempt,
   unknown and conflicting evidence are excluded; explicit broader requests

@@ -151,3 +151,17 @@ test("same-title same-date assignments with distinct Schoology IDs remain separa
     assert.equal(subscriptionToolCatalog(db).assignments.length,2);
   } finally {db.close();}
 });
+
+test("displayed context includes only complete rendered rows and never a clipped hidden tail", async () => {
+  const db=openSubscriptionToolStore(config);
+  try {
+    const s=source();s.snapshot.assignments=Array.from({length:30},(_,i)=>({...row,title:`Rendered fixture ${String(i).padStart(2,"0")} ${"x".repeat(180)}`,url:`https://bcps.schoology.com/assignment/${1000+i}`}));
+    importQualifiedSource(db,config,s);
+    const result=await executeSubscriptionTool(db,request(800,"list_assignments",null,{status:"all",limit:30}));
+    assert.ok(result.reply.length<=3500);assert.ok(result.displayedAssignments.length>0);assert.ok(result.displayedAssignments.length<30);
+    assert.deepEqual(result.assignmentKeys,result.displayedAssignments.map(r=>r.key));
+    for(const r of result.displayedAssignments){assert.match(result.reply,new RegExp(r.url));assert.ok(result.reply.includes(r.title));assert.deepEqual(Object.keys(r).sort(),["course","key","title","url"]);}
+    const hidden=s.snapshot.assignments[result.displayedAssignments.length];assert.ok(!result.reply.includes(hidden.title));
+    assert.match(result.reply,/ask for a narrower list/);
+  } finally {db.close();}
+});
