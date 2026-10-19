@@ -46,7 +46,7 @@ export function subscriptionToolCatalog(db) {
   const source = db.prepare("SELECT * FROM subscription_source WHERE id=1").get();
   if (!source) throw Error("Current source has not been imported");
   const current = new Set(db.prepare("SELECT key FROM subscription_current_keys").all().map(row => row.key));
-  return { source, assignments: listAssignments(db, { status: "all", includeIgnored: true, includePending: true, limit: 1000 }).filter(row=>current.has(row.key)).map(({ key, course, title, url, status, manualStatus, dueDate }) => ({ key, course, title, url, status, manualStatus, dueDate })) };
+  return { source, assignments: listAssignments(db, { status: "all", includeIgnored: true, includePending: true, limit: 1000, assignmentKeys: [...current] }).map(({ key, course, title, url, status, manualStatus, dueDate }) => ({ key, course, title, url, status, manualStatus, dueDate })) };
 }
 
 function exactTarget(db, target) {
@@ -107,11 +107,11 @@ export async function executeSubscriptionTool(db, request, config = {}) {
     let output;
     if (name === "clear_assignment_notes") { db.prepare("DELETE FROM assignment_notes WHERE assignment_key=?").run(args.key); output = { ok: true }; }
     else if (name === "clear_assignment_status") output = await runToolByName(db, "update_assignment_status", { key: args.key, status: "" });
-    else output = await runToolByName(db, name, args);
+    else output = await runToolByName(db, name, args, { assignmentKeys: db.prepare("SELECT key FROM subscription_current_keys").all().map(row => row.key) });
     if (!output?.ok) throw Error(output?.error || "Original tool refused request");
     if (targetKey) output = { ...output, assignments: output.assignments.filter(row => row.key === targetKey) };
     const reply = toolReply(db, name, args, output, source);
-    const result = { ok: true, toolName: name, observedAt: source.observed_at, reply };
+    const result = { ok: true, toolName: name, observedAt: source.observed_at, ...(name === "list_assignments" ? { filter: args.status || "missing", assignmentKeys: output.assignments.map(row => row.key) } : {}), reply };
     db.prepare("INSERT INTO subscription_effects VALUES(?,?,?,?)").run(request.operationId, name, JSON.stringify(before), JSON.stringify(result));
     db.exec("COMMIT");
     return result;
@@ -125,9 +125,11 @@ function toolReply(db, name, args, output, source) {
     const lines = rows.map(row => {
       const notes = db.prepare("SELECT note FROM assignment_notes WHERE assignment_key=? ORDER BY id").all(row.key);
       const sourceStatus = row.status === "Not marked missing" ? "Not marked missing (submission status unknown)" : formatFriendlyStatus(row.status || "Unknown");
-      return `${row.title} — ${simplifyCourseName(row.course)}\nSchoology: ${sourceStatus}${row.manualStatus ? `\nLocal status: ${row.manualStatus}` : ""}${row.dueDate ? `\nDue: ${row.dueDate}` : ""}${notes.map(n => `\nNote: ${n.note}`).join("")}${row.url ? `\n${row.url}` : ""}`;
+      return `${row.title} — ${simplifyCourseName(row.course)}\nSchoology: ${sourceStatus}${args.status === "overdue_all" ? `\nSubmission evidence: ${row.submissionEvidence}` : ""}${row.manualStatus ? `\nLocal status: ${row.manualStatus}` : ""}${row.dueDate ? `\nDue: ${row.dueDate}${row.deadlineEvidence?.kind === "date-only" ? " (time unknown)" : ""}` : ""}${notes.map(n => `\nNote: ${n.note}`).join("")}${row.url ? `\n${row.url}` : ""}`;
     });
-    return `Saved Schoology data observed ${source.observed_at}\n\n${lines.length ? lines.join("\n\n") : "No matching assignments."}`.slice(0, 3500);
+    const overdue = args.status === "overdue" || args.status === "overdue_all";
+    const filterLabel = overdue ? `\n${args.status === "overdue" ? "Overdue and evidenced unsubmitted only. Submitted, exempt, unknown and conflicting cases excluded." : "Overdue across all submission states; evidence labeled separately."}\nEvaluated ${output.evaluation.evaluatedAt} (${output.evaluation.timeZone}). Date-only deadlines retain unknown time.` : "";
+    return `Saved Schoology data observed ${source.observed_at}${filterLabel}\n\n${lines.length ? lines.join("\n\n") : "No matching assignments."}`.slice(0, 3500);
   }
   const title = db.prepare("SELECT title FROM assignments WHERE key=?").get(args.key)?.title || "assignment";
   if (name === "add_assignment_note") return `Saved a local note for ${title}: ${args.note}\nSchoology was not changed.`;

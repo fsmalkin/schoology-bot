@@ -1,5 +1,23 @@
 ﻿# Schoology Bot
 
+## Overdue default
+
+Ordinary overdue questions use `list_assignments` with `status: "overdue"`:
+a past deadline and affirmative evidence that the assignment was not submitted.
+Missing and explicitly unsubmitted drafts qualify. Incomplete alone, a blank
+grade, and Not marked missing do not establish non-submission. Confirmed
+submissions, Exempt, unknown and conflicting evidence are excluded. Local
+Submitted claims remain local and prevent a contradictory definite-unsubmitted
+answer. Other local notes and status preferences retain their existing meaning.
+
+Timed deadlines are compared with the actual current instant in the configured
+source timezone. Date-only deadlines qualify only after that local date; their
+time stays unknown. Invalid dates and ambiguous DST wall times are excluded.
+An explicit request for overdue across all submission states uses
+`status: "overdue_all"`, with each row's submission evidence labeled separately.
+Replies retain source observation time, evaluation time, timezone and links.
+Current-term source identity and evidence filters apply before the result limit.
+
 ## Existing-browser source refresh and Telegram feedback
 
 The optional `useConnectedBrowserSource: true` relay configuration keeps the
