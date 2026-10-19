@@ -28,6 +28,7 @@ export function buildDbSummary(
     notesLimit = 3,
     timeZone = "America/New_York",
     now = new Date(),
+    assignmentKeys,
   } = {}
 ) {
   const rows = listAssignments(db, {
@@ -37,6 +38,7 @@ export function buildDbSummary(
     limit,
     timeZone,
     now,
+    assignmentKeys,
   });
   const keys = rows.map((row) => row.key);
   const notesByKey = includeNotes ? listAssignmentNotes(db, { keys, limitPerAssignment: notesLimit }) : new Map();

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildReadableDailySummary,
+  buildReadableDailySummaryResult,
   buildReadableReminderMessage,
   buildReadableToolResponse,
   formatFriendlyStatus,
@@ -65,6 +66,55 @@ test("buildReadableDailySummary routes items to Do Now, Soon, and Waiting", () =
   assert.match(output, /Needs teacher reply \(Waiting on teacher\)/);
   assert.match(output, /Link: https:\/\/example.com\/a1/);
   assert.doesNotMatch(output, /Link: https:\/\/example.com\/p1/);
+});
+
+test("summary references follow visible section order, limits and whole-block budget", () => {
+  const item = i => ({ key: `assignment:${i}`, course: "Science: Section A", title: `Lab ${i}`,
+    status: "Missing", dueDate: "2/15/26 11:59pm", url: `https://bcps.schoology.com/assignment/${i}` });
+  const options = { summary: { actionable: Array.from({ length: 7 }, (_, i) => item(i + 1)),
+    pending: [{ ...item(8), manualStatus: "Waiting on teacher" }] },
+    now: "2026-02-16T12:00:00Z", timeZone: "America/New_York" };
+  const full = buildReadableDailySummaryResult(options);
+  assert.equal(full.summaryText, buildReadableDailySummary(options));
+  assert.deepEqual(full.displayedAssignments.map(row => row.key), [1,2,3,4,5,8].map(i => `assignment:${i}`));
+  assert.match(full.summaryText, /\.\.\.and 2 more/);
+  assert.doesNotMatch(full.summaryText, /Lab 6|Lab 7/);
+  for (const row of full.displayedAssignments) assert.deepEqual(Object.keys(row).sort(), ["course","key","title","url"]);
+  const capped = buildReadableDailySummaryResult({ ...options, maxLength: 450 });
+  assert.ok(capped.summaryText.length <= 450);
+  assert.ok(capped.displayedAssignments.length > 0 && capped.displayedAssignments.length < 5);
+  assert.match(capped.summaryText, new RegExp(`\\.\\.\\.and ${7 - capped.displayedAssignments.length} more`));
+  for (const row of capped.displayedAssignments) assert.ok(capped.summaryText.includes(`  Link: ${row.url}`));
+  const firstHidden = item(capped.displayedAssignments.length + 1);
+  assert.ok(!capped.summaryText.includes(firstHidden.title));
+});
+
+test("summary clears assignment context for empty or ambiguous displayed work", () => {
+  assert.deepEqual(buildReadableDailySummaryResult().displayedAssignments, []);
+  const waiting = { course: "Science", title: "Lab", manualStatus: "Waiting on teacher" };
+  const ambiguous = buildReadableDailySummaryResult({ summary: { pending: [
+    { ...waiting, key: "assignment:1" }, { ...waiting, key: "assignment:2" },
+  ] } });
+  assert.deepEqual(ambiguous.displayedAssignments, []);
+  assert.equal((ambiguous.summaryText.match(/\[Science\] Lab/g) || []).length, 1);
+  const repeated = buildReadableDailySummaryResult({ summary: { pending: [
+    { ...waiting, key: "assignment:1" }, { ...waiting, key: "assignment:1" },
+  ] } });
+  assert.deepEqual(repeated.displayedAssignments.map(row => row.key), ["assignment:1"]);
+  const tooLong = buildReadableDailySummaryResult({ summary: { actionable: [
+    { ...waiting, key: "assignment:3", title: "x".repeat(4000) },
+  ] }, maxLength: 300 });
+  assert.ok(tooLong.summaryText.length <= 300);
+  assert.deepEqual(tooLong.displayedAssignments, []);
+  assert.match(tooLong.summaryText, /\.\.\.and 1 more/);
+});
+
+test("summary references exclude reminder tasks and retain actual assignment identities", () => {
+  const rendered = buildReadableDailySummaryResult({ summary: { actionable: [
+    { key: "assignment:1", course: "Science", title: "Lab", status: "Missing" },
+  ] }, reminders: { today: [{ title: "Ask teacher", remindAt: "2026-02-16T12:00:00Z" }] } });
+  assert.match(rendered.summaryText, /Ask teacher/);
+  assert.deepEqual(rendered.displayedAssignments.map(row => row.key), ["assignment:1"]);
 });
 
 test("buildReadableDailySummary routes future assignments to Soon", () => {

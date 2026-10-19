@@ -5,6 +5,13 @@ Run a reliable Schoology assistant on the local server that refreshes assignment
 
 ## Current Decisions
 
+- Manual daily summaries must replace prior delivered-list context with the
+  deterministic renderer's exact visible assignments. Select complete blocks
+  and source references together under section and carrier limits, clearing
+  context for empty or ambiguous output. Current-source keys scope summary
+  queries before limits. This repairs the existing manual Telegram workflow;
+  it does not activate scheduled summaries or reminders.
+
 - Current-version interactive follow-through: supply the original tool's exact
   delivered list as scoped follow-up context only after native send readback.
   Expected clarification is a normal reply, not a fatal service condition.
