@@ -39,6 +39,16 @@ test("current report uses current missing flags, excludes submitted work and dis
   assert.equal(result.missing[0].url, "https://example.schoology.com/assignment/1001");
 });
 
+test("completed submission with unknown grading is not counted as confirmed awaiting grade", () => {
+  const data=snapshot();
+  data.assignments.push({...data.assignments[0],title:"Completed source submission",url:"https://example.schoology.com/assignment/1003",status:"Submitted (grading status unknown)",isMissing:false});
+  const result=buildCurrentSummary(data,{now:NOW});
+  assert.equal(result.submittedAwaitingGrade,1);
+  assert.equal(result.submittedGradingUnknown,1);
+  assert.match(result.summaryText,/Submitted work: 2/);
+  assert.match(result.summaryText,/Awaiting grade: 1\. Submission confirmed, grading status unknown: 1/);
+});
+
 test("complete and partial empty snapshots cannot both claim a verified empty current list", () => {
   const data = snapshot(); data.assignments = [];
   assert.match(buildCurrentSummary(data, { now: NOW }).summaryText, /No missing assignments in this complete current Schoology snapshot/);

@@ -1,5 +1,24 @@
 # Codex Execution Plans (ExecPlans)
 
+## Existing signed-in browser to original tools (October18 continuation)
+
+Architect adopted the existing worker/browser alternative after the separate
+app-profile native launch was refused. Root owns isolated branch
+`schoology/supported-browser-refresh-20261018` from main ef9e4bda. Keep the
+existing Telegram worker, normal sanctioned browser and original parser/SQLite
+effects. One app-owned capture call performs supported navigation and the narrow
+projection; bind import to its actual CLI result. Keep source import and tool
+identities separate, refuse ambiguous/duplicate effects, preserve local data and
+label saved fallbacks honestly. Restore typing/placeholder/final-edit feedback
+and qualify submitted labels while preserving contradictory source flags.
+
+Next: focused offline controls, full exact-head CI, then reconcile a separately
+bounded installation/consumer operation against existing runtime authority and
+all prior receipts. Do not replay the dedicated launch, packet write, old
+refresh/test/send or completed weekly print. Source/CI are not acceptance;
+the existing service/plugin/offsets stay unchanged until qualified cutover.
+No new worker, model, listener, scheduler or API spend.
+
 ## Private local plugin connection (October18 continuation)
 
 Package the retained original tools as a private stdio MCP connector for the

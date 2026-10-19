@@ -1,10 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { openSubscriptionToolStore, importQualifiedSource, executeSubscriptionTool, subscriptionToolCatalog } from "../src/subscription_tools.js";
+import { importConnectedBrowserSource } from "../src/subscription_tools.js";
+import { connectedBrowserSourceContract } from "../src/connected_browser_source.js";
+import path from "node:path";
 
 const config = { databasePath: ":memory:", principalId: "telegram:test", studentProfileId: "123", currentTerm: "MP 1 2026-2027", currentTermId: "456" };
 const row = { course: "Geometry", title: "Geometry practice", dueDate: "10/21/26 11:59pm", status: "Missing", isMissing: true, url: "https://bcps.schoology.com/assignment/789" };
-function source() { return { format: "schoology-qualified-current-term/v1", subjectVerified: true, currentTermVerified: true, sourceScope: { principalId: config.principalId, studentId: config.studentProfileId, currentTermId: config.currentTermId }, currentTerm: { id: config.currentTermId, label: config.currentTerm }, snapshot: { sourceOrigin: "https://bcps.schoology.com", observedAt: new Date().toISOString(), complete: true, assignments: [{ ...row }] } }; }
+function source() { return { format: "schoology-qualified-current-term/v1", subjectVerified: true, currentTermVerified: true, sourceScope: { principalId: config.principalId, studentId: config.studentProfileId, currentTermId: config.currentTermId }, currentTerm: { id: config.currentTermId, label: config.currentTerm }, snapshot: { format: "schoology-current-assignments/v1", sourceOrigin: "https://bcps.schoology.com", observedAt: new Date().toISOString(), complete: true, assignments: [{ ...row }] } }; }
 const request = (id, toolName, localRequest, args={}) => ({ operationId: `telegram-update-${id}`, toolName, localRequest, arguments: args });
 
 test("real SQLite tools preserve notes/status through import, reject replay, and retain reversible clears", async () => {
@@ -28,6 +31,56 @@ test("real SQLite tools preserve notes/status through import, reject replay, and
     const summary=await executeSubscriptionTool(db,request(6,"build_daily_summary",null));
     assert.match(summary.reply,/Geometry practice/);
   } finally { db.close(); }
+});
+
+test("browser import is atomic, source-bound, once-only and preserves existing notes/status", async () => {
+  const db=openSubscriptionToolStore(config);
+  const browserConfig={...config,browserSourceBrowserId:"3",browserSourceRuntimeModule:path.resolve("fixtures/browser-client.mjs")};
+  const contract=connectedBrowserSourceContract(browserConfig);
+  const browserSource={browserId:"3",sourceTabId:"fixture-tab",sourceUrl:contract.sourceUrl,readerSha256:contract.readerSha256,source:source()};
+  try {
+    importQualifiedSource(db,config,source());
+    await executeSubscriptionTool(db,request(201,"add_assignment_note",{operation:"note",target:row.url,value:"Keep this note"}));
+    await executeSubscriptionTool(db,request(202,"update_assignment_status",{operation:"status",target:row.url,value:"E"}));
+    const result=importConnectedBrowserSource(db,browserConfig,{operationId:"telegram-source-203",browserSource});
+    assert.equal(result.ok,true);assert.equal(result.operationId,"telegram-source-203");
+    assert.equal(subscriptionToolCatalog(db).source.observed_at,browserSource.source.snapshot.observedAt);
+    assert.equal(db.prepare("SELECT note FROM assignment_notes").get().note,"Keep this note");
+    assert.equal(subscriptionToolCatalog(db).assignments[0].manualStatus,"Waiting on teacher");
+    assert.throws(()=>importConnectedBrowserSource(db,browserConfig,{operationId:"telegram-source-203",browserSource}),/do not replay/);
+    const invalid=structuredClone(browserSource);invalid.source.sourceScope.studentId="999";
+    assert.throws(()=>importConnectedBrowserSource(db,browserConfig,{operationId:"telegram-source-204",browserSource:invalid}));
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM subscription_source_imports").get().n,1);
+    const before=subscriptionToolCatalog(db).source.observed_at;
+    db.exec("CREATE TRIGGER refuse_import_receipt BEFORE INSERT ON subscription_source_imports BEGIN SELECT RAISE(ABORT,'fixture receipt failure'); END");
+    browserSource.source=source();browserSource.source.snapshot.assignments=[];
+    assert.throws(()=>importConnectedBrowserSource(db,browserConfig,{operationId:"telegram-source-205",browserSource}),/fixture receipt failure/);
+    assert.equal(subscriptionToolCatalog(db).assignments.length,1);
+    assert.equal(subscriptionToolCatalog(db).source.observed_at,before);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM subscription_source_imports").get().n,1);
+  } finally {db.close();}
+});
+
+test("submission evidence survives import, submitted filters and Telegram text without hiding source conflicts", async () => {
+  const db=openSubscriptionToolStore(config);
+  try {
+    const snapshot=source();
+    snapshot.snapshot.assignments=[
+      {...row,status:"Submitted, awaiting grade (Schoology also marks Missing)",isMissing:true},
+      {...row,title:"Completed submission",url:"https://bcps.schoology.com/assignment/790",status:"Submitted (grading status unknown)",isMissing:false},
+      {...row,title:"Unsubmitted draft",url:"https://bcps.schoology.com/assignment/791",status:"Missing (draft not submitted)",isMissing:true},
+    ];
+    importQualifiedSource(db,config,snapshot);
+    const target=await executeSubscriptionTool(db,request(301,"list_assignments",null,{target:row.url}));
+    assert.match(target.reply,/Schoology: Submitted, awaiting grade \(Schoology also marks Missing\)/);
+    assert.equal(db.prepare("SELECT is_missing FROM assignments WHERE url=?").get(row.url).is_missing,1);
+    const waiting=await executeSubscriptionTool(db,request(302,"list_assignments",null,{status:"submitted_awaiting_grade"}));
+    assert.match(waiting.reply,/Geometry practice/);assert.doesNotMatch(waiting.reply,/Completed submission|Unsubmitted draft/);
+    const missing=await executeSubscriptionTool(db,request(303,"list_assignments",null,{status:"missing"}));
+    assert.match(missing.reply,/Unsubmitted draft/);assert.doesNotMatch(missing.reply,/Geometry practice|Completed submission/);
+    const completed=await executeSubscriptionTool(db,request(304,"list_assignments",null,{target:"https://bcps.schoology.com/assignment/790"}));
+    assert.match(completed.reply,/Submitted \(grading status unknown\)/);assert.doesNotMatch(completed.reply,/Needs action|awaiting grade/);
+  } finally {db.close();}
 });
 
 test("source binding, freshness, explicit edit and scope fail closed without mutations", async () => {

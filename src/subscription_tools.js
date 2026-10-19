@@ -5,6 +5,7 @@ import { syncAssignmentsFromState } from "./db.js";
 import { runToolByName } from "./tool_runner.js";
 import { formatFriendlyStatus, simplifyCourseName } from "./readable_messages.js";
 import { readOriginalProfileSource, SourceSessionRequired } from "./schoology_profile_source.js";
+import { connectedBrowserSourceContract, validateConnectedBrowserSource } from "./connected_browser_source.js";
 
 const READ_TOOLS = new Set(["list_assignments", "build_daily_summary"]);
 const LOCAL_TOOLS = new Set(["add_assignment_note", "update_assignment_status", "clear_assignment_notes", "clear_assignment_status"]);
@@ -15,6 +16,7 @@ export function openSubscriptionToolStore(config) {
   if (!config || !/^\d+$/.test(config.studentProfileId) || !/^MP ?[1-4] 20\d\d-20\d\d$/.test(config.currentTerm)) throw Error("Exact subject and term required");
   const db = createDb(config.databasePath);
   db.exec("CREATE TABLE IF NOT EXISTS subscription_source (id INTEGER PRIMARY KEY CHECK(id=1), profile TEXT NOT NULL, term TEXT NOT NULL, principal TEXT NOT NULL, term_id TEXT NOT NULL, observed_at TEXT NOT NULL); CREATE TABLE IF NOT EXISTS subscription_current_keys (key TEXT PRIMARY KEY); CREATE TABLE IF NOT EXISTS subscription_effects (id TEXT PRIMARY KEY, tool TEXT NOT NULL, before_json TEXT NOT NULL, result_json TEXT NOT NULL)");
+  db.exec("CREATE TABLE IF NOT EXISTS subscription_source_imports (id TEXT PRIMARY KEY, source_sha256 TEXT NOT NULL, result_json TEXT NOT NULL)");
   const binding = db.prepare("SELECT * FROM subscription_source WHERE id=1").get();
   if (binding && (binding.profile !== config.studentProfileId || binding.term !== config.currentTerm || binding.principal !== config.principalId || binding.term_id !== config.currentTermId)) { db.close(); throw Error("Stored subject or term mismatch"); }
   return db;
@@ -133,10 +135,29 @@ function toolReply(db, name, args, output, source) {
   return `Cleared the local ${name === "clear_assignment_notes" ? "notes" : "status"} for ${title}. Local change history is retained; Schoology was not changed.`;
 }
 
+export function importConnectedBrowserSource(db, config, input) {
+  if (!/^telegram-source-[0-9]+$/.test(input.operationId || "")) throw Error("Stable original source operation required");
+  const { source, sourceSha256 } = validateConnectedBrowserSource(config, input.browserSource);
+  return db.transaction(() => {
+    if (db.prepare("SELECT id FROM subscription_source_imports WHERE id=?").get(input.operationId)) throw Error("Source import already consumed; do not replay");
+    const result = { ...importQualifiedSource(db, config, source), operationId: input.operationId,
+      sourceSha256, sourceTabId: input.browserSource.sourceTabId, browserId: input.browserSource.browserId };
+    db.prepare("INSERT INTO subscription_source_imports VALUES(?,?,?)").run(input.operationId, sourceSha256, JSON.stringify(result));
+    return result;
+  })();
+}
+
 export async function runSubscriptionToolCommand(config, input) {
   const db = openSubscriptionToolStore(config);
   try {
     if (input.command === "import") return importQualifiedSource(db, config, input.source);
+    if (input.command === "browser-source-contract") return connectedBrowserSourceContract(config);
+    if (input.command === "import-browser-source") return importConnectedBrowserSource(db, config, input);
+    if (input.command === "browser-source-operation-status") {
+      if (!/^telegram-source-[0-9]+$/.test(input.operationId || "")) throw Error("Exact source operation required");
+      const saved = db.prepare("SELECT result_json FROM subscription_source_imports WHERE id=?").get(input.operationId);
+      return saved ? { state: "COMPLETED", result: JSON.parse(saved.result_json) } : { state: "NOT_FOUND" };
+    }
     if (input.command === "catalog") return subscriptionToolCatalog(db);
     if (input.command === "execute") return await executeSubscriptionTool(db, input, config);
     throw Error("Unsupported tool command");

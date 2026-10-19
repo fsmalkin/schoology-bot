@@ -102,6 +102,9 @@ export function formatFriendlyStatus(status) {
   if (lower === "submitted") {
     return "Waiting on teacher/grade (Submitted)";
   }
+  if (lower.startsWith("submitted, awaiting grade") || lower.startsWith("submitted (grading status unknown")) {
+    return official;
+  }
   return `Needs action (${official})`;
 }
 

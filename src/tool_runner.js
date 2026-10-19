@@ -26,7 +26,7 @@ import {
   getDisplayedAssignmentByIndex,
   recordCreatedIssueContext,
 } from "./conversation_context.js";
-import { isIgnoredStatus, isPendingStatus, isSubmittedSchoologyStatus } from "./statuses.js";
+import { isIgnoredStatus, isPendingStatus, isSubmittedSchoologyStatus, isSubmittedAwaitingGradeStatus } from "./statuses.js";
 import { buildDailySummaryText, runReminders, runScrape } from "./tasks.js";
 import {
   formatDateTime,
@@ -569,7 +569,7 @@ export async function runToolByName(db, toolName, args, context = {}) {
         const ignoredRows = bucketed?.buckets?.ignored || [];
         const ignoredCount = ignoredRows.length;
         const submittedArchivedCount = ignoredRows.filter((row) =>
-          isSubmittedSchoologyStatus(row)
+          isSubmittedAwaitingGradeStatus(row)
         ).length;
         const reasons = Array.from(
           new Set(

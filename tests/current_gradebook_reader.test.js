@@ -102,13 +102,27 @@ for (const [name, options, context] of [
   });
 }
 
-test("official submitted markers override missing; comments and numeric grade getters are never read", () => {
+test("official submitted labels preserve missing contradictions without reading comments or numeric grades", () => {
   const result = project({ courses: [{ items: [
     { status: "Missing", submitted: true }, { status: "Incomplete" }, { status: "" },
     { status: "", href: null, title: "Fixture offline work" },
   ] }] });
   assert.deepEqual(result.snapshot.assignments.map(r => [r.status, r.isMissing]), [
-    ["Submitted", false], ["Incomplete", true], ["Not marked missing", false], ["Not marked missing", false],
+    ["Submitted, awaiting grade (Schoology also marks Missing)", true], ["Incomplete", true], ["Not marked missing", false], ["Not marked missing", false],
+  ]);
+});
+
+test("source labels distinguish ungraded submission, completed submission, icon-only and unsubmitted draft", () => {
+  const result=project({courses:[{items:[
+    {status:"",submitted:true},
+    {status:"",submissionClass:"has-dropbox-icon dropbox-icon-inline-image-wrapper",submissionLabel:"This student has completed assignment submission"},
+    {status:"",iconOnly:true},
+    {status:"Missing",submissionLabel:"Draft not submitted"},
+    {status:"Incomplete",submitted:true},
+  ]}]});
+  assert.deepEqual(result.snapshot.assignments.map(r=>[r.status,r.isMissing]),[
+    ["Submitted, awaiting grade",false],["Submitted (grading status unknown)",false],
+    ["Not marked missing",false],["Missing (draft not submitted)",true],["Submitted, awaiting grade (Schoology also marks Incomplete)",true],
   ]);
 });
 
