@@ -19,6 +19,10 @@ Assert-Refused {New-RelayDisplayedContext $displayRows $contextReceipt $contextS
 $contextReceipt.state='SENT'
 $context=New-RelayDisplayedContext $displayRows $contextReceipt $contextSent $contextMessage '-10001' '123' 'MP 1 2026-2027'
 if($context.assignments[0].index -ne 1 -or $context.assignments[0].key -cne 'assignment:789' -or $context.replyMessageId -ne 70){throw 'Displayed order or final message identity lost'};$passed++
+$emptyAnswer='{"displayedAssignments":[]}'|ConvertFrom-Json
+if($null -eq $emptyAnswer.displayedAssignments){throw 'Explicit empty display context was lost'};$passed++
+$emptyContext=New-RelayDisplayedContext $emptyAnswer.displayedAssignments $contextReceipt $contextSent $contextMessage '-10001' '123' 'MP 1 2026-2027'
+if(@($emptyContext.assignments).Count -ne 0 -or $emptyContext.replyMessageId -ne 70){throw 'Empty summary did not clear the prior list'};$passed++
 $contextState=@{chatId='-10001';lastDisplayedList=$context}
 if($null -eq (Get-RelayDisplayedContext $contextState $contextMessage '123' 'MP 1 2026-2027')){throw 'Correct displayed context refused'};$passed++
 foreach($badProfile in @('124')){if($null -ne (Get-RelayDisplayedContext $contextState $contextMessage $badProfile 'MP 1 2026-2027')){throw 'Foreign profile context admitted'};$passed++}

@@ -184,16 +184,23 @@ function buildReminderItem(task, timeZone, messageStyle) {
 
 function normalizeSectionItems(items) {
   const out = [];
-  const seen = new Set();
+  const seen = new Map();
   for (const item of items || []) {
     if (!item || !item.line) continue;
     const line = String(item.line).trim();
     if (!line) continue;
     const link = item.link ? String(item.link).trim() : "";
-    const key = `${line}|${link}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(link ? { line, link } : { line });
+    const key = normalizeAscii(`${line}|${link}`);
+    if (seen.has(key)) {
+      const prior = seen.get(key);
+      // Identical visible blocks must never select an arbitrary source identity.
+      if (prior.assignment?.key !== item.assignment?.key) prior.assignment = null;
+      continue;
+    }
+    const normalized = { line, ...(link ? { link } : {}),
+      ...(Object.hasOwn(item, "assignment") ? { assignment: item.assignment } : {}) };
+    seen.set(key, normalized);
+    out.push(normalized);
   }
   return out;
 }
@@ -382,13 +389,19 @@ export function buildReadableDailySummary({
   });
 }
 
-export function buildReadableDailySummaryWithStyle({
+export function buildReadableDailySummaryWithStyle(options = {}) {
+  return buildReadableDailySummaryResult(options).summaryText;
+}
+
+// Text and source references are selected together, before any carrier sends.
+export function buildReadableDailySummaryResult({
   summary,
   reminders,
   state,
   timeZone,
   now,
   messageStyle = MESSAGE_STYLE.COMPACT,
+  maxLength = Infinity,
 } = {}) {
   const tz = toTimeZone(timeZone);
   const style = normalizeMessageStyle(messageStyle);
@@ -413,6 +426,7 @@ export function buildReadableDailySummaryWithStyle({
       includeLink: true,
       messageStyle: style,
     });
+    rendered.assignment = summaryAssignmentReference(item);
     if (assignmentDueCategory(item, tz, nowDate) === "upcoming") {
       soonItems.push(rendered);
     } else {
@@ -432,15 +446,16 @@ export function buildReadableDailySummaryWithStyle({
     soonItems.push(buildReminderItem(task, tz, style));
   }
 
-  const waitingItems = pending.map((item) =>
-    buildAssignmentItem(item, {
+  const waitingItems = pending.map((item) => ({
+    ...buildAssignmentItem(item, {
       timeZone: tz,
       nowDate,
       includeLink: false,
       messageStyle: style,
       showOverdue: false,
-    })
-  );
+    }),
+    assignment: summaryAssignmentReference(item),
+  }));
 
   const lines = [];
   lines.push(`Schoology Summary | ${formatDayDate(nowDate, tz)}`);
@@ -450,16 +465,50 @@ export function buildReadableDailySummaryWithStyle({
   }
   lines.push("");
 
-  let hasSection = false;
-  hasSection = pushSection(lines, "Do Now", doNowItems) || hasSection;
-  hasSection = pushSection(lines, "Soon", soonItems) || hasSection;
-  hasSection = pushSection(lines, "Waiting", waitingItems) || hasSection;
-
-  if (!hasSection) {
-    lines.push("Nothing to do right now.");
+  const sections = [["Do Now", doNowItems], ["Soon", soonItems], ["Waiting", waitingItems]]
+    .map(([title, items]) => ({ title, items: normalizeSectionItems(items) }))
+    .filter(section => section.items.length);
+  const counts = sections.map(section => Math.min(MAX_SECTION_ITEMS, section.items.length));
+  const render = () => {
+    const output = [...lines];
+    const displayed = [];
+    let ambiguous = false;
+    sections.forEach((section, index) => {
+      output.push(section.title);
+      for (const item of section.items.slice(0, counts[index])) {
+        output.push(`- ${item.line}`);
+        if (item.link) output.push(`  Link: ${item.link}`);
+        if (Object.hasOwn(item, "assignment")) {
+          if (item.assignment) displayed.push(item.assignment);
+          else ambiguous = true;
+        }
+      }
+      const omitted = section.items.length - counts[index];
+      if (omitted) output.push(`- ...and ${omitted} more`);
+      output.push("");
+    });
+    if (!sections.length) output.push("Nothing to do right now.");
+    return { summaryText: normalizeAscii(output.join("\n").trim()),
+      displayedAssignments: ambiguous ? [] : displayed };
+  };
+  let result = render();
+  // Remove complete blocks from the end, retaining honest section counts.
+  while (result.summaryText.length > maxLength && counts.some(Boolean)) {
+    const last = counts.findLastIndex(count => count > 0);
+    counts[last]--;
+    result = render();
   }
+  if (result.summaryText.length > maxLength) {
+    const fallback = "Summary does not fit; ask for a narrower assignment list.";
+    return { summaryText: fallback.length <= maxLength ? fallback : "", displayedAssignments: [] };
+  }
+  return result;
+}
 
-  return normalizeAscii(lines.join("\n").trim());
+function summaryAssignmentReference(item) {
+  if (!item?.key || !item.title || !item.course) return null;
+  const { key, title, course } = item;
+  return { key, title, course, url: item.url || "" };
 }
 
 export function buildReadableReminderMessage({ task, timeZone, messageStyle } = {}) {

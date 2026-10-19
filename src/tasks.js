@@ -37,7 +37,7 @@ import {
 } from "./db.js";
 import { buildDbSummary } from "./summary.js";
 import { buildOptionalSummaryNotes } from "./summary_agent.js";
-import { buildReadableDailySummary, buildReadableReminderMessage } from "./readable_messages.js";
+import { buildReadableDailySummaryResult, buildReadableReminderMessage } from "./readable_messages.js";
 import { sendSummaryEmail } from "./email.js";
 import { sendSummarySms } from "./sms.js";
 import { sendSummaryTelegram, sendTelegramMessage } from "./telegram.js";
@@ -172,17 +172,20 @@ export async function buildDailySummaryText(options = {}) {
     includeNotes: true,
     timeZone: config.schedule.timezone,
     now,
+    assignmentKeys: options.assignmentKeys,
   });
   const today = formatDateYmd(now, config.schedule.timezone);
   const allPendingTasks = listTasks(db, { status: "pending" });
   const reminders = groupReminders(allPendingTasks, config.schedule.timezone, today);
-  const coreSummaryText = buildReadableDailySummary({
+  const rendered = buildReadableDailySummaryResult({
     summary: dbSummary,
     reminders,
     state,
     timeZone: config.schedule.timezone,
     now,
+    maxLength: options.maxSummaryLength,
   });
+  const coreSummaryText = rendered.summaryText;
 
   let optionalNotes = "";
   if (includeOptionalNotes) {
@@ -196,7 +199,8 @@ export async function buildDailySummaryText(options = {}) {
   }
   const summaryText = optionalNotes ? `${coreSummaryText}\n\n${optionalNotes}` : coreSummaryText;
 
-  return { state, summary: dbSummary, reminders, summaryText, optionalNotes };
+  return { state, summary: dbSummary, reminders, summaryText, optionalNotes,
+    displayedAssignments: rendered.displayedAssignments };
 }
 
 export async function runSend(options = {}) {

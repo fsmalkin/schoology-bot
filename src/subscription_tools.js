@@ -11,6 +11,7 @@ const READ_TOOLS = new Set(["list_assignments", "build_daily_summary"]);
 const LOCAL_TOOLS = new Set(["add_assignment_note", "update_assignment_status", "clear_assignment_notes", "clear_assignment_status"]);
 const assignmentUrl = /^https:\/\/bcps\.schoology\.com\/assignment\/[1-9][0-9]*$/;
 const clean = value => String(value || "").replace(/\s+/g, " ").trim();
+const summaryPrefix = source => `Saved Schoology data observed ${source.observed_at}\n\n`;
 
 export function openSubscriptionToolStore(config) {
   if (!config || !/^\d+$/.test(config.studentProfileId) || !/^MP ?[1-4] 20\d\d-20\d\d$/.test(config.currentTerm)) throw Error("Exact subject and term required");
@@ -107,12 +108,17 @@ export async function executeSubscriptionTool(db, request, config = {}) {
     let output;
     if (name === "clear_assignment_notes") { db.prepare("DELETE FROM assignment_notes WHERE assignment_key=?").run(args.key); output = { ok: true }; }
     else if (name === "clear_assignment_status") output = await runToolByName(db, "update_assignment_status", { key: args.key, status: "" });
-    else output = await runToolByName(db, name, args, { assignmentKeys: db.prepare("SELECT key FROM subscription_current_keys").all().map(row => row.key) });
+    else output = await runToolByName(db, name, args, {
+      assignmentKeys: db.prepare("SELECT key FROM subscription_current_keys").all().map(row => row.key),
+      maxSummaryLength: 3500 - summaryPrefix(source).length,
+    });
     if (!output?.ok) throw Error(output?.error || "Original tool refused request");
     if (targetKey) output = { ...output, assignments: output.assignments.filter(row => row.key === targetKey) };
     const rendered = toolReply(db, name, args, output, source);
     const reply = typeof rendered === "string" ? rendered : rendered.reply;
-    const result = { ok: true, toolName: name, observedAt: source.observed_at, ...(name === "list_assignments" ? { filter: args.status || "missing", assignmentKeys: rendered.displayedAssignments.map(row => row.key), displayedAssignments: rendered.displayedAssignments } : {}), reply };
+    const result = { ok: true, toolName: name, observedAt: source.observed_at,
+      ...(name === "list_assignments" ? { filter: args.status || "missing" } : {}),
+      ...(READ_TOOLS.has(name) ? { assignmentKeys: rendered.displayedAssignments.map(row => row.key), displayedAssignments: rendered.displayedAssignments } : {}), reply };
     db.prepare("INSERT INTO subscription_effects VALUES(?,?,?,?)").run(request.operationId, name, JSON.stringify(before), JSON.stringify(result));
     db.exec("COMMIT");
     return result;
@@ -120,7 +126,11 @@ export async function executeSubscriptionTool(db, request, config = {}) {
 }
 
 function toolReply(db, name, args, output, source) {
-  if (name === "build_daily_summary") return `Saved Schoology data observed ${source.observed_at}\n\n${output.summaryText || "No actionable assignments."}`.slice(0,3500);
+  if (name === "build_daily_summary") {
+    const reply = summaryPrefix(source) + output.summaryText;
+    if (reply.length > 3500) throw Error("Summary renderer exceeded carrier budget");
+    return { reply, displayedAssignments: output.displayedAssignments };
+  }
   if (name === "list_assignments") {
     const rows = Array.isArray(output.assignments) ? output.assignments : [];
     const lines = rows.map(row => {

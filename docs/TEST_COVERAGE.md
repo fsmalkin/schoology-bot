@@ -2,6 +2,17 @@
 
 ## Overdue defaults to evidenced unsubmitted
 
+Manual-summary continuation: deterministic rendering now produces text and
+exact displayed source references together. Fixtures cover section ordering,
+five-item limits, whole-block carrier trimming, accurate omitted counts,
+empty/ambiguous clearing, reminder exclusion, current-source query scope,
+SQLite propagation, retained history and replay refusal. An explicit empty
+array survives the existing post-SENT PowerShell context boundary. Affected
+checks passed84Node and100PS controls (59isolation,27sourceflow,14progress).
+Bounded patch review found no concrete correctness defect. Full exact-head CI
+and new-version summary/ordinal consumer proof remain separate requirements;
+the earlier summary915 operation is closed with its context defect retained.
+
 Current-version follow-up controls additionally verify complete-row rendering
 and displayed-key agreement, the app-owned final-send boundary, exact
 chat/thread/profile/term isolation, bounded context without grades, and a valid

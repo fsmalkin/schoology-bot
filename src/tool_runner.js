@@ -610,10 +610,13 @@ export async function runToolByName(db, toolName, args, context = {}) {
           includeOptionalNotes: false,
           allowScrapeFallback: false,
           now: args?.now ? new Date(String(args.now)) : undefined,
+          assignmentKeys: context?.assignmentKeys,
+          maxSummaryLength: context?.maxSummaryLength,
         });
         return {
           ok: true,
           summaryText: built.summaryText,
+          displayedAssignments: built.displayedAssignments,
           actionableCount: built.summary?.actionable?.length || 0,
           pendingCount: built.summary?.pending?.length || 0,
           reminderTodayCount: built.reminders?.today?.length || 0,

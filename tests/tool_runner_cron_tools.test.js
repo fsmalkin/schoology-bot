@@ -35,6 +35,7 @@ test("build_daily_summary returns summary text and counts without sending", asyn
   assert.equal(result.pendingCount, 1);
   assert.equal(typeof result.summaryText, "string");
   assert.ok(result.summaryText.length > 0);
+  assert.deepEqual(result.displayedAssignments.map(row => row.key), ["a1", "a2"]);
 });
 
 test("drain_due_reminders rolls due tasks and returns message payloads", async () => {

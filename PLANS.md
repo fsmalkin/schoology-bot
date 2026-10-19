@@ -1,6 +1,28 @@
 # Codex Execution Plans (ExecPlans)
 
+## Manual summary follow-up (October18 full-outcome audit)
+
+A separately admitted v20 manual summary returned successfully as reply915,
+but did not replace the older reply913 list context. That consumer operation
+is closed, no replay. Isolated branch schoology/summary-context-20261018 makes
+the deterministic renderer produce text and exact displayed references
+together. Section and carrier limits remove whole blocks. Empty or ambiguous
+output clears context; reminder tasks do not become assignment references.
+Current-source keys constrain summary selection before limits, retaining
+older records without reintroducing them into responses. The existing
+carrier still commits context only after native SENT readback.
+
+Affected checks passed84Node and100PowerShell controls. Bounded independent
+patch review found no concrete defect. Next: exact-head CI, clean same-worker
+v21, then separately admitted changed-version summary and ordinal consumers.
+Preserve previous counters, identities, local data and all spent receipts.
+No new worker, model, schedule, reminder activation or API spend.
+
 ## Overdue means unsubmitted by default (October18 direct direction)
+
+Latest acceptance: v20 passed the real source/list, ordinal, clarification
+and local-annotation lifecycle. The later manual-summary audit exposed a
+separate context defect now addressed in the continuation below.
 
 Current acceptance: PR62 merged b4c3ba56, full CI565Node pass/5skips/85PS;
 normal overdue update471028437/reply887 used fresh source and returned7 strict

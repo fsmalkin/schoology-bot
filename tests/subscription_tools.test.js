@@ -30,6 +30,39 @@ test("real SQLite tools preserve notes/status through import, reject replay, and
     assert.match(db.prepare("SELECT before_json FROM subscription_effects WHERE id='telegram-update-4'").get().before_json,/Bring ruler/);
     const summary=await executeSubscriptionTool(db,request(6,"build_daily_summary",null));
     assert.match(summary.reply,/Geometry practice/);
+    assert.deepEqual(summary.displayedAssignments, [{ key: "assignment:789", course: row.course, title: row.title, url: row.url }]);
+    assert.deepEqual(summary.assignmentKeys, ["assignment:789"]);
+  } finally { db.close(); }
+});
+
+test("manual summary uses only current identities and clears context when current work is empty", async () => {
+  const db = openSubscriptionToolStore(config);
+  try {
+    const first = source();
+    first.snapshot.assignments = Array.from({ length: 20 }, (_, i) => ({ ...row,
+      title: `Long source lab ${i} ${"detail ".repeat(100)}`, url: `https://bcps.schoology.com/assignment/${800 + i}` }));
+    importQualifiedSource(db, config, first);
+    const bounded = await executeSubscriptionTool(db, request(601, "build_daily_summary", null));
+    assert.ok(bounded.reply.length <= 3500);
+    assert.ok(bounded.displayedAssignments.length > 0);
+    assert.ok(bounded.displayedAssignments.length < 5);
+    for (const ref of bounded.displayedAssignments) assert.ok(bounded.reply.includes(`Link: ${ref.url}`));
+    assert.deepEqual(bounded.assignmentKeys, bounded.displayedAssignments.map(ref => ref.key));
+    const next = source();
+    next.snapshot.assignments = [{ ...row, title: "Current lab", url: "https://bcps.schoology.com/assignment/999" }];
+    importQualifiedSource(db, config, next);
+    // Retained history must not re-enter a current-term response, even if actionable.
+    db.prepare("UPDATE assignments SET is_missing=1 WHERE key != 'assignment:999'").run();
+    const current = await executeSubscriptionTool(db, request(602, "build_daily_summary", null));
+    assert.deepEqual(current.assignmentKeys, ["assignment:999"]);
+    assert.doesNotMatch(current.reply, /Long source lab/);
+    next.snapshot.assignments = [];
+    importQualifiedSource(db, config, next);
+    const empty = await executeSubscriptionTool(db, request(603, "build_daily_summary", null));
+    assert.deepEqual(empty.displayedAssignments, []);
+    assert.deepEqual(empty.assignmentKeys, []);
+    assert.match(empty.reply, /Nothing to do/);
+    await assert.rejects(executeSubscriptionTool(db, request(603, "build_daily_summary", null)), /do not replay/);
   } finally { db.close(); }
 });
 
