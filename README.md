@@ -33,6 +33,9 @@ Submission uses official accessible labels, not blue color or an icon class.
 Ungraded submission, completed submission with unknown grading, explicitly
 unsubmitted draft and unknown status remain distinct. Independent
 Missing/Incomplete flags survive and display when they conflict with submission.
+The official Exempt flag remains excused, including when an ungraded submission
+icon is also present. Such work is separate from both missing and awaiting-grade
+lists; its submission marker is retained in the source status.
 Numeric grades and teacher comments are not read.
 
 This local path requires the computer, Codex and sanctioned browser/session.

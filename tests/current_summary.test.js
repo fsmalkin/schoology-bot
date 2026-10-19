@@ -49,6 +49,14 @@ test("completed submission with unknown grading is not counted as confirmed awai
   assert.match(result.summaryText,/Awaiting grade: 1\. Submission confirmed, grading status unknown: 1/);
 });
 
+test("exempt submitted work is separate from both awaiting-grade and grading-unknown work",()=>{
+  const data=snapshot();data.assignments.push({...data.assignments[0],title:"Excused source work",url:"https://example.schoology.com/assignment/1004",status:"Submitted (Exempt; ungraded marker)",isMissing:false});
+  const result=buildCurrentSummary(data,{now:NOW});
+  assert.equal(result.submittedAwaitingGrade,1);assert.equal(result.submittedGradingUnknown,0);
+  assert.equal(result.exempt,1);assert.equal(result.submittedExempt,1);
+  assert.match(result.summaryText,/Submitted work: 2/);assert.match(result.summaryText,/Exempt: 1 \(excused/);
+});
+
 test("complete and partial empty snapshots cannot both claim a verified empty current list", () => {
   const data = snapshot(); data.assignments = [];
   assert.match(buildCurrentSummary(data, { now: NOW }).summaryText, /No missing assignments in this complete current Schoology snapshot/);

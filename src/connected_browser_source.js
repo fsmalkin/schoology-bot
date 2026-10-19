@@ -130,7 +130,8 @@ export function validateConnectedBrowserSource(config, envelope, now = new Date(
           "Submitted, awaiting grade (Schoology also marks Missing)", "Submitted, awaiting grade (Schoology also marks Incomplete)",
           "Submitted (grading status unknown)", "Submitted (grading status unknown; Schoology also marks Missing)",
           "Submitted (grading status unknown; Schoology also marks Incomplete)", "Draft (not submitted)",
-          "Missing (draft not submitted)", "Incomplete (draft not submitted)"].includes(row.status) ||
+          "Missing (draft not submitted)", "Incomplete (draft not submitted)", "Exempt", "Exempt (draft not submitted)",
+          "Submitted (Exempt; ungraded marker)", "Submitted (Exempt; grading status unknown)"].includes(row.status) ||
         row.isMissing !== (["Missing", "Incomplete"].includes(row.status) || /Schoology also marks (?:Missing|Incomplete)\)/.test(row.status) || /^(?:Missing|Incomplete) \(draft not submitted\)$/.test(row.status)) || typeof row.url !== "string" ||
         (row.url && !/^https:\/\/bcps\.schoology\.com\/assignment\/[1-9][0-9]*$/.test(row.url))) throw Error("Invalid browser assignment projection");
   }

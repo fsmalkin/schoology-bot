@@ -81,6 +81,10 @@ export function formatFriendlyStatus(status) {
   const official = String(status || "").trim();
   if (!official) return "Needs action";
   const lower = official.toLowerCase();
+  if (lower === "exempt") return "Exempt (excused from this assignment)";
+  if (lower === "exempt (draft not submitted)") return "Exempt (draft not submitted)";
+  if (lower === "submitted (exempt; ungraded marker)") return "Exempt; submission recorded (source still shows an ungraded marker)";
+  if (lower === "submitted (exempt; grading status unknown)") return "Exempt; submission recorded (grading status unknown)";
   if (lower === "waiting on teacher") {
     return "Needs teacher reply (Waiting on teacher)";
   }

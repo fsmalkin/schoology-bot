@@ -97,9 +97,14 @@ export function isSubmittedSchoologyStatus(row = {}) {
 
 export function isSubmittedAwaitingGradeStatus(row = {}) {
   const status = normalizeStatusText(row.status);
+  if (isExemptSchoologyStatus(row)) return false;
   if (status.startsWith("submitted (grading status unknown")) return false;
   return status === "submitted" || status.startsWith("submitted, awaiting grade") ||
     normalizeStatusText(`${row.status || ""} ${row.rawText || row.raw_text || ""}`).includes("submission that has not been graded");
+}
+
+export function isExemptSchoologyStatus(row = {}) {
+  return /^(?:exempt(?: \(|$)|submitted \(exempt;)/.test(normalizeStatusText(row.status));
 }
 
 export function statusGuideText() {
