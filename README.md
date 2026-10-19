@@ -2,6 +2,16 @@
 
 ## Overdue default
 
+Follow-up questions such as "the fourth assignment" resolve against the exact
+assignment order in the last confirmed delivered list. The app supplies that
+minimal context only for the same group, message thread, student and term.
+It records context after final-send readback; an ambiguous send supplies none.
+Replies stop at complete assignment rows within Telegram's limit, so clipped
+or undisplayed items never acquire a displayed position. Ambiguous or unsupported
+references receive a clarification without importing source, invoking a local
+tool or stopping the service. The connected-source worker still performs its
+one admitted read; a clarification does not retry it.
+
 Ordinary overdue questions use `list_assignments` with `status: "overdue"`:
 a past deadline and affirmative evidence that the assignment was not submitted.
 Missing and explicitly unsubmitted drafts qualify. Incomplete alone, a blank

@@ -2,6 +2,21 @@
 
 ## Overdue means unsubmitted by default (October18 direct direction)
 
+Current acceptance: PR62 merged b4c3ba56, full CI565Node pass/5skips/85PS;
+normal overdue update471028437/reply887 used fresh source and returned7 strict
+unsubmitted rows. A genuine ordinal follow-up then exposed missing displayed
+context and a fatal unavailable-plan branch. Its original worker/read are spent;
+owner completed the original unused clarification send as reply889, without
+worker/import/tool replay, retaining native held state and an explicit derived
+stopped snapshot. No temporary annotation had been created.
+
+Isolated follow-up branch `schoology/interactive-context-20261018` adds app-owned
+post-send displayed context, scope binding, complete-row rendering and normal
+clarification replies. Affected checks passed49Node and84PS. Next: exact-head
+CI, clean same-worker v20, three separately admitted changed-context consumer
+checks, then the remaining8 current-version annotation checks under the original
+finite interactive admission. Preserve every original effect and denominator.
+
 Implement `fred-schoology-overdue-default-unsubmitted-20261018-v1:owner`
 in the original deterministic list tool and both existing subscription planner
 prompts. Strict overdue requires a past evidenced deadline and affirmative

@@ -110,8 +110,9 @@ export async function executeSubscriptionTool(db, request, config = {}) {
     else output = await runToolByName(db, name, args, { assignmentKeys: db.prepare("SELECT key FROM subscription_current_keys").all().map(row => row.key) });
     if (!output?.ok) throw Error(output?.error || "Original tool refused request");
     if (targetKey) output = { ...output, assignments: output.assignments.filter(row => row.key === targetKey) };
-    const reply = toolReply(db, name, args, output, source);
-    const result = { ok: true, toolName: name, observedAt: source.observed_at, ...(name === "list_assignments" ? { filter: args.status || "missing", assignmentKeys: output.assignments.map(row => row.key) } : {}), reply };
+    const rendered = toolReply(db, name, args, output, source);
+    const reply = typeof rendered === "string" ? rendered : rendered.reply;
+    const result = { ok: true, toolName: name, observedAt: source.observed_at, ...(name === "list_assignments" ? { filter: args.status || "missing", assignmentKeys: rendered.displayedAssignments.map(row => row.key), displayedAssignments: rendered.displayedAssignments } : {}), reply };
     db.prepare("INSERT INTO subscription_effects VALUES(?,?,?,?)").run(request.operationId, name, JSON.stringify(before), JSON.stringify(result));
     db.exec("COMMIT");
     return result;
@@ -129,7 +130,19 @@ function toolReply(db, name, args, output, source) {
     });
     const overdue = args.status === "overdue" || args.status === "overdue_all";
     const filterLabel = overdue ? `\n${args.status === "overdue" ? "Overdue and evidenced unsubmitted only. Submitted, exempt, unknown and conflicting cases excluded." : "Overdue across all submission states; evidence labeled separately."}\nEvaluated ${output.evaluation.evaluatedAt} (${output.evaluation.timeZone}). Date-only deadlines retain unknown time.` : "";
-    return `Saved Schoology data observed ${source.observed_at}${filterLabel}\n\n${lines.length ? lines.join("\n\n") : "No matching assignments."}`.slice(0, 3500);
+    let reply = `Saved Schoology data observed ${source.observed_at}${filterLabel}\n\n`;
+    const displayedAssignments = [];
+    const suffix = "\n\nMore matching work is available; ask for a narrower list.";
+    for (let index = 0; index < lines.length; index++) {
+      const line = `${displayedAssignments.length ? "\n\n" : ""}${lines[index]}`;
+      if (reply.length + line.length + suffix.length > 3500) break;
+      reply += line;
+      const { key, title, course, url } = rows[index];
+      displayedAssignments.push({ key, title, course, url: url || "" });
+    }
+    if (displayedAssignments.length < rows.length) reply += suffix;
+    else if (!rows.length) reply += "No matching assignments.";
+    return { reply, displayedAssignments };
   }
   const title = db.prepare("SELECT title FROM assignments WHERE key=?").get(args.key)?.title || "assignment";
   if (name === "add_assignment_note") return `Saved a local note for ${title}: ${args.note}\nSchoology was not changed.`;

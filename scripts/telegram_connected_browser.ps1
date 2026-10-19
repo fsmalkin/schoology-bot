@@ -41,6 +41,7 @@ Select list_assignments (status overdue/overdue_all/missing/all/resolved/submitt
 <browser_source_contract_json>
 $($Contract|ConvertTo-Json -Depth 12 -Compress)
 </browser_source_contract_json>
+If stored_catalog_json.lastDisplayedList is present, it is the app's exact previously delivered assignment order for this group/thread/student/term. Resolve ordinal or contextual follow-ups against that list, then select its exact current assignment title or URL. Never substitute an ordinal from the full catalog or infer a displayed list from your earlier plan. If the referent is absent or ambiguous, return unavailable with a short clarification; never guess.
 <stored_catalog_json>
 $($Catalog|ConvertTo-Json -Depth 12 -Compress)
 </stored_catalog_json>
@@ -53,8 +54,9 @@ $Question
 "@
 }
 
-function Invoke-RelayOriginalToolRequest($NodeExecutable,$PrivateConfig,$Executable,$ThreadId,$WorkingDirectory,$Question,$OutputPath,$StudentProfileId,$CurrentTerm,$LocalRequest,$Receipt,$ReceiptPath,$BrowserSourceContract=$null,$OnProgress=$null) {
+function Invoke-RelayOriginalToolRequest($NodeExecutable,$PrivateConfig,$Executable,$ThreadId,$WorkingDirectory,$Question,$OutputPath,$StudentProfileId,$CurrentTerm,$LocalRequest,$Receipt,$ReceiptPath,$BrowserSourceContract=$null,$OnProgress=$null,$LastDisplayedContext=$null) {
   $catalog=Invoke-OriginalSchoologyTool $NodeExecutable $PrivateConfig @{command='catalog'} $OnProgress
+  if($LastDisplayedContext){$catalog|Add-Member -NotePropertyName lastDisplayedList -NotePropertyValue $LastDisplayedContext -Force}
   $refreshOnly=$Question.Trim() -match '(?i)^/?refresh(?: schoology)?[.!]?$'
   $toolName=$null;$toolArgs=@{};$sourceGap=$false
   if($LocalRequest){$toolName=@{note='add_assignment_note';status='update_assignment_status';'clear-notes'='clear_assignment_notes';'clear-status'='clear_assignment_status'}[$LocalRequest.operation]}
@@ -62,7 +64,11 @@ function Invoke-RelayOriginalToolRequest($NodeExecutable,$PrivateConfig,$Executa
   if($null -ne $BrowserSourceContract -or -not $toolName){
     $Receipt.workerCalls=1;Write-RelayJson $ReceiptPath $Receipt
     $plan=Invoke-RelayWorker $Executable $ThreadId $WorkingDirectory $Question $OutputPath $StudentProfileId $CurrentTerm $LocalRequest $null $catalog $BrowserSourceContract $OnProgress
-    if($plan.state -cne 'ok'){throw 'Unsupported original tool request'}
+    if($plan.state -ceq 'unavailable' -and $plan.conciseReply -and $plan.conciseReply.Length -le 3500){
+      $Receipt.state='PLAN_UNAVAILABLE';$Receipt.sourceReadAttempts=if($null -ne $BrowserSourceContract){1}else{0};$Receipt.sourceImportAttempts=0;$Receipt.toolCalls=0;Write-RelayJson $ReceiptPath $Receipt
+      return [pscustomobject]@{state='unavailable';conciseReply=$plan.conciseReply;observedAt=$null;resolvedAssignment=$null}
+    }
+    if($plan.state -cne 'ok'){throw 'Invalid original tool plan'}
     if($plan.toolName -cnotin @('list_assignments','build_daily_summary')){throw 'Invalid read-only plan'}
     if(-not $toolName){$toolName=$plan.toolName;$toolArgs=$plan.argumentsJson|ConvertFrom-Json -AsHashtable}
     if($null -ne $BrowserSourceContract){
@@ -85,5 +91,8 @@ function Invoke-RelayOriginalToolRequest($NodeExecutable,$PrivateConfig,$Executa
   $tool=Invoke-OriginalSchoologyTool $NodeExecutable $PrivateConfig @{command='execute';operationId="telegram-update-$($Receipt.updateId)";toolName=$toolName;arguments=$toolArgs;localRequest=$LocalRequest} $OnProgress
   $Receipt.state=if($tool.ok -eq $true){'TOOL_CONFIRMED'}else{'TOOL_REFUSED'};Write-RelayJson $ReceiptPath $Receipt
   $reply=if($sourceGap){"Current Schoology could not be verified. Showing the saved snapshot below.`n`n$($tool.reply)"}else{$tool.reply}
-  return [pscustomobject]@{state='ok';conciseReply=$reply;observedAt=$tool.observedAt;resolvedAssignment=$null}
+  if($null -ne $tool.displayedAssignments){[void](Confirm-RelayDisplayedAssignments $tool.displayedAssignments)}
+  $answer=[pscustomobject]@{state='ok';conciseReply=$reply;observedAt=$tool.observedAt;resolvedAssignment=$null}
+  if($null -ne $tool.displayedAssignments){$answer|Add-Member -NotePropertyName displayedAssignments -NotePropertyValue @($tool.displayedAssignments)}
+  return $answer
 }

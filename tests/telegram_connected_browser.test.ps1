@@ -81,6 +81,13 @@ try {
   $script:fixturePlan.sourceStatus='verified'
   Assert-Refused {Run-Case}
   if(($script:fixtureCalls -join ',') -cne 'catalog'){throw 'Missing verified source reached an effect'};$passed++
+  $script:fixturePlan.state='unavailable';$script:fixturePlan.conciseReply='Which listed assignment do you mean?'
+  $result=Run-Case 'What about item99?'
+  if(($script:fixtureCalls -join ',') -cne 'catalog' -or $result.answer.conciseReply -cne 'Which listed assignment do you mean?' -or $result.receipt.toolCalls -ne 0 -or $result.receipt.sourceImportAttempts -ne 0){throw 'Clarification stopped the request or caused an import/tool effect'};$passed++
+  if($result.receipt.state -cne 'PLAN_UNAVAILABLE' -or $result.receipt.sourceReadAttempts -ne 1){throw 'Clarification lost its actual source read and no-import boundary'};$passed++
+  $script:fixturePlan.state='ok';$script:fixturePlan.conciseReply='';$script:fixturePlan.sourceStatus='unavailable'
+  $result=Run-Case 'A new supported question'
+  if(($script:fixtureCalls -join ',') -cne 'catalog,execute'){throw 'A subsequent supported request failed after clarification'};$passed++
 } finally {
   $resolved=[IO.Path]::GetFullPath($temporary);$root=[IO.Path]::GetFullPath([IO.Path]::GetTempPath())
   if(-not $resolved.StartsWith($root,[StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetFileName($resolved) -notlike 'schoology-browser-flow-test-*'){throw 'Unexpected cleanup target'}

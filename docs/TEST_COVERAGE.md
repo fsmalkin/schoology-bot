@@ -2,6 +2,16 @@
 
 ## Overdue defaults to evidenced unsubmitted
 
+Current-version follow-up controls additionally verify complete-row rendering
+and displayed-key agreement, the app-owned final-send boundary, exact
+chat/thread/profile/term isolation, bounded context without grades, and a valid
+unavailable plan returning clarification with zero source imports/tool effects.
+A subsequent supported fixture request remains executable. Affected results:
+49Node,27browser-flow and57isolation controls passed. Actual ordinal follow-up,
+clarification/poller continuation and annotation lifecycle remain separate live
+acceptance; the failed v19 follow-up and its one completed clarification send
+remain closed historical effects.
+
 `tests/overdue.test.js` exercises Missing, Incomplete, explicit unsubmitted
 drafts, submitted-ungraded, grading-unknown, Exempt, conflicting source/local
 claims and absent submission evidence. Deadline controls cover elapsed exact
