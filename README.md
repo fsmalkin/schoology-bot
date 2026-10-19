@@ -21,11 +21,13 @@ ambiguous imports stop before the tool/send. A failed source read permits only
 an explicitly dated saved read; refresh/local edits refuse without fresh source.
 Notes and statuses survive refresh.
 
-Typing renews every four seconds. One “Working on it...” placeholder appears
-after ten seconds and is edited with the completed validated answer; a fast
-answer sends once. Each request records at most 76 typing actions, one send and
-one final edit. Ambiguous send/edit results have no automatic retry or fallback
-send. This restores progress feedback, not token streaming.
+Native typing starts promptly and renews every four seconds. When it works,
+the completed validated answer sends directly with no interim bubble. Only
+after a failed or ambiguous typing action may one “Working on it...” fallback
+appear after ten seconds; its recorded typing failure is the reason and that
+same message is edited with the answer. Each request records at most 76 typing
+actions, one send and one final edit. Ambiguous send/edit results have no
+automatic retry or fallback send. This is progress feedback, not token streaming.
 
 Submission uses official accessible labels, not blue color or an icon class.
 Ungraded submission, completed submission with unknown grading, explicitly

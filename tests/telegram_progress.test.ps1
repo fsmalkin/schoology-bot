@@ -37,9 +37,9 @@ try {
   if($case.receipt.typingAttempts -ne 2 -or $case.receipt.sendAttempts -ne 0){throw 'Typing cadence or initial feedback changed'};$passed++
   Invoke-RelayProgressPulse $null $null '999' '-10001' $message $case.receipt $script:receiptPath $case.progress ($start.AddSeconds(10))
   Invoke-RelayProgressPulse $null $null '999' '-10001' $message $case.receipt $script:receiptPath $case.progress ($start.AddSeconds(11))
-  if($case.receipt.progressMessageId -ne 500 -or @($script:methods|Where-Object {$_ -ceq 'sendMessage'}).Count -ne 1){throw 'Placeholder duplicated'};$passed++
+  if($case.receipt.progressMessageId -or @($script:methods|Where-Object {$_ -ceq 'sendMessage'}).Count -ne 0){throw 'Working native typing created a redundant placeholder'};$passed++
   $result=Send-RelayFinalReply $null $null '999' '-10001' $message 'Validated final answer' $case.receipt $script:receiptPath $case.progress
-  if($result.text -cne 'Validated final answer' -or $case.receipt.finalEditAttempts -ne 1 -or $case.receipt.sendAttempts -ne 1){throw 'Placeholder was not edited once'};$passed++
+  if($result.text -cne 'Validated final answer' -or $case.receipt.finalEditAttempts -ne 0 -or $case.receipt.sendAttempts -ne 1 -or $case.receipt.progressSendAttempts -ne 0){throw 'Native typing did not finish with one direct final answer'};$passed++
   Assert-Refused {Send-RelayFinalReply $null $null '999' '-10001' $message 'Duplicate' $case.receipt $script:receiptPath $case.progress}
   $count=$script:methods.Count;Invoke-RelayProgressPulse $null $null '999' '-10001' $message $case.receipt $script:receiptPath $case.progress ($start.AddSeconds(20))
   if($script:methods.Count -ne $count){throw 'Feedback continued after final completion'};$passed++
@@ -50,8 +50,14 @@ try {
   Invoke-RelayProgressPulse $null $null '999' '-10001' $message $case.receipt $script:receiptPath $case.progress $start
   Invoke-RelayProgressPulse $null $null '999' '-10001' $message $case.receipt $script:receiptPath $case.progress ($start.AddSeconds(4))
   if($case.receipt.typingAttempts -ne 1 -or -not $case.progress.typingDisabled){throw 'Failed typing was replayed'};$passed++
+  Invoke-RelayProgressPulse $null $null '999' '-10001' $message $case.receipt $script:receiptPath $case.progress ($start.AddSeconds(10))
+  if($case.receipt.progressMessageId -ne 500 -or $case.receipt.progressFallbackReason -cne 'FAILED_OR_AMBIGUOUS_NO_RETRY' -or $case.receipt.progressSendAttempts -ne 1){throw 'Unavailable typing did not produce one evidence-bound fallback'};$passed++
+  [void](Send-RelayFinalReply $null $null '999' '-10001' $message 'Fallback final' $case.receipt $script:receiptPath $case.progress)
+  if($case.receipt.finalEditAttempts -ne 1 -or @($script:methods|Where-Object {$_ -ceq 'sendMessage'}).Count -ne 1){throw 'Fallback final duplicated its message'};$passed++
   foreach($failure in @('send','edit')){
     $case=New-Case
+    $script:failure='typing'
+    Invoke-RelayProgressPulse $null $null '999' '-10001' $message $case.receipt $script:receiptPath $case.progress $start
     if($failure -ceq 'edit'){
       Invoke-RelayProgressPulse $null $null '999' '-10001' $message $case.receipt $script:receiptPath $case.progress ($start.AddSeconds(10))
       $script:failure='edit';Assert-Refused {Send-RelayFinalReply $null $null '999' '-10001' $message 'Final' $case.receipt $script:receiptPath $case.progress}
