@@ -5,8 +5,11 @@
 The optional `useConnectedBrowserSource: true` relay configuration keeps the
 existing human-triggered worker and original SQLite tools, while refreshing
 from the sanctioned already signed-in browser. Its private tool configuration
-also binds `browserSourceBrowserId` and the absolute installed
-`browserSourceRuntimeModule` (`browser-client.mjs`). No browser process,
+also binds `browserSourceExtensionInstanceId` and the absolute installed
+`browserSourceRuntimeModule` (`browser-client.mjs`). The driver resolves the
+extension's local browser ID inside each worker runtime; those short IDs are
+not portable between runtimes. Missing or duplicate extension matches refuse
+before any tab or record access. No browser process,
 profile/session transfer, credential entry, listener or paid model API is added.
 
 The app supplies one exact capture call using its current-term parser and

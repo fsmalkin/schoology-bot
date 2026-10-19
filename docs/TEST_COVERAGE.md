@@ -10,6 +10,9 @@ exercise atomic import plus receipt, receipt-failure rollback, no replay and
 retained notes/statuses. Relay fixtures cover reservation-before-import, original
 tool identity, dated fallback, refusal of stale local edits and no app-profile
 launch. The existing-browser driver verifies identity before roster access.
+Stable extension controls exercise changed runtime-local IDs and reject
+missing/ambiguous extension matches before opening a tab. Import independently
+requires the captured stable identity and a valid returned local browser ID.
 
 Progress controls cover initial/4-second typing, the 10-second placeholder,
 thread binding, final edit versus fast send, the 76-action ceiling, completion

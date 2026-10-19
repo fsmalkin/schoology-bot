@@ -10,7 +10,7 @@ const exactKeys = (value, keys) => value && typeof value === "object" && !Array.
   Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 
 export function connectedBrowserSourceContract(config) {
-  if (!/^[A-Za-z0-9_-]{1,64}$/.test(config.browserSourceBrowserId || "") ||
+  if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(config.browserSourceExtensionInstanceId || "") ||
       !/^\d+$/.test(config.studentProfileId || "") || !/^\d+$/.test(config.currentTermId || "") ||
       !/^MP ?[1-4] 20\d\d-20\d\d$/.test(config.currentTerm || "") ||
       typeof config.principalId !== "string" || !config.principalId || /[\r\n]/.test(config.principalId)) {
@@ -23,13 +23,14 @@ export function connectedBrowserSourceContract(config) {
   const expectedScope = { principalId: config.principalId, studentId: config.studentProfileId,
     currentTermId: config.currentTermId, currentTermLabel: config.currentTerm };
   const readerSha256 = createHash("sha256").update(reader).digest("hex");
+  const extensionInstanceId = config.browserSourceExtensionInstanceId;
   // One exact app-driver call performs the supported setup/navigation/read.
   // The worker cannot supply arbitrary prep code or transcribe the source.
   const captureCode = `await (await import(${JSON.stringify(import.meta.url)})).captureConnectedBrowserSource(${JSON.stringify({
     runtimeModule: pathToFileURL(config.browserSourceRuntimeModule).href,
-    browserId: config.browserSourceBrowserId, preferredTabId: config.browserSourceTabId || null, readerSha256, expectedScope,
+    extensionInstanceId, preferredTabId: config.browserSourceTabId || null, readerSha256, expectedScope,
   })});`;
-  return { format: "schoology-connected-browser-source/v1", browserId: config.browserSourceBrowserId,
+  return { format: "schoology-connected-browser-source/v1", browserExtensionInstanceId: extensionInstanceId,
     sourceUrl, readerSha256, expectedScope, captureCode };
 }
 
@@ -44,12 +45,18 @@ export async function openConnectedGradesTab(browser, preferredTabId = null) {
   return tab;
 }
 
-export async function captureConnectedBrowserSource({ runtimeModule, browserId, preferredTabId, readerSha256, expectedScope }) {
+export async function captureConnectedBrowserSource({ runtimeModule, extensionInstanceId, preferredTabId, readerSha256, expectedScope }) {
   const reader = projectCurrentGradebook.toString();
   if (createHash("sha256").update(reader).digest("hex") !== readerSha256 ||
       !String(runtimeModule).startsWith("file:") || !String(runtimeModule).endsWith("/browser-client.mjs")) throw Error("App reader/runtime binding changed");
   const { setupBrowserRuntime } = await import(runtimeModule);
   const sourceApi = await setupBrowserRuntime();
+  // Short browser IDs belong to one runtime and can change on every CLI turn.
+  // Resolve only the already-sanctioned extension, before opening any source tab.
+  const matches = (await sourceApi.browsers.list()).filter(browser => browser.type === "extension" &&
+    browser.metadata?.extensionInstanceId === extensionInstanceId);
+  if (matches.length !== 1) throw Error("Exact sanctioned browser extension missing or ambiguous");
+  const browserId = matches[0].id;
   const browser = await sourceApi.browsers.get(browserId);
   await browser.nameSession("📚 Schoology source");
   const tab = await openConnectedGradesTab(browser, preferredTabId);
@@ -76,13 +83,15 @@ export async function captureConnectedBrowserSource({ runtimeModule, browserId, 
   }
   const expression = `(${reader})({document,origin:location.origin,pathname:location.pathname,observedAt:new Date().toISOString(),expectedScope:${JSON.stringify(expectedScope)}})`;
   const source = await tab.playwright.evaluate(expression);
-  nodeRepl.write("SCHOOLOGY_SOURCE_V1:" + JSON.stringify({ browserId, sourceTabId: tab.id, sourceUrl, readerSha256, source }));
+  nodeRepl.write("SCHOOLOGY_SOURCE_V1:" + JSON.stringify({ browserId, browserExtensionInstanceId: extensionInstanceId,
+    sourceTabId: tab.id, sourceUrl, readerSha256, source }));
 }
 
 export function validateConnectedBrowserSource(config, envelope, now = new Date()) {
   const contract = connectedBrowserSourceContract(config);
-  if (!exactKeys(envelope, ["browserId", "sourceTabId", "sourceUrl", "readerSha256", "source"]) ||
-      envelope.browserId !== contract.browserId || envelope.sourceUrl !== sourceUrl ||
+  if (!exactKeys(envelope, ["browserId", "browserExtensionInstanceId", "sourceTabId", "sourceUrl", "readerSha256", "source"]) ||
+      typeof envelope.browserId !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(envelope.browserId) ||
+      envelope.browserExtensionInstanceId !== contract.browserExtensionInstanceId || envelope.sourceUrl !== sourceUrl ||
       envelope.readerSha256 !== contract.readerSha256 || typeof envelope.sourceTabId !== "string" ||
       !/^[A-Za-z0-9_-]{1,128}$/.test(envelope.sourceTabId) ||
       (config.browserSourceTabId && envelope.sourceTabId !== config.browserSourceTabId)) throw Error("Unbound browser source");
