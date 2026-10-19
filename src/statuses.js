@@ -95,6 +95,13 @@ export function isSubmittedSchoologyStatus(row = {}) {
   return Boolean(getSubmittedSchoologyStatusLabel(row));
 }
 
+export function isSubmittedAwaitingGradeStatus(row = {}) {
+  const status = normalizeStatusText(row.status);
+  if (status.startsWith("submitted (grading status unknown")) return false;
+  return status === "submitted" || status.startsWith("submitted, awaiting grade") ||
+    normalizeStatusText(`${row.status || ""} ${row.rawText || row.raw_text || ""}`).includes("submission that has not been graded");
+}
+
 export function statusGuideText() {
   return Object.entries(STATUS_CODE_MAP)
     .map(([code, label]) => `${code} = ${label}`)

@@ -81,7 +81,8 @@ function readyResult(summary, label) {
     const text = [
       `Current term: ${label}`,
       summary.complete ? "Complete current Schoology snapshot." : "Partial Schoology view; other rows may be missing.",
-      `Missing: ${summary.missing.length}. Submitted work: ${summary.submittedAwaitingGrade} (excluded from missing work).`,
+      `Missing: ${summary.missing.length}. Submitted work: ${summary.submittedAwaitingGrade + summary.submittedGradingUnknown} (excluded from missing work).`,
+      `Awaiting grade: ${summary.submittedAwaitingGrade}. Submission confirmed, grading status unknown: ${summary.submittedGradingUnknown}.`,
       !summary.missing.length ? (summary.complete
         ? "No missing assignments in this complete current Schoology snapshot."
         : "No missing assignments visible in the captured rows; coverage is incomplete.") : "",
@@ -98,7 +99,7 @@ function readyResult(summary, label) {
       structuredContent: {
         status: "ready", currentTerm: { label }, observedAt: summary.observedAt,
         sourceComplete: summary.complete, missingCount: summary.missing.length,
-        submittedExcludedCount: summary.submittedAwaitingGrade, returnedCount: items.length, omittedCount, items,
+        submittedExcludedCount: summary.submittedAwaitingGrade + summary.submittedGradingUnknown, returnedCount: items.length, omittedCount, items,
       },
       content: [{ type: "text", text }],
     };

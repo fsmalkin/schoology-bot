@@ -43,3 +43,9 @@ jobs:
       - name: Test subscription Telegram isolation (offline)
         shell: pwsh
         run: ./tests/telegram_subscription.test.ps1
+      - name: Test connected-browser source handoff (offline)
+        shell: pwsh
+        run: ./tests/telegram_connected_browser.test.ps1
+      - name: Test Telegram progress feedback (offline)
+        shell: pwsh
+        run: ./tests/telegram_progress.test.ps1

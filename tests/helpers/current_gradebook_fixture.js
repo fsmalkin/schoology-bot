@@ -89,8 +89,8 @@ export function currentGradebookFixture({
         el("span", "due-date", "Due " + (item.due ?? "Oct 16, 2026")),
       ];
       const statusChildren = item.status ? [el("span", "exception-text", item.status)] : [];
-      if (item.submitted) statusChildren.push(el("span", "has-dropbox-icon grade-pending-icon", "", {}, [
-        el("span", "visually-hidden", "Assignment submitted"),
+      if (item.submitted || item.submissionLabel !== undefined || item.iconOnly) statusChildren.push(el("span", item.submissionClass ?? "has-dropbox-icon grade-pending-icon", "", {}, item.iconOnly ? [] : [
+        el("span", "visually-hidden", item.submissionLabel ?? "This student has made a submission that has not been graded."),
       ]));
       const row = el("tr", "report-row item-row", "", {
         "data-id": item.id ?? "item-" + itemIndex,

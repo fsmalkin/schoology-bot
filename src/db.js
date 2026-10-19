@@ -1678,10 +1678,12 @@ export function listAssignments(db, options = {}) {
         OR LOWER(COALESCE(raw_text, '')) LIKE @submittedRawUngraded
         OR LOWER(COALESCE(raw_text, '')) LIKE @submittedRawSubmitted
       )
+      AND LOWER(TRIM(COALESCE(status, ''))) NOT LIKE @submittedGradingUnknown
     `);
     params.submittedStatus = "submitted%";
     params.submittedRawUngraded = "%submission that has not been graded%";
     params.submittedRawSubmitted = "%assignment submitted%";
+    params.submittedGradingUnknown = "submitted (grading status unknown%";
   }
   if (status === "all") {
     // no-op

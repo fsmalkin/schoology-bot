@@ -1,5 +1,5 @@
 import { buildReadableDailySummary } from "./readable_messages.js";
-import { getSubmittedSchoologyStatusLabel } from "./statuses.js";
+import { getSubmittedSchoologyStatusLabel, isSubmittedAwaitingGradeStatus } from "./statuses.js";
 import { classifySchoologyDueDate } from "./time.js";
 
 export const CURRENT_SNAPSHOT_FORMAT = "schoology-current-assignments/v1";
@@ -96,10 +96,12 @@ export function buildCurrentSummary(snapshot, { now = new Date(), timeZone = "Am
     unique.set(identity, row);
   }
   let submittedAwaitingGrade = 0;
+  let submittedGradingUnknown = 0;
   const missing = [];
   for (const row of unique.values()) {
     if (getSubmittedSchoologyStatusLabel(row)) {
-      submittedAwaitingGrade += 1;
+      if (isSubmittedAwaitingGradeStatus(row)) submittedAwaitingGrade += 1;
+      else submittedGradingUnknown += 1;
     } else if (row.isMissing) {
       missing.push({ ...row, ...classifySchoologyDueDate(row.dueDate, timeZone, nowDate) });
     }
@@ -124,11 +126,12 @@ export function buildCurrentSummary(snapshot, { now = new Date(), timeZone = "Am
   const coverage = snapshot.complete ? "Current Schoology records" : "Partial Schoology view - other rows may be missing";
   const summaryText = [
     coverage,
-    `Missing: ${missing.length}. Submitted work: ${submittedAwaitingGrade} (excluded from missing work).`,
+    `Missing: ${missing.length}. Submitted work: ${submittedAwaitingGrade + submittedGradingUnknown} (excluded from missing work).`,
+    `Awaiting grade: ${submittedAwaitingGrade}. Submission confirmed, grading status unknown: ${submittedGradingUnknown}.`,
     "",
     text,
     "",
     "Saved exceptions, notes and reminder history are not included.",
   ].join("\n");
-  return { summaryText, missing, submittedAwaitingGrade, observedAt: observed.toISOString(), complete: snapshot.complete };
+  return { summaryText, missing, submittedAwaitingGrade, submittedGradingUnknown, observedAt: observed.toISOString(), complete: snapshot.complete };
 }

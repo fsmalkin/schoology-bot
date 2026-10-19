@@ -1,5 +1,31 @@
 # Test Coverage and Gaps
 
+## Connected-browser source, progress and submission labels
+
+Negative controls bind an exact app-driver invocation to its actual CLI result
+and refuse additional/modified/no-op calls, model-authored source, missing or
+duplicate captures, changed browser/reader/principal/subject/term, partial or
+stale data, grades, foreign links and inconsistent fields. Real SQLite controls
+exercise atomic import plus receipt, receipt-failure rollback, no replay and
+retained notes/statuses. Relay fixtures cover reservation-before-import, original
+tool identity, dated fallback, refusal of stale local edits and no app-profile
+launch. The existing-browser driver verifies identity before roster access.
+
+Progress controls cover initial/4-second typing, the 10-second placeholder,
+thread binding, final edit versus fast send, the 76-action ceiling, completion
+cleanup and no resend after ambiguous delivery. Source-label fixtures separate
+ungraded and grading-unknown submissions, icon-only unknowns, explicit draft
+non-submission and Missing/Incomplete conflicts. SQLite/filter/formatter and
+summary fixtures exercise those states through the local output paths.
+Status labels are grounded in a separate sanctioned official-page marker check;
+its private occurrence receipt belongs in GH453/ALEPH383, not this source tree.
+
+Local affected Node/PowerShell checks run during this change. Full CI and actual
+consumer proof remain separate. Fixtures use no real worker, credential, browser
+or Telegram API. Source tests do not prove installation, live refresh, visible
+feedback, final delivery or unattended recovery. The retained relay lock remains
+an intentional owner-reconciliation fence; no old effect is reset.
+
 ## Private local MCP connector
 
 The plugin adds provider-free fixtures for actual stdio initialization and tool

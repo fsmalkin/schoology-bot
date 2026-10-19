@@ -91,15 +91,21 @@ export function projectCurrentGradebook({
       const submission = normalize(grade?.querySelector(
         ".dropbox-icon-inline-image-wrapper .visually-hidden, .has-dropbox-icon.grade-pending-icon .visually-hidden",
       )?.textContent);
-      const submitted = Boolean(grade?.querySelector(".has-dropbox-icon.grade-pending-icon")) ||
-        /assignment submitted|submission that has not been graded/i.test(submission);
+      // The accessible source label establishes submission. Color or an icon
+      // class alone does not distinguish an unsubmitted draft or missing work.
+      const awaitingGrade = /^(?:this student has made a )?submission that has not been graded[.!]?$/i.test(submission);
+      const completedSubmission = /this student has completed assignment submission/i.test(submission);
+      const submittedLabel = /^assignment submitted[.!]?$/i.test(submission);
+      const unsubmittedDraft = /^draft[,:]? not submitted[.!]?$/i.test(submission);
       let status = "Not marked missing";
-      if (submitted) status = "Submitted";
-      else if (exception) {
+      if (exception) {
         status = statuses.get(exception.toLowerCase());
         if (!status) refuse();
       }
-      const isMissing = !submitted && ["Missing", "Incomplete"].includes(status);
+      const isMissing = ["Missing", "Incomplete"].includes(status);
+      if (awaitingGrade) status = "Submitted, awaiting grade" + (isMissing ? ` (Schoology also marks ${status})` : "");
+      else if (completedSubmission || submittedLabel) status = "Submitted (grading status unknown" + (isMissing ? `; Schoology also marks ${status}` : "") + ")";
+      else if (unsubmittedDraft) status = isMissing ? `${status} (draft not submitted)` : "Draft (not submitted)";
       const anchor = row.querySelector(".title-column a[href]");
       let url = "";
       if (anchor) {

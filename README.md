@@ -1,5 +1,40 @@
 ﻿# Schoology Bot
 
+## Existing-browser source refresh and Telegram feedback
+
+The optional `useConnectedBrowserSource: true` relay configuration keeps the
+existing human-triggered worker and original SQLite tools, while refreshing
+from the sanctioned already signed-in browser. Its private tool configuration
+also binds `browserSourceBrowserId` and the absolute installed
+`browserSourceRuntimeModule` (`browser-client.mjs`). No browser process,
+profile/session transfer, credential entry, listener or paid model API is added.
+
+The app supplies one exact capture call using its current-term parser and
+supported browser SDK. No other worker tool code is accepted. Source comes from
+that call's actual CLI result, never the model's final JSON. Import has a
+separate `telegram-source-<update_id>` journal and durable pre-effect receipt;
+the original tool retains `telegram-update-<update_id>`. Invalid, duplicate or
+ambiguous imports stop before the tool/send. A failed source read permits only
+an explicitly dated saved read; refresh/local edits refuse without fresh source.
+Notes and statuses survive refresh.
+
+Typing renews every four seconds. One “Working on it...” placeholder appears
+after ten seconds and is edited with the completed validated answer; a fast
+answer sends once. Each request records at most 76 typing actions, one send and
+one final edit. Ambiguous send/edit results have no automatic retry or fallback
+send. This restores progress feedback, not token streaming.
+
+Submission uses official accessible labels, not blue color or an icon class.
+Ungraded submission, completed submission with unknown grading, explicitly
+unsubmitted draft and unknown status remain distinct. Independent
+Missing/Incomplete flags survive and display when they conflict with submission.
+Numeric grades and teacher comments are not read.
+
+This local path requires the computer, Codex and sanctioned browser/session.
+Source tests do not establish installation, live refresh, visible feedback,
+final delivery or unattended recovery. Existing denials and historical effects
+remain closed; the current engineering checkpoint controls runtime cutover.
+
 A friendly, local-first Schoology assistant that logs in, finds missing assignments, sends a daily summary, and lets you chat with an agent to update statuses, add notes, schedule reminders, and manage tasks.
 
 It runs on your machine today and is ready to move to a server later.
