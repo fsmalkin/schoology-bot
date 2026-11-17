@@ -49,3 +49,6 @@ jobs:
       - name: Test Telegram progress feedback (offline)
         shell: pwsh
         run: ./tests/telegram_progress.test.ps1
+      - name: Test relay failure diagnostics and process exit (offline)
+        shell: pwsh
+        run: ./tests/telegram_failure_metadata.test.ps1
