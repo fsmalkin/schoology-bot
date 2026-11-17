@@ -41,6 +41,11 @@ checks were corrected. An added top-level-array control then exposed PowerShell'
 broad PSCustomObject type test, which was corrected with the actual CLR type.
 Both failures preceded the final passing run.
 
+The first CI run reached the new suite after570Node tests and the three
+existing PowerShell suites passed. Its default shallow checkout lacked the
+historical baseline required by the negative control. CI now retains complete
+repository history for that exact comparison; it fetches no application data.
+
 | Suite | Passing assertions |
 | --- | ---: |
 | `telegram_failure_metadata.test.ps1` | 157 |
