@@ -29,14 +29,59 @@ function Write-RelayJson($Path, $Value) {
   [IO.File]::Move($temporary, $Path, $true)
 }
 
+function New-RelayApiFailure([string]$Category, [string]$Method, $HttpStatus=$null, $ApiErrorCode=$null, $RetryAfter=$null, [string]$TransportKind='UNKNOWN') {
+  # Preserve only typed diagnostics. Provider text and exception inners can
+  # contain the bot URL, token or request; none belongs in a durable receipt.
+  $failure=[InvalidOperationException]::new('Schoology relay provider operation failed')
+  $failure.Data['schoologyRelayFailure']=[ordered]@{
+    version=1;category=$Category;method=$Method;httpStatus=$HttpStatus
+    apiErrorCode=$ApiErrorCode;retryAfterSeconds=$RetryAfter;transportKind=$TransportKind
+  }
+  return $failure
+}
+
+function Get-RelayApiFailure($Exception) {
+  $current=$Exception
+  while($null -ne $current){
+    if($current.Data.Contains('schoologyRelayFailure')){
+      return $current.Data['schoologyRelayFailure']
+    }
+    $current=$current.InnerException
+  }
+  return $null
+}
+
 function Invoke-RelayApi($Client, [string]$Token, [string]$Method, $Parameters) {
   if($Method -cnotin @('getMe','getWebhookInfo','getUpdates','getChatMemberCount','getChatMember','sendMessage','sendChatAction','editMessageText')) { throw 'Unsupported method' }
   $content = [Net.Http.StringContent]::new(($Parameters | ConvertTo-Json -Depth 8 -Compress),[Text.Encoding]::UTF8,'application/json')
   $response = $null
   try {
-    $response = $Client.PostAsync("https://api.telegram.org/bot$Token/$Method",$content).GetAwaiter().GetResult()
-    $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json -Depth 25
-    if(-not $response.IsSuccessStatusCode -or $body.ok -ne $true) { throw 'Telegram request refused' }
+    try {
+      $response = $Client.PostAsync("https://api.telegram.org/bot$Token/$Method",$content).GetAwaiter().GetResult()
+    } catch {
+      $original=$_.Exception.GetBaseException()
+      $kind=if($original -is [Net.Sockets.SocketException]){'SOCKET'}elseif($original -is [Net.Http.HttpRequestException]){'HTTP_REQUEST'}elseif($original -is [OperationCanceledException]){'CANCELLED'}else{'UNKNOWN'}
+      throw (New-RelayApiFailure 'TRANSPORT' $Method -TransportKind $kind)
+    }
+    $body=$null;$parsed=$false
+    try {
+      $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json -Depth 25 -NoEnumerate -ErrorAction Stop
+      $parsed=$true
+    } catch { }
+    $status=[int]$response.StatusCode
+    $apiCode=$null;$retryAfter=$null
+    if($parsed -and $null -ne $body -and ($body.error_code -is [int] -or $body.error_code -is [long]) -and
+       $body.error_code -ge 1 -and $body.error_code -le 999){$apiCode=[int]$body.error_code}
+    if(($status -eq 429 -or $apiCode -eq 429) -and $parsed -and $null -ne $body -and
+       ($body.parameters.retry_after -is [int] -or $body.parameters.retry_after -is [long]) -and
+       $body.parameters.retry_after -ge 1 -and $body.parameters.retry_after -le 60){
+      $retryAfter=[int]$body.parameters.retry_after
+    }
+    if(-not $response.IsSuccessStatusCode){throw (New-RelayApiFailure 'HTTP' $Method $status $apiCode $retryAfter)}
+    if(-not $parsed -or $null -eq $body -or $body.GetType().FullName -cne 'System.Management.Automation.PSCustomObject' -or $body.ok -isnot [bool]){
+      throw (New-RelayApiFailure 'RESPONSE' $Method $status)
+    }
+    if(-not $body.ok){throw (New-RelayApiFailure 'API' $Method $status $apiCode $retryAfter)}
     return $body.result
   } finally { if($response){$response.Dispose()}; $content.Dispose(); $body=$null; $Token=$null }
 }
@@ -259,8 +304,8 @@ function Start-SubscriptionRelay {
         $updates=@(Invoke-RelayApi $client $token 'getUpdates' $parameters)
         $pollTransportFailures=0
       } catch {
-        $failure=$_.Exception.GetBaseException()
-        if($failure -isnot [Net.Sockets.SocketException] -and $failure -isnot [Net.Http.HttpRequestException] -and $failure -isnot [Threading.Tasks.TaskCanceledException]){throw}
+        $failure=Get-RelayApiFailure $_.Exception
+        if($null -eq $failure -or $failure.category -cne 'TRANSPORT' -or $failure.transportKind -cnotin @('SOCKET','HTTP_REQUEST','CANCELLED')){throw}
         $pollTransportFailures++
         if($pollTransportFailures -gt 3){throw}
         $state.pollTransportFailures=$pollTransportFailures;Write-RelayJson $statePath $state
@@ -316,12 +361,22 @@ function Start-SubscriptionRelay {
     $state.failedStage=$state.state;$state.state='HELD_NO_AUTOMATIC_REPLAY';$state.errorType=$_.Exception.GetType().Name
     $state.errorBaseType=$_.Exception.GetBaseException().GetType().FullName
     $state.errorHResult=$_.Exception.GetBaseException().HResult
+    $providerFailure=Get-RelayApiFailure $_.Exception
+    if($null -ne $providerFailure){$state.providerFailure=$providerFailure}
     # Never log exception text, URLs, token values, request content or stderr.
   } finally {
     $state.heartbeat=[DateTimeOffset]::UtcNow.ToString('o');Write-RelayJson $statePath $state
     if($client){$client.Dispose()};if($handler){$handler.Dispose()};$token=$null;$lock.Dispose()
     # Keep the lock and receipts for explicit owner reconciliation, including clean stops.
   }
+  if($state.state -ceq 'HELD_NO_AUTOMATIC_REPLAY'){
+    throw [InvalidOperationException]::new('Schoology relay is held; reconcile its preserved state before continuation')
+  }
 }
 
-if($MyInvocation.InvocationName -ne '.') { Start-SubscriptionRelay }
+if($MyInvocation.InvocationName -ne '.') {
+  try { Start-SubscriptionRelay } catch {
+    [Console]::Error.WriteLine('Schoology relay failed; inspect its preserved state and operation receipts')
+    exit 2
+  }
+}

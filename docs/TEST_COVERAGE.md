@@ -1,5 +1,14 @@
 # Test Coverage and Gaps
 
+## November 17 recovery failure controls
+
+`tests/telegram_failure_metadata.test.ps1` covers typed HTTP/API/transport
+diagnostics, malformed response types, retry-after limits and disposal through
+an in-memory HTTP handler. Its generated broker-failure children demonstrate
+the exact baseline's held exit 0 versus the corrected exit 2, with preserved
+state/lock and zero real provider or credential access. 157 assertions pass.
+See `relay-failure-recovery-20261117.md` for remaining runtime requirements.
+
 ## Overdue defaults to evidenced unsubmitted
 
 Manual-summary continuation: deterministic rendering now produces text and
